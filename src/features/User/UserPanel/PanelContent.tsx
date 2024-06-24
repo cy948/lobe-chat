@@ -4,7 +4,8 @@ import { Flexbox } from 'react-layout-kit';
 
 import BrandWatermark from '@/components/BrandWatermark';
 import Menu from '@/components/Menu';
-import { enableNextAuth } from '@/const/auth';
+import { useServerConfigStore } from '@/store/serverConfig';
+import { serverConfigSelectors } from '@/store/serverConfig/selectors';
 import { useUserStore } from '@/store/user';
 import { authSelectors } from '@/store/user/selectors';
 
@@ -24,6 +25,7 @@ const PanelContent = memo<{ closePopover: () => void }>(({ closePopover }) => {
     s.openUserProfile,
     s.enableAuth(),
   ]);
+  const enableNextAuth = useServerConfigStore(serverConfigSelectors.enabledOAuthSSO);
   const { mainItems, logoutItems } = useMenu();
 
   const handleOpenProfile = () => {

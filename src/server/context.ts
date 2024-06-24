@@ -52,7 +52,6 @@ export const createContext = async (request: NextRequest): Promise<Context> => {
   if (enableNextAuth) {
     try {
       const session = await getNextAuth();
-      console.log('session', session);
       if (session && session?.user?.id) {
         auth = session.user;
         userId = session.user.id;

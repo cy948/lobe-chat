@@ -4,8 +4,6 @@ import { Flexbox } from 'react-layout-kit';
 
 import BrandWatermark from '@/components/BrandWatermark';
 import Menu from '@/components/Menu';
-import { useServerConfigStore } from '@/store/serverConfig';
-import { serverConfigSelectors } from '@/store/serverConfig/selectors';
 import { useUserStore } from '@/store/user';
 import { authSelectors } from '@/store/user/selectors';
 
@@ -19,13 +17,13 @@ import { useMenu } from './useMenu';
 const PanelContent = memo<{ closePopover: () => void }>(({ closePopover }) => {
   const router = useRouter();
   const isLoginWithAuth = useUserStore(authSelectors.isLoginWithAuth);
-  const [openSignIn, signOut, openUserProfile, enableAuth] = useUserStore((s) => [
+  const [openSignIn, signOut, openUserProfile, enableAuth, enabledNextAuth] = useUserStore((s) => [
     s.openLogin,
     s.logout,
     s.openUserProfile,
     s.enableAuth(),
+    s.enabledNextAuth,
   ]);
-  const enableNextAuth = useServerConfigStore(serverConfigSelectors.enabledOAuthSSO);
   const { mainItems, logoutItems } = useMenu();
 
   const handleOpenProfile = () => {
@@ -43,7 +41,7 @@ const PanelContent = memo<{ closePopover: () => void }>(({ closePopover }) => {
     signOut();
     closePopover();
     // NextAuth doesn't need to redirect to login page
-    if (enableNextAuth) return;
+    if (enabledNextAuth) return;
     router.push('/login');
   };
 

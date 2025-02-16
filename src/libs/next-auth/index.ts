@@ -28,6 +28,6 @@ export default NextAuth({
   ...config,
   adapter: NEXT_PUBLIC_ENABLED_SERVER_SERVICE ? LobeNextAuthDbAdapter(serverDB) : undefined,
   session: {
-    strategy: 'jwt',
+    strategy: 'database',
   },
 });

@@ -4,7 +4,7 @@ import {
   AgentRuntime,
   ChatCompletionErrorPayload,
 } from '@/libs/model-runtime';
-import { createTraceOptions, initAgentRuntimeWithUserPayload } from '@/server/modules/AgentRuntime';
+import { createTraceOptions, createUsageTracker, initAgentRuntimeWithUserPayload } from '@/server/modules/AgentRuntime';
 import { ChatErrorType } from '@/types/fetch';
 import { ChatStreamPayload } from '@/types/openai/chat';
 import { createErrorResponse } from '@/utils/errorResponse';
@@ -34,6 +34,8 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
     // If user enable trace
     if (tracePayload?.enabled) {
       traceOptions = createTraceOptions(data, { provider, trace: tracePayload });
+    } else if (jwtPayload?.userId) {
+      traceOptions = createUsageTracker(data, jwtPayload.userId);
     }
 
     return await agentRuntime.chat(data, {

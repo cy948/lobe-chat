@@ -147,6 +147,7 @@ export function createCallbacksTransformer(cb: ChatStreamCallbacks | undefined) 
   let aggregatedText = '';
   let aggregatedThinking: string | undefined = undefined;
   let usage: ModelTokensUsage | undefined;
+  let speed: ModelSpeed | undefined;
   let grounding: any;
   let toolsCalling: any;
 
@@ -161,6 +162,7 @@ export function createCallbacksTransformer(cb: ChatStreamCallbacks | undefined) 
         thinking: aggregatedThinking,
         toolsCalling,
         usage,
+        speed,
       };
 
       if (callbacks.onCompletion) {
@@ -211,6 +213,11 @@ export function createCallbacksTransformer(cb: ChatStreamCallbacks | undefined) 
           case 'usage': {
             usage = data;
             await callbacks.onUsage?.(data);
+            break;
+          }
+
+          case 'speed': {
+            speed = data;
             break;
           }
 

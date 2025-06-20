@@ -8,7 +8,6 @@ import { TraceEventType, TraceNameMap } from '@/const/trace';
 import { isServerMode } from '@/const/version';
 import { knowledgeBaseQAPrompts } from '@/prompts/knowledgeBaseQA';
 import { chatService } from '@/services/chat';
-import { usageService } from '@/services/usage'
 import { messageService } from '@/services/message';
 import { useAgentStore } from '@/store/agent';
 import { agentChatConfigSelectors, agentSelectors } from '@/store/agent/selectors';
@@ -619,16 +618,6 @@ export const generateAIChat: StateCreator<
           imageList: finalImages.length > 0 ? finalImages : undefined,
           metadata: speed ? { ...usage, ...speed } : usage,
         });
-
-        // TODO: 更新 RequestLog
-        // const aiModelListItem = aiModelSelectors.getModelCard(model, provider!)(getAiInfraStoreState());
-        // await usageService.createRequestLog({
-        //   metadata: speed ? { ...usage, ...speed } : usage,
-        //   model,
-        //   provider,
-        //   callType: 'chat', // 此处需要根据实际情况进行调整
-        //   pricing: aiModelListItem?.pricing,
-        // })
       },
       onMessageHandle: async (chunk) => {
         switch (chunk.type) {

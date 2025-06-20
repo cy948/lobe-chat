@@ -1,6 +1,6 @@
 import { DeepPartial } from 'utility-types';
 
-import { ModelTokensUsage, ToolFunction } from '@/types/message';
+import { ModelSpeed, ModelTokensUsage, ToolFunction } from '@/types/message';
 
 export interface MessageToolCall {
   /**
@@ -191,6 +191,7 @@ interface OnFinishData {
   thinking?: string;
   toolsCalling?: MessageToolCall[];
   usage?: ModelTokensUsage;
+  speed?: ModelSpeed;
 }
 
 export interface ChatStreamCallbacks {

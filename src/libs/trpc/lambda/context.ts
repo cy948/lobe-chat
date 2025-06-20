@@ -1,7 +1,6 @@
 import debug from 'debug';
 import { User } from 'next-auth';
 import { NextRequest } from 'next/server';
-import { ipAddress } from '@vercel/functions'
 
 import { JWTPayload, LOBE_CHAT_AUTH_HEADER, enableClerk, enableNextAuth } from '@/const/auth';
 import { oidcEnv } from '@/envs/oidc';
@@ -28,8 +27,6 @@ export interface AuthContext {
   // Add OIDC authentication information
   oidcAuth?: OIDCAuth | null;
   userId?: string | null;
-  // Add traces
-  ip?: string | null;
 }
 
 /**
@@ -42,7 +39,6 @@ export const createContextInner = async (params?: {
   nextAuth?: User;
   oidcAuth?: OIDCAuth | null;
   userId?: string | null;
-  ip?: string | null;
 }): Promise<AuthContext> => {
   log('createContextInner called with params: %O', params);
   return {
@@ -51,7 +47,6 @@ export const createContextInner = async (params?: {
     nextAuth: params?.nextAuth,
     oidcAuth: params?.oidcAuth,
     userId: params?.userId,
-    ip: params?.ip,
   };
 };
 
@@ -78,7 +73,6 @@ export const createLambdaContext = async (request: NextRequest): Promise<LambdaC
   let userId;
   let auth;
   let oidcAuth = null;
-  const ip = ipAddress(request);
 
   // Prioritize checking the standard Authorization header for OIDC Bearer Token validation
   if (oidcEnv.ENABLE_OIDC) {
@@ -115,7 +109,6 @@ export const createLambdaContext = async (request: NextRequest): Promise<LambdaC
           authorizationHeader: authorization,
           oidcAuth,
           userId,
-          ip,
         });
       }
     } catch (error) {
@@ -136,12 +129,7 @@ export const createLambdaContext = async (request: NextRequest): Promise<LambdaC
     userId = result.userId;
     log('Clerk authentication result, userId: %s', userId || 'not authenticated');
 
-    return createContextInner({
-      authorizationHeader: authorization,
-      clerkAuth: auth,
-      userId,
-      ip,
-    });
+    return createContextInner({ authorizationHeader: authorization, clerkAuth: auth, userId });
   }
 
   if (enableNextAuth) {
@@ -157,12 +145,7 @@ export const createLambdaContext = async (request: NextRequest): Promise<LambdaC
       } else {
         log('NextAuth authentication failed, no valid session');
       }
-      return createContextInner({
-        authorizationHeader: authorization,
-        nextAuth: auth,
-        userId,
-        ip,
-      });
+      return createContextInner({ authorizationHeader: authorization, nextAuth: auth, userId });
     } catch (e) {
       log('NextAuth authentication error: %O', e);
       console.error('next auth err', e);
@@ -174,5 +157,5 @@ export const createLambdaContext = async (request: NextRequest): Promise<LambdaC
     'All authentication methods attempted, returning final context, userId: %s',
     userId || 'not authenticated',
   );
-  return createContextInner({ authorizationHeader: authorization, userId, ip });
+  return createContextInner({ authorizationHeader: authorization, userId });
 };

@@ -20,7 +20,6 @@ import { sessionGroupRouter } from './sessionGroup';
 import { threadRouter } from './thread';
 import { topicRouter } from './topic';
 import { userRouter } from './user';
-import { usageRouter } from './usage'
 
 export const lambdaRouter = router({
   agent: agentRouter,

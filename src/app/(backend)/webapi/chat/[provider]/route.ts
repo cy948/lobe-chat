@@ -1,16 +1,22 @@
-import { ipAddress } from '@vercel/functions'
+import { ipAddress } from '@vercel/functions';
+
 import { checkAuth } from '@/app/(backend)/middleware/auth';
 import {
   AGENT_RUNTIME_ERROR_SET,
   AgentRuntime,
-  ChatCompetitionOptions,
   ChatCompletionErrorPayload,
+  ChatMethodOptions,
 } from '@/libs/model-runtime';
-import { createTraceOptions, createUsageTracker, initAgentRuntimeWithUserPayload } from '@/server/modules/AgentRuntime';
+import {
+  createTraceOptions,
+  createUsageTracker,
+  initAgentRuntimeWithUserPayload,
+} from '@/server/modules/AgentRuntime';
 import { ChatErrorType } from '@/types/fetch';
 import { ChatStreamPayload } from '@/types/openai/chat';
 import { createErrorResponse } from '@/utils/errorResponse';
 import { getTracePayload } from '@/utils/trace';
+
 import { mergeMultipleCompletionOptions } from './util';
 
 export const runtime = 'edge';
@@ -39,13 +45,14 @@ export const POST = checkAuth(async (req: Request, { params, jwtPayload, createR
       traceOptions.push(createTraceOptions(data, { provider, trace: tracePayload }));
     }
     if (jwtPayload?.userId) {
-      traceOptions.push(createUsageTracker(data, { userId: jwtPayload.userId, provider, ip: ipAddress(req) }));
+      traceOptions.push(
+        createUsageTracker(data, { ip: ipAddress(req), provider, userId: jwtPayload.userId }),
+      );
     }
 
-    let completionOptions: ChatCompetitionOptions = {}
+    let completionOptions: ChatMethodOptions = {};
 
-    if (traceOptions.length > 0)
-      completionOptions = mergeMultipleCompletionOptions(traceOptions)
+    if (traceOptions.length > 0) completionOptions = mergeMultipleCompletionOptions(traceOptions);
 
     return await agentRuntime.chat(data, {
       user: jwtPayload.userId,

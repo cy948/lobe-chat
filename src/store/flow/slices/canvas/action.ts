@@ -11,8 +11,16 @@ import {
 import { FlowStore } from '@/store/flow/store';
 import { getChatStoreState } from '@/store/chat/store';
 import { topicSelectors } from '@/store/chat/slices/topic/selectors';
-
+import { ChatMessage } from '@/types/message';
+export interface FlowNodeMeta {
+  messageGroupId?: string;
+  messageGroup?: any;
+  messages: ChatMessage[];
+}
 export interface FlowCanvasAction {
+    setActiveNode: (id: string) => void;
+    setNodeDetailDrawer: (visible: boolean) => void;
+
     addNode: (node: NodeType) => void;
     delNode: (id: string) => void;
     setNodes: (nodes: NodeChange[]) => void;
@@ -21,6 +29,10 @@ export interface FlowCanvasAction {
 
     loadTopic: () => Promise<void>;
     loadNodeMessages: (nodeId: string) => Promise<void>;
+
+    // TODO: Should with type
+    getNodeMeta: (nodeId: string) => FlowNodeMeta;
+    setNodeMeta: (nodeId: string, meta: FlowNodeMeta) => void;
 }
 
 export const flowCanvas: StateCreator<
@@ -29,6 +41,12 @@ export const flowCanvas: StateCreator<
     [],
     FlowCanvasAction
 > = (set, get) => ({
+    setActiveNode(id) {
+        set({ ...get(), activeNodeId: id });
+    },
+    setNodeDetailDrawer(visible) {
+        set({ ...get(), showNodeDetailDrawer: visible });
+    },
     addNode: (node) => {
         const { nodes } = get();
         set({
@@ -95,5 +113,32 @@ export const flowCanvas: StateCreator<
     loadNodeMessages: async (nodeId) => {
         // fetchFromRemote
         
-    }
+    },
+    getNodeMeta(nodeId) {
+        if (!nodeId) {
+            // Create new meta
+            const newMeta: FlowNodeMeta = {
+                messageGroupId: undefined,
+                messageGroup: undefined,
+                messages: [],
+            }
+            get().setNodeMeta(nodeId, newMeta);
+            return newMeta;
+        }
+        return get().nodeMetaMap[nodeId];
+    },
+
+    setNodeMeta(nodeId, meta) {
+        const { nodeMetaMap } = get();
+        set({
+            ...get(),
+            nodeMetaMap: {
+                ...nodeMetaMap,
+                [nodeId]: {
+                    ...nodeMetaMap[nodeId],
+                    ...meta,
+                }
+            }
+        });
+    },
 })

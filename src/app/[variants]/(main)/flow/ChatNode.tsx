@@ -29,7 +29,7 @@ const useStyles = createStyles(({ css, token, isDarkMode }) => {
 
 export default function CanvasNode({ data, id }: CanvasNodeProps) {
     const { styles } = useStyles();
-    const [delNode] = useFlowStore(s => [s.delNode])
+    const [delNode, setNodeDetailDrawer, setActiveNode] = useFlowStore(s => [s.delNode, s.setNodeDetailDrawer, s.setActiveNode])
     const menu: DropdownProps['menu'] = {
         items: [
             {
@@ -47,6 +47,11 @@ export default function CanvasNode({ data, id }: CanvasNodeProps) {
         }
     };
 
+    const handleClick = (event) => {
+        setNodeDetailDrawer(true);
+        setActiveNode(id);
+    }
+
     return (
         <Card
             className={styles.flowNode}
@@ -55,11 +60,11 @@ export default function CanvasNode({ data, id }: CanvasNodeProps) {
                 <Dropdown
                     menu={menu}
                     trigger={['click', 'hover']}
-
                 >
                     <ActionIcon size={'small'} icon={MoreVerticalIcon} />
                 </Dropdown>
             }
+            onClick={handleClick}
         >
             <Handle type="target" position={Position.Left} />
             <Markdown>

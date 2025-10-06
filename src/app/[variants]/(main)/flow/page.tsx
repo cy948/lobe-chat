@@ -34,9 +34,9 @@ const useStyles = createStyles(({ css, token, isDarkMode }) => {
             height: '100vh',
         },
         chatBoxInput: {
-            position: 'absolute', 
-            bottom: 24, 
-            width: '100%', 
+            position: 'absolute',
+            bottom: 24,
+            width: '100%',
             padding: '0 24px',
         }
     }
@@ -46,25 +46,14 @@ const useStyles = createStyles(({ css, token, isDarkMode }) => {
 const FlowPage = () => {
     const { styles } = useStyles();
     const [
-        edges, nodes, addNode, addEdge, setNodes, setEdges, delNode,
-        inputMessage, setInputMessage, fetchAIResponse, loadTopic,
+        edges, nodes, addNode, addEdge, setNodes, setEdges, delNode, showNodeDetailDrawer,
+        inputMessage, setInputMessage, fetchAIResponse, loadTopic, setActiveNode,
     ] = useFlowStore(
         s => [
-            s.edges, s.nodes, s.addNode, s.addEdge, s.setNodes, s.setEdges, s.delNode,
-            s.inputMessage, s.setInputMessage, s.fetchAIResponse, s.loadTopic
+            s.edges, s.nodes, s.addNode, s.addEdge, s.setNodes, s.setEdges, s.delNode, s.showNodeDetailDrawer,
+            s.inputMessage, s.setInputMessage, s.fetchAIResponse, s.loadTopic, s.setActiveNode,
         ]
     );
-
-    const [open, setOpen] = useState(false);
-
-    const showDrawer = () => {
-        setOpen(true);
-    };
-
-    const onClose = () => {
-        setOpen(false);
-    };
-
 
     const onNodesChange = useCallback(
         (changes) => setNodes(changes),
@@ -108,7 +97,7 @@ const FlowPage = () => {
     return (
         <div className={styles.canvasContainer}>
             <Row className={styles.canvasBox} gutter={16}>
-                <Col span={open ? 16 : 24}>
+                <Col span={showNodeDetailDrawer ? 16 : 24}>
                     <ReactFlow
                         nodes={nodes}
                         edges={edges}
@@ -116,7 +105,6 @@ const FlowPage = () => {
                         onEdgesChange={onEdgesChange}
                         onConnect={onConnect}
                         onPaneClick={onPaneClick}
-                        onNodeClick={showDrawer}
                         fitView
                         // colorMode='dark'
                         nodeTypes={nodeTypes}
@@ -126,16 +114,17 @@ const FlowPage = () => {
                         <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
                     </ReactFlow>
                 </Col>
-                <Col span={open ? 8 : 0}>
-                    <Row className={styles.chatBoxInput} gutter={16}>
-                        <Input
-                            value={inputMessage}
-                            onInput={(e) => setInputMessage(e.target.value)}
-                            onPressEnter={() => {
-                                fetchAIResponse();
-                            }}
-                        />
-                    </Row>
+                <Col span={showNodeDetailDrawer ? 8 : 0}>
+                    {showNodeDetailDrawer &&
+                        <Row className={styles.chatBoxInput} gutter={16}>
+                            <Input
+                                value={inputMessage}
+                                onInput={(e) => setInputMessage(e.target.value)}
+                                onPressEnter={() => {
+                                    fetchAIResponse();
+                                }}
+                            />
+                        </Row>}
                 </Col>
             </Row>
         </div>

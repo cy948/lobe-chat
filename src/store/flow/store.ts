@@ -1,5 +1,5 @@
 import { shallow } from 'zustand/shallow';
-import { persist } from 'zustand/middleware';
+import { persist, subscribeWithSelector } from 'zustand/middleware';
 import { createWithEqualityFn } from 'zustand/traditional';
 import { StateCreator } from 'zustand/vanilla';
 
@@ -23,9 +23,9 @@ const createStore: StateCreator<FlowStore, [['zustand/devtools', never]]> = (...
 //  ===============  实装 useStore ============ //
 const devtools = createDevtools('flow');
 
-export const useFlowStore = createWithEqualityFn<FlowStore>()(devtools(
-    persist(createStore, {
+export const useFlowStore = createWithEqualityFn<FlowStore>()(
+    subscribeWithSelector(devtools(persist(createStore, {
         name: 'lobe-flow-store',
-    })), shallow);
+    }))), shallow);
 
 export const getFlowStoreState = () => useFlowStore.getState();

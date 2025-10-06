@@ -8,141 +8,52 @@ import {
     BackgroundVariant,
     Controls,
     MiniMap,
-    Handle,
-    Position,
     useReactFlow
 } from '@xyflow/react';
 
-import { Card, Drawer, Row, Col, Typography, Input } from 'antd'
-import { Markdown, MarkdownProps, Button, Dropdown, ActionIcon } from '@lobehub/ui';
-// import { AssistantMessage } from '@/features/Conversation/Messages/Assistant';
-// import { ChatMessage } from '@/types/message';
-// import ChatItem from '@/features/ChatItem';
-// import { ChatInputProvider, DesktopChatInput } from '@/features/ChatInput';
-
-
-import { useFetchMessages } from '@/hooks/useFetchMessages';
-
-import { useChatStore } from '@/store/chat';
-import { aiChatSelectors, chatSelectors } from '@/store/chat/selectors';
-import { useUserStore } from '@/store/user';
-import { preferenceSelectors, settingsSelectors } from '@/store/user/selectors';
+import { Row, Col, Input } from 'antd'
 import { createStyles } from 'antd-style';
 
-import { useSend } from 'src/app/[variants]/(main)/chat/(workspace)/@conversation/features/ChatInput/useSend';
-import TopicList from 'src/app/[variants]/(main)/chat/(workspace)/@topic/features/TopicListContent'
 import { useFlowStore } from '@/store/flow';
 
-const useStyles = createStyles(({ css, token, isDarkMode }) => {
-    return {
-        flowNode: {
-            // header: css`
-            //     background: ${token.colorInfoBg}
-            // `,
-            minWidth: 160,
-            minHeight: 120,
-        }
-    }
-});
-
-import { type DropdownProps, Icon } from '@lobehub/ui';
-import { DeleteIcon, MoreVerticalIcon } from 'lucide-react';
+import CustomNode from './ChatNode';
 
 export let id = 1;
 const getId = () => `node_${id++}`;
 
-function CustomNode({ data, id }) {
-    const [delNode] = useFlowStore(s => [s.delNode])
-    const menu: DropdownProps['menu'] = {
-        items: [
-            {
-                icon: <Icon icon={DeleteIcon} />,
-                key: 'del',
-                label: '删除',
-            },
-        ],
-        onClick: ({ domEvent, key }) => {
-            domEvent.stopPropagation();
-            if (key === 'del') {
-                // Handle delete action
-                delNode(id);
-            }
-        }
-    };
-
-    return (
-        <Card
-            title={<Typography.Title level={2}>{data.label}</Typography.Title>}
-            extra={
-                <Dropdown
-                    menu={menu}
-                    trigger={['click', 'hover']}
-
-                >
-                    <ActionIcon size={'small'} icon={MoreVerticalIcon} />
-                </Dropdown>
-            }
-        >
-            <Handle type="target" position={Position.Left} />
-            <Markdown>
-                {data.content}
-            </Markdown>
-            <Handle type="source" position={Position.Right} />
-        </Card>
-    );
-}
-
 const nodeTypes = { custom: CustomNode };
+
+const useStyles = createStyles(({ css, token, isDarkMode }) => {
+    return {
+        canvasContainer: {
+            width: '100vw',
+            height: '100vh',
+            background: isDarkMode ? token.colorBgContainer : '#f0f2f5',
+        },
+        canvasBox: {
+            height: '100vh',
+        },
+        chatBoxInput: {
+            position: 'absolute', 
+            bottom: 24, 
+            width: '100%', 
+            padding: '0 24px',
+        }
+    }
+});
+
 
 const FlowPage = () => {
     const { styles } = useStyles();
-    useFetchMessages();
     const [
-        mainInputSendErrorMsg,
-        clearSendMessageError,
-        activeTopicId,
-        messages
-    ] = useChatStore((s) => [
-        aiChatSelectors.isCurrentSendMessageError(s),
-        s.clearSendMessageError,
-        s.activeTopicId,
-        chatSelectors.mainDisplayChats(s),
-    ]);
-
-    const [
-        edges,
-        nodes,
-        addNode,
-        addEdge,
-        setNodes,
-        setEdges,
-        delNode,
-        inputMessage,
-        setInputMessage,
-        fetchAIResponse,
+        edges, nodes, addNode, addEdge, setNodes, setEdges, delNode,
+        inputMessage, setInputMessage, fetchAIResponse, loadTopic,
     ] = useFlowStore(
         s => [
-            s.edges,
-            s.nodes,
-            s.addNode,
-            s.addEdge,
-            s.setNodes,
-            s.setEdges,
-            s.delNode,
-            s.inputMessage,
-            s.setInputMessage,
-            s.fetchAIResponse,
+            s.edges, s.nodes, s.addNode, s.addEdge, s.setNodes, s.setEdges, s.delNode,
+            s.inputMessage, s.setInputMessage, s.fetchAIResponse, s.loadTopic
         ]
     );
-
-
-
-
-
-    // const initialNodes = [
-    //     { id: 'n1', type: 'custom', position: { x: 0, y: 0 }, data: { label: 'Topic 1', description: '*summary1*' } },
-    //     { id: 'n2', type: 'custom', position: { x: 300, y: 100 }, data: { label: 'Topic 2', description: '**summary2**' } },
-    // ];
 
     const [open, setOpen] = useState(false);
 
@@ -194,47 +105,10 @@ const FlowPage = () => {
         [screenToFlowPosition, addNode]
     );
 
-    const { send, generating, disabled, stop } = useSend();
-    const [useCmdEnterToSend, updatePreference] = useUserStore((s) => [
-        preferenceSelectors.useCmdEnterToSend(s),
-        s.updatePreference,
-    ]);
-
-
     return (
-        <div style={{ width: '100vw', height: '100vh' }}>
-            <Drawer width={640} placement="right" closable={false} onClose={onClose} open={open} mask={false}>
-                {/* {chatMessages.map((message) =>
-                    <ChatItem key={message.id} message={message.content} role={message.role} avatar={'default'} />
-                )} */}
-                {/* <ChatInputProvider
-                    chatInputEditorRef={(instance) => {
-                        if (!instance) return;
-                        useChatStore.setState({ mainInputEditor: instance });
-                    }}
-                    onMarkdownContentChange={(content) => {
-                        useChatStore.setState({ inputMessage: content });
-                    }}
-                    onSend={() => {
-                        send();
-                    }}
-                    sendButtonProps={{ disabled, generating, onStop: stop }}
-                >
-                    <DesktopChatInput />
-                </ChatInputProvider> */}
-                <Row style={{ position: 'absolute', bottom: 24, width: '100%', padding: '0 24px' }} gutter={16}>
-                    <Input
-                        value={inputMessage}
-                        onInput={(e) => setInputMessage(e.target.value)}
-                        onPressEnter={(e) => {
-                            console.log('submit', inputMessage);
-                            fetchAIResponse();
-                        }}
-                    />
-                </Row>
-            </Drawer>
-            <Row style={{ height: '100vh' }}>
-                <Col span={20}>
+        <div className={styles.canvasContainer}>
+            <Row className={styles.canvasBox} gutter={16}>
+                <Col span={open ? 16 : 24}>
                     <ReactFlow
                         nodes={nodes}
                         edges={edges}
@@ -252,8 +126,16 @@ const FlowPage = () => {
                         <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
                     </ReactFlow>
                 </Col>
-                <Col span={4}>
-                    <TopicList />
+                <Col span={open ? 8 : 0}>
+                    <Row className={styles.chatBoxInput} gutter={16}>
+                        <Input
+                            value={inputMessage}
+                            onInput={(e) => setInputMessage(e.target.value)}
+                            onPressEnter={() => {
+                                fetchAIResponse();
+                            }}
+                        />
+                    </Row>
                 </Col>
             </Row>
         </div>

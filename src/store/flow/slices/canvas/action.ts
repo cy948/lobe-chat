@@ -9,6 +9,8 @@ import {
     applyEdgeChanges,
 } from '@xyflow/react'
 import { FlowStore } from '@/store/flow/store';
+import { getChatStoreState } from '@/store/chat/store';
+import { topicSelectors } from '@/store/chat/slices/topic/selectors';
 
 export interface FlowCanvasAction {
     addNode: (node: NodeType) => void;
@@ -16,6 +18,9 @@ export interface FlowCanvasAction {
     setNodes: (nodes: NodeChange[]) => void;
     addEdge: (edge: EdgeType) => void;
     setEdges: (edges: EdgeChange[]) => void;
+
+    loadTopic: () => Promise<void>;
+    loadNodeMessages: (nodeId: string) => Promise<void>;
 }
 
 export const flowCanvas: StateCreator<
@@ -60,5 +65,35 @@ export const flowCanvas: StateCreator<
             ...get(),
             edges: applyEdgeChanges(changes, currentEdges),
         });
+    },
+    loadTopic: async () => {
+        // Try 
+        // const chatState = getChatStoreState();
+        // const topic = topicSelectors.getTopicById(get().activeTopicId)(chatState);
+        // if (get().activeTopicId === 'inbox' || !topic) {
+        //     // Try create canvas topic
+        //     if (get().loadingTopic) {
+        //         console.log('Topic is loading, please wait...');
+        //         return;
+        //     }
+        //     console.log('Topic not found, creating a new one...');
+
+        //     set({ loadingTopic: true });
+        //     try {
+        //         // Try create topic
+        //         console.warn('Topic not found:', get().activeTopicId, 'Creating a new topic...');
+        //         const newTopicId = await chatState.createTopic()
+        //         console.log('Created new topic:', newTopicId);
+        //         set({ activeTopicId: newTopicId });
+        //         await chatState.refreshTopic()
+        //     } catch (error) {
+        //         console.error('Failed to create topic:', error);
+        //     }
+        //     set({ loadingTopic: false });
+        // } 
+    },
+    loadNodeMessages: async (nodeId) => {
+        // fetchFromRemote
+        
     }
 })

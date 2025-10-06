@@ -5,6 +5,7 @@ export interface FlowCanvasState {
    * @title 当前活动的话题
    */
   activeTopicId: string;
+  loadingTopic: boolean;
 
   /**
    * @title 图
@@ -15,6 +16,7 @@ export interface FlowCanvasState {
 
 export const initialFlowCanvasState: FlowCanvasState = {
   activeTopicId: 'inbox',
+  loadingTopic: false,
   nodes: [
     {
       id: '2',

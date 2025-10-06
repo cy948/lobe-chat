@@ -1,16 +1,24 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Flexbox } from 'react-layout-kit'
 
-import { ReactFlow, applyNodeChanges, applyEdgeChanges, addEdge, Handle, Position, useReactFlow } from '@xyflow/react';
+import {
+    ReactFlow,
+    Background,
+    BackgroundVariant,
+    Controls,
+    MiniMap,
+    Handle,
+    Position,
+    useReactFlow
+} from '@xyflow/react';
 
-import { Card, Drawer, Row, Col } from 'antd'
-import { Markdown, MarkdownProps } from '@lobehub/ui';
-import { AssistantMessage } from '@/features/Conversation/Messages/Assistant';
-import { ChatMessage } from '@/types/message';
-import ChatItem from '@/features/ChatItem';
-import { ChatInputProvider, DesktopChatInput } from '@/features/ChatInput';
+import { Card, Drawer, Row, Col, Typography, Input } from 'antd'
+import { Markdown, MarkdownProps, Button, Dropdown, ActionIcon } from '@lobehub/ui';
+// import { AssistantMessage } from '@/features/Conversation/Messages/Assistant';
+// import { ChatMessage } from '@/types/message';
+// import ChatItem from '@/features/ChatItem';
+// import { ChatInputProvider, DesktopChatInput } from '@/features/ChatInput';
 
 
 import { useFetchMessages } from '@/hooks/useFetchMessages';
@@ -23,40 +31,68 @@ import { createStyles } from 'antd-style';
 
 import { useSend } from 'src/app/[variants]/(main)/chat/(workspace)/@conversation/features/ChatInput/useSend';
 import TopicList from 'src/app/[variants]/(main)/chat/(workspace)/@topic/features/TopicListContent'
+import { useFlowStore } from '@/store/flow';
 
 const useStyles = createStyles(({ css, token, isDarkMode }) => {
     return {
         flowNode: {
-            header: css`
-                background: ${token.colorInfoBg}
-            `
+            // header: css`
+            //     background: ${token.colorInfoBg}
+            // `,
+            minWidth: 160,
+            minHeight: 120,
         }
     }
 });
 
+import { type DropdownProps, Icon } from '@lobehub/ui';
+import { DeleteIcon, MoreVerticalIcon } from 'lucide-react';
 
-
-const chatMessages: ChatMessage[] = [
-    {
-        id: '2',
-        content: 'Query from Topic1？',
-        role: 'user',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        meta: {}
-    },
-    {
-        id: '3',
-        content: 'Long anwser from topic 1',
-        role: 'assistant',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        meta: {}
-    }
-];
-
-let id = 1;
+export let id = 1;
 const getId = () => `node_${id++}`;
+
+function CustomNode({ data, id }) {
+    const [delNode] = useFlowStore(s => [s.delNode])
+    const menu: DropdownProps['menu'] = {
+        items: [
+            {
+                icon: <Icon icon={DeleteIcon} />,
+                key: 'del',
+                label: '删除',
+            },
+        ],
+        onClick: ({ domEvent, key }) => {
+            domEvent.stopPropagation();
+            if (key === 'del') {
+                // Handle delete action
+                delNode(id);
+            }
+        }
+    };
+
+    return (
+        <Card
+            title={<Typography.Title level={2}>{data.label}</Typography.Title>}
+            extra={
+                <Dropdown
+                    menu={menu}
+                    trigger={['click', 'hover']}
+
+                >
+                    <ActionIcon size={'small'} icon={MoreVerticalIcon} />
+                </Dropdown>
+            }
+        >
+            <Handle type="target" position={Position.Left} />
+            <Markdown>
+                {data.content}
+            </Markdown>
+            <Handle type="source" position={Position.Right} />
+        </Card>
+    );
+}
+
+const nodeTypes = { custom: CustomNode };
 
 const FlowPage = () => {
     const { styles } = useStyles();
@@ -73,49 +109,42 @@ const FlowPage = () => {
         chatSelectors.mainDisplayChats(s),
     ]);
 
-    function CustomNode({ data }) {
-        return (
-            <Card className={styles.flowNode}>
-                <Handle type="target" position={Position.Left} />
-                <strong>{data.label}</strong>
-                <Markdown>
-                    {data.description}
-                </Markdown>
-                <Handle type="source" position={Position.Right} />
-            </Card>
-        );
-    }
+    const [
+        edges,
+        nodes,
+        addNode,
+        addEdge,
+        setNodes,
+        setEdges,
+        delNode,
+        inputMessage,
+        setInputMessage,
+        fetchAIResponse,
+    ] = useFlowStore(
+        s => [
+            s.edges,
+            s.nodes,
+            s.addNode,
+            s.addEdge,
+            s.setNodes,
+            s.setEdges,
+            s.delNode,
+            s.inputMessage,
+            s.setInputMessage,
+            s.fetchAIResponse,
+        ]
+    );
 
-    const nodeTypes = { custom: CustomNode };
+
+
+
 
     // const initialNodes = [
     //     { id: 'n1', type: 'custom', position: { x: 0, y: 0 }, data: { label: 'Topic 1', description: '*summary1*' } },
     //     { id: 'n2', type: 'custom', position: { x: 300, y: 100 }, data: { label: 'Topic 2', description: '**summary2**' } },
     // ];
 
-    const initialNodes = messages.map((message, index) => ({
-        id: message.id,
-        type: 'custom',
-        data: { label: `Message ${index + 1}`, description: message.content },
-        position: { x: index * 50, y: index * 50 },
-    }))
-
-    console.log('initialNodes', initialNodes)
-
-    const initialEdges = [];
-
-    const [nodes, setNodes] = useState(initialNodes);
-    const [edges, setEdges] = useState(initialEdges);
     const [open, setOpen] = useState(false);
-
-    // useCallback(() => {
-    //     setNodes(messages.map((message, index) => ({
-    //         id: message.id,
-    //         type: 'custom',
-    //         data: { label: `Message ${index + 1}`, description: message.content },
-    //         position: { x: index * 50, y: index * 50 },
-    //     })))
-    // }, [messages])
 
     const showDrawer = () => {
         setOpen(true);
@@ -127,15 +156,15 @@ const FlowPage = () => {
 
 
     const onNodesChange = useCallback(
-        (changes) => setNodes((nodesSnapshot) => applyNodeChanges(changes, nodesSnapshot)),
+        (changes) => setNodes(changes),
         [],
     );
     const onEdgesChange = useCallback(
-        (changes) => setEdges((edgesSnapshot) => applyEdgeChanges(changes, edgesSnapshot)),
+        (changes) => setEdges(changes),
         [],
     );
     const onConnect = useCallback(
-        (params) => setEdges((edgesSnapshot) => addEdge(params, edgesSnapshot)),
+        (params) => addEdge(params),
         [],
     );
 
@@ -159,10 +188,10 @@ const FlowPage = () => {
                     data: { label: `节点 ${id}`, description: `${id}` },
                 };
 
-                setNodes((nds) => [...nds, newNode]);
+                addNode(newNode);
             }
         },
-        [screenToFlowPosition, setNodes]
+        [screenToFlowPosition, addNode]
     );
 
     const { send, generating, disabled, stop } = useSend();
@@ -175,10 +204,10 @@ const FlowPage = () => {
     return (
         <div style={{ width: '100vw', height: '100vh' }}>
             <Drawer width={640} placement="right" closable={false} onClose={onClose} open={open} mask={false}>
-                {chatMessages.map((message) =>
+                {/* {chatMessages.map((message) =>
                     <ChatItem key={message.id} message={message.content} role={message.role} avatar={'default'} />
-                )}
-                <ChatInputProvider
+                )} */}
+                {/* <ChatInputProvider
                     chatInputEditorRef={(instance) => {
                         if (!instance) return;
                         useChatStore.setState({ mainInputEditor: instance });
@@ -192,7 +221,17 @@ const FlowPage = () => {
                     sendButtonProps={{ disabled, generating, onStop: stop }}
                 >
                     <DesktopChatInput />
-                </ChatInputProvider>
+                </ChatInputProvider> */}
+                <Row style={{ position: 'absolute', bottom: 24, width: '100%', padding: '0 24px' }} gutter={16}>
+                    <Input
+                        value={inputMessage}
+                        onInput={(e) => setInputMessage(e.target.value)}
+                        onPressEnter={(e) => {
+                            console.log('submit', inputMessage);
+                            fetchAIResponse();
+                        }}
+                    />
+                </Row>
             </Drawer>
             <Row style={{ height: '100vh' }}>
                 <Col span={20}>
@@ -205,9 +244,13 @@ const FlowPage = () => {
                         onPaneClick={onPaneClick}
                         onNodeClick={showDrawer}
                         fitView
-                        colorMode='dark'
+                        // colorMode='dark'
                         nodeTypes={nodeTypes}
-                    />
+                    >
+                        <Controls />
+                        <MiniMap />
+                        <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
+                    </ReactFlow>
                 </Col>
                 <Col span={4}>
                     <TopicList />

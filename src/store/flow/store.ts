@@ -1,0 +1,31 @@
+import { shallow } from 'zustand/shallow';
+import { persist } from 'zustand/middleware';
+import { createWithEqualityFn } from 'zustand/traditional';
+import { StateCreator } from 'zustand/vanilla';
+
+import { createDevtools } from '../middleware/createDevtools';
+import { FlowStoreState, initialState } from './initialState';
+import { flowCanvas, FlowCanvasAction } from './slices/canvas/action';
+import { flowAIChat, FlowAIChatAction } from './slices/aiChat/action';
+
+//  ===============  聚合 createStoreFn ============ //
+export interface FlowStoreAction
+    extends FlowCanvasAction, FlowAIChatAction { }
+
+export type FlowStore = FlowStoreAction & FlowStoreState;
+
+const createStore: StateCreator<FlowStore, [['zustand/devtools', never]]> = (...parameters) => ({
+    ...initialState,
+    ...flowCanvas(...parameters),
+    ...flowAIChat(...parameters),
+});
+
+//  ===============  实装 useStore ============ //
+const devtools = createDevtools('flow');
+
+export const useFlowStore = createWithEqualityFn<FlowStore>()(devtools(
+    persist(createStore, {
+        name: 'lobe-flow-store',
+    })), shallow);
+
+export const getFlowStoreState = () => useFlowStore.getState();

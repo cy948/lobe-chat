@@ -9,9 +9,8 @@ import {
     applyEdgeChanges,
 } from '@xyflow/react'
 import { FlowStore } from '@/store/flow/store';
-import { getChatStoreState } from '@/store/chat/store';
-import { topicSelectors } from '@/store/chat/slices/topic/selectors';
 import { ChatMessage } from '@/types/message';
+import { topicService } from '@/services/topic';
 
 export interface FlowNodeMeta {
   messageGroupId?: string;
@@ -20,9 +19,8 @@ export interface FlowNodeMeta {
 }
 export interface FlowCanvasAction {
     setActiveNode: (id: string) => void;
-    setNodeDetailDrawer: (visible: boolean) => void;
 
-    addNode: (node: NodeType) => void;
+    addNode: (node: Partial<NodeType>) => Promise<void>;
     delNode: (id: string) => void;
     setNodes: (nodes: NodeChange[]) => void;
     addEdge: (edge: EdgeType) => void;
@@ -36,6 +34,8 @@ export interface FlowCanvasAction {
     setNodeMeta: (nodeId: string, meta: FlowNodeMeta) => void;
 }
 
+const generateId = () => `${Date.now()}`;
+
 export const flowCanvas: StateCreator<
     FlowStore,
     [['zustand/devtools', never]],
@@ -45,15 +45,31 @@ export const flowCanvas: StateCreator<
     setActiveNode(id) {
         set({ ...get(), activeNodeId: id });
     },
-    setNodeDetailDrawer(visible) {
-        set({ ...get(), showNodeDetailDrawer: visible });
-    },
-    addNode: (node) => {
-        const { nodes } = get();
+    addNode: async (node) => {
+        const { nodes, activeTopicId, activeSessionId } = get();
+        const newNode: NodeType = {
+            id: node.id || generateId(),
+            position: node.position || { x: 0, y: 0 },
+            data: node.data || { label: '聊聊你的想法', description: '' },
+            type: node.type || 'custom',
+        }
         set({
             ...get(),
-            nodes: [...nodes, node],
+            nodes: [...nodes, newNode],
         });
+
+        // Check if topic exists
+        // If not, create a new topic
+        if (!activeTopicId){
+            console.log('No active topic, try to create one first...');
+            // Create a new topic
+            const topicId = await topicService.createTopic({
+                title: 'Flow Topic',
+                sessionId: activeSessionId,
+            });
+            set({ activeTopicId: topicId });
+        }
+
     },
     delNode: (id) => {
         const { nodes, edges } = get();

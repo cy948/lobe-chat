@@ -26,37 +26,15 @@ export interface FlowCanvasState {
   activeTopicId?: string;
   loadingTopic: boolean;
 
-  activeNodeId?: string;
   activeSessionId: string;
 
-  showNodeDetailDrawer: boolean;
   nodeDetail?: FlowNodeMeta;
 }
 
 export const initialFlowCanvasState: FlowCanvasState = {
   activeSessionId: 'inbox',
   loadingTopic: false,
-  showNodeDetailDrawer: false,
-  nodes: [
-    {
-      id: '2',
-      type: 'custom',
-      data: {
-        label: 'Topic 1',
-        content: 'Query from Topic1？',
-      },
-      position: { x: 50, y: 50 }
-    },
-    {
-      id: '3',
-      type: 'custom',
-      data: {
-        label: 'Topic 2',
-        content: 'Long anwser from topic 1',
-      },
-      position: { x: 100, y: 100 }
-    }
-  ],
+  nodes: [],
   edges: [],
   nodeMetaMap: {},
   nodeDetail: undefined,

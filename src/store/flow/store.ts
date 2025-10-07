@@ -7,10 +7,11 @@ import { createDevtools } from '../middleware/createDevtools';
 import { FlowStoreState, initialState } from './initialState';
 import { flowCanvas, FlowCanvasAction } from './slices/canvas/action';
 import { flowAIChat, FlowAIChatAction } from './slices/aiChat/action';
+import { flowDetailBox, FlowDetailBoxAction } from './slices/detailBox/action';
 
 //  ===============  聚合 createStoreFn ============ //
 export interface FlowStoreAction
-    extends FlowCanvasAction, FlowAIChatAction { }
+    extends FlowCanvasAction, FlowAIChatAction, FlowDetailBoxAction { }
 
 export type FlowStore = FlowStoreAction & FlowStoreState;
 
@@ -18,6 +19,7 @@ const createStore: StateCreator<FlowStore, [['zustand/devtools', never]]> = (...
     ...initialState,
     ...flowCanvas(...parameters),
     ...flowAIChat(...parameters),
+    ...flowDetailBox(...parameters),
 });
 
 //  ===============  实装 useStore ============ //

@@ -31,7 +31,7 @@ export const flowAIChat: StateCreator<
 
     const {
       activeNodeId, activeSessionId, activeTopicId, inputMessage, 
-      internal_coreProcessMessage,
+      internal_coreProcessMessage, internal_createMessage, internal_fetchAIResponse,
     } = get()
 
     if (!activeNodeId) {
@@ -159,7 +159,7 @@ export const flowAIChat: StateCreator<
       topicId: activeTopicId, // if there is activeTopicId，then add it to topicId
     };
 
-    const assistantId = await get().internal_createMessage(assistantMessage);
+    const assistantId = await internal_createMessage(assistantMessage);
 
     if (!assistantId) return;
 
@@ -175,5 +175,5 @@ export const flowAIChat: StateCreator<
   internal_fetchAIResponse: async () => {
     const { activeTopicId, nodeMetaMap } = get();
     const messages = await messageService.getMessages('', activeTopicId)
-  }
+  },
 })

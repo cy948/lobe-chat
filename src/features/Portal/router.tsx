@@ -8,10 +8,11 @@ import { HomeBody, HomeTitle } from './Home';
 import { MessageDetail } from './MessageDetail';
 import { Plugins } from './Plugins';
 import { Thread } from './Thread';
+import { FlowNodeDetail } from './FlowNodeDetail'
 import Header from './components/Header';
 import { PortalImpl } from './type';
 
-const items: PortalImpl[] = [Thread, MessageDetail, Artifacts, Plugins, FilePreview];
+const items: PortalImpl[] = [Thread, MessageDetail, Artifacts, Plugins, FilePreview, FlowNodeDetail];
 
 export const PortalTitle = memo(() => {
   const enabledList: boolean[] = [];

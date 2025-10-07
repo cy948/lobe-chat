@@ -5,13 +5,12 @@ export interface FlowAIChatState {
      */
     chatLoadingIds: string[];
     chatLoadingIdsAbortController?: AbortController;
-    inputMessage: string;
     isCreateingMessage: boolean;
 
+    
 }
 
 export const initialAiChatState: FlowAIChatState = {
     chatLoadingIds: [],
-    inputMessage: '',
     isCreateingMessage: false,
 };

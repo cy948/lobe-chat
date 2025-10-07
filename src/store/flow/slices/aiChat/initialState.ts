@@ -1,3 +1,4 @@
+import { ChatInputEditor } from "@/features/ChatInput";
 
 export interface FlowAIChatState {
     /**
@@ -6,6 +7,8 @@ export interface FlowAIChatState {
     chatLoadingIds: string[];
     chatLoadingIdsAbortController?: AbortController;
     isCreateingMessage: boolean;
+
+    messageInputEditor: ChatInputEditor | null;
 
     messageLoadingIds: string[]; 
     reasoningLoadingIds: string[];
@@ -16,4 +19,5 @@ export const initialAiChatState: FlowAIChatState = {
     messageLoadingIds: [],
     reasoningLoadingIds: [],
     isCreateingMessage: false,
+    messageInputEditor: null,
 };

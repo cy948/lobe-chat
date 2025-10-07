@@ -1,5 +1,5 @@
 import { StateCreator } from "zustand/vanilla";
-import { ChatImageItem, ChatMessage, CreateMessageParams, MessageMetadata, MessageToolCall, ModelReasoning } from '@/types/message';
+import { ChatImageItem, ChatMessage, CreateMessageParams, MessageMetadata, MessageToolCall, ModelReasoning, SendMessageParams } from '@/types/message';
 import isEqual from 'fast-deep-equal';
 import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 import { FlowStore } from '@/store/flow/store';
@@ -28,7 +28,7 @@ const SWR_USE_FETCH_MESSAGES = 'SWR_USE_FETCH_MESSAGES';
 export interface FlowAIChatAction {
   setInputMessage: (message: string) => void;
 
-  sendMessage: () => Promise<void>;
+  sendMessage: (params: SendMessageParams) => Promise<void>;
   
     // query
   useFetchMessages: (
@@ -122,22 +122,18 @@ export const flowAIChat: StateCreator<
   [],
   FlowAIChatAction
 > = (set, get) => ({
-  sendMessage: async () => {
+  sendMessage: async ({ message }) => {
     const {
-      activeNodeId, activeSessionId, activeTopicId, inputMessage, getNodeMeta,
+      activeNodeId, activeSessionId, activeTopicId, getNodeMeta,
       internal_coreProcessMessage, internal_createMessage,
     } = get()
+
+    // if message is empty, then stop
+    if (!message) return;
 
     if (!activeNodeId) {
       console.warn('No active node, abort sending.');
       return
-    }
-
-    get().setInputMessage('');
-
-    if (!inputMessage || inputMessage.trim() === '') {
-      console.warn('Empty message, abort sending.');
-      return;
     }
 
     // Set loading
@@ -152,7 +148,7 @@ export const flowAIChat: StateCreator<
     }
 
     let newMessage: CreateMessageParams = {
-      content: inputMessage,
+      content: message,
       role: 'user',
       sessionId: activeSessionId,
       topicId: activeTopicId,

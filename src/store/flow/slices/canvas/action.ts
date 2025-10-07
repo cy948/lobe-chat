@@ -12,6 +12,7 @@ import { FlowStore } from '@/store/flow/store';
 import { getChatStoreState } from '@/store/chat/store';
 import { topicSelectors } from '@/store/chat/slices/topic/selectors';
 import { ChatMessage } from '@/types/message';
+
 export interface FlowNodeMeta {
   messageGroupId?: string;
   messageGroup?: any;

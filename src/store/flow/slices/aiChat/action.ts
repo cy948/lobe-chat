@@ -1,14 +1,23 @@
 import { StateCreator } from "zustand/vanilla";
-import { ChatMessage, CreateMessageParams, SendMessageParams } from '@/types/message';
+import { ChatMessage, CreateMessageParams } from '@/types/message';
 import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 import { FlowStore } from '@/store/flow/store';
 import { useChatStore } from '@/store/chat/store';
-import { chatSelectors } from '@/store/chat/selectors';
 import { useSessionStore } from "@/store/session";
+import { messageService } from "@/services/message";
+import { LOADING_FLAT } from "@/const/index";
+import { getAgentStoreState } from "@/store/agent";
+import { agentSelectors } from "@/store/agent/selectors";
 
 export interface FlowAIChatAction {
   setInputMessage: (message: string) => void;
-  fetchAIResponse: () => Promise<void>;
+
+  sendMessage: () => Promise<void>;
+  fetchMessages: () => Promise<void>;
+
+  internal_createMessage: (params: any, context: { tempMessageId?: string }) => Promise<void>;
+  internal_fetchAIResponse: () => Promise<void>;
+  internal_coreProcessMessage: (messages: ChatMessage[], messageId: string, options: any) => Promise<void>;
 }
 
 
@@ -18,16 +27,11 @@ export const flowAIChat: StateCreator<
   [],
   FlowAIChatAction
 > = (set, get) => ({
-  setInputMessage: (message) => {
-    set({
-      ...get(),
-      inputMessage: message,
-    });
-  },
-  fetchAIResponse: async () => {
+  sendMessage: async () => {
 
     const {
-      activeNodeId, activeTopicId, inputMessage,
+      activeNodeId, activeSessionId, activeTopicId, inputMessage, 
+      internal_coreProcessMessage,
     } = get()
 
     if (!activeNodeId) {
@@ -58,7 +62,7 @@ export const flowAIChat: StateCreator<
     let newMessage: CreateMessageParams = {
       content: inputMessage,
       role: 'user',
-      sessionId: activeTopicId,
+      sessionId: activeSessionId,
     }
 
     let tempMessageId: string | undefined = undefined;
@@ -66,7 +70,7 @@ export const flowAIChat: StateCreator<
 
 
     // Auto create topic if current topic is inbox
-    if (get().activeTopicId === 'inbox') {
+    if (activeSessionId === 'inbox') {
       // Create new topic for inbox
       tempMessageId = chatState.internal_createTmpMessage(newMessage);
       chatState.internal_toggleMessageLoading(true, tempMessageId);
@@ -77,15 +81,6 @@ export const flowAIChat: StateCreator<
       if (topicId) {
         newTopicId = topicId;
         newMessage.topicId = topicId;
-
-        // we need to copy the messages to the new topic or the message will disappear
-        const mapKey = chatSelectors.currentChatKey(chatState);
-        const newMaps = {
-          ...chatState.messagesMap,
-          [messageMapKey(activeTopicId, topicId)]: chatState.messagesMap[mapKey],
-        };
-
-        useChatStore.setState({ messagesMap: newMaps });
 
         // make the topic loading
         chatState.internal_updateTopicLoading(topicId, true);
@@ -115,7 +110,7 @@ export const flowAIChat: StateCreator<
 
       // delete previous messages
       // remove the temp message map
-      const newMaps = { ...chatState.messagesMap, [messageMapKey(activeTopicId, null)]: [] };
+      const newMaps = { ...chatState.messagesMap, [messageMapKey(activeSessionId, activeTopicId)]: [] };
       useChatStore.setState({ messagesMap: newMaps }, false, 'internal_copyMessages');
     }
 
@@ -129,9 +124,56 @@ export const flowAIChat: StateCreator<
     const mergeMessages = [...nodeMessages, ...graphMessages]
 
     // TODO: fetch AI response here
-    // await chatState.internal_coreProcessMessage(mergeMessages, id, {});
+    await internal_coreProcessMessage(mergeMessages, id, {});
 
     set({ ...get(), isCreateingMessage: false });
 
   },
+  fetchMessages: async () => {
+    // fetch messages for all nodes
+    const { activeTopicId, nodeMetaMap } = get();
+    const messages = await messageService.getMessages('', activeTopicId)
+  },
+  setInputMessage: (message) => {
+    set({
+      ...get(),
+      inputMessage: message,
+    });
+  },
+  internal_createMessage: async (params, context) => {
+  },
+  internal_coreProcessMessage: async (messages: ChatMessage[], userMessageId: string, params?: any) => {
+    const { activeSessionId, activeTopicId, internal_fetchAIResponse } = get();
+
+    const agentStoreState = getAgentStoreState();
+    const { model, provider, chatConfig } = agentSelectors.currentAgentConfig(agentStoreState);
+
+    const assistantMessage: CreateMessageParams = {
+      role: 'assistant',
+      content: LOADING_FLAT,
+      fromModel: model,
+      fromProvider: provider,
+
+      parentId: userMessageId,
+      sessionId: activeSessionId,
+      topicId: activeTopicId, // if there is activeTopicId，then add it to topicId
+    };
+
+    const assistantId = await get().internal_createMessage(assistantMessage);
+
+    if (!assistantId) return;
+
+    // 4. fetch the AI response
+    const { isFunctionCall, content } = await internal_fetchAIChatMessage({
+      messages,
+      messageId: assistantId,
+      params,
+      model,
+      provider: provider!,
+    });
+  },
+  internal_fetchAIResponse: async () => {
+    const { activeTopicId, nodeMetaMap } = get();
+    const messages = await messageService.getMessages('', activeTopicId)
+  }
 })

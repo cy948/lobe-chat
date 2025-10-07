@@ -23,17 +23,18 @@ export interface FlowCanvasState {
   /**
    * @title 当前活动的话题
    */
-  activeTopicId: string;
+  activeTopicId?: string;
   loadingTopic: boolean;
 
   activeNodeId?: string;
+  activeSessionId: string;
 
   showNodeDetailDrawer: boolean;
   nodeDetail?: FlowNodeMeta;
 }
 
 export const initialFlowCanvasState: FlowCanvasState = {
-  activeTopicId: 'inbox',
+  activeSessionId: 'inbox',
   loadingTopic: false,
   showNodeDetailDrawer: false,
   nodes: [

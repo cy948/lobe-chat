@@ -11,6 +11,7 @@ import {
 import { FlowStore } from '@/store/flow/store';
 import { ChatMessage } from '@/types/message';
 import { topicService } from '@/services/topic';
+import { nanoid } from 'nanoid';
 
 export interface FlowNodeMeta {
   messageGroupId?: string;
@@ -34,7 +35,7 @@ export interface FlowCanvasAction {
     setNodeMeta: (nodeId: string, meta: FlowNodeMeta) => void;
 }
 
-const generateId = () => `${Date.now()}`;
+const generateId = () => `node_${nanoid()}`;
 
 export const flowCanvas: StateCreator<
     FlowStore,

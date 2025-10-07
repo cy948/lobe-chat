@@ -3,19 +3,16 @@ import { Flexbox } from 'react-layout-kit';
 
 import { SkeletonList, VirtualizedList } from '@/features/Conversation';
 import { useFetchThreads } from '@/hooks/useFetchThreads';
-import { useChatStore } from '@/store/chat';
-import { threadSelectors } from '@/store/chat/selectors';
 
 import ThreadChatItem from './ChatItem';
-import { useFlowStore } from '@/store/flow';
+import { useFlowStore, canvasSelectors } from '@/store/flow';
 
 interface ChatListProps {
   mobile?: boolean;
 }
 
 const ChatList = memo(({ mobile }: ChatListProps) => {
-  const data = useChatStore(threadSelectors.portalDisplayChatIDs);
-  const isInit = useFlowStore(s => s.isDetailBoxInitialized)
+  const [isInit, data ] = useFlowStore((s) => [s.isDetailBoxInitialized, canvasSelectors.getActiveNodeMessageIds(s)]);
 
   useFetchThreads();
 

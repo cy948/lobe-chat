@@ -8,6 +8,7 @@ import { messageService } from "@/services/message";
 import { LOADING_FLAT } from "@/const/index";
 import { getAgentStoreState } from "@/store/agent";
 import { agentSelectors } from "@/store/agent/selectors";
+import { nanoid } from "node_modules/@lobechat/model-runtime/src/utils/uuid";
 
 export interface FlowAIChatAction {
   setInputMessage: (message: string) => void;
@@ -15,7 +16,7 @@ export interface FlowAIChatAction {
   sendMessage: () => Promise<void>;
   fetchMessages: () => Promise<void>;
 
-  internal_createMessage: (params: any, context: { tempMessageId?: string }) => Promise<void>;
+  internal_createMessage: (params: CreateMessageParams, context: { tempMessageId?: string }) => Promise<string | undefined>;
   internal_fetchAIResponse: () => Promise<void>;
   internal_coreProcessMessage: (messages: ChatMessage[], messageId: string, options: any) => Promise<void>;
 }
@@ -30,8 +31,9 @@ export const flowAIChat: StateCreator<
   sendMessage: async () => {
 
     const {
-      activeNodeId, activeSessionId, activeTopicId, inputMessage, 
+      activeNodeId, activeSessionId, activeTopicId, inputMessage, getNodeMeta,
       internal_coreProcessMessage, internal_createMessage, internal_fetchAIResponse,
+
     } = get()
 
     if (!activeNodeId) {
@@ -63,68 +65,28 @@ export const flowAIChat: StateCreator<
       content: inputMessage,
       role: 'user',
       sessionId: activeSessionId,
+      topicId: activeTopicId,
     }
 
-    let tempMessageId: string | undefined = undefined;
-    let newTopicId: string | undefined = undefined;
+    const tempMessageId = await internal_createMessage(newMessage, {});
 
-
-    // Auto create topic if current topic is inbox
-    if (activeSessionId === 'inbox') {
-      // Create new topic for inbox
-      tempMessageId = chatState.internal_createTmpMessage(newMessage);
-      chatState.internal_toggleMessageLoading(true, tempMessageId);
-
-
-      const topicId = await chatState.createTopic();
-
-      if (topicId) {
-        newTopicId = topicId;
-        newMessage.topicId = topicId;
-
-        // make the topic loading
-        chatState.internal_updateTopicLoading(topicId, true);
-      }
-    }
-
-    //  update assistant update to make it rerank
-    useSessionStore.getState().triggerSessionUpdate(activeTopicId);
-
-    const id = await chatState.internal_createMessage(newMessage, {
-      tempMessageId,
-    });
-
-    if (!id) {
+    if (!tempMessageId) {
+      console.warn('Failed to create message, abort sending.');
       set({ ...get(), isCreateingMessage: false });
-      if (!!newTopicId) chatState.internal_updateTopicLoading(newTopicId, false);
       return;
     }
 
-    if (tempMessageId)
-      chatState.internal_toggleMessageLoading(false, tempMessageId);
-
-    // switch to the new topic if create the new topic
-    if (!!newTopicId) {
-      set({ ...get(), activeTopicId: newTopicId });
-      await chatState.internal_fetchMessages();
-
-      // delete previous messages
-      // remove the temp message map
-      const newMaps = { ...chatState.messagesMap, [messageMapKey(activeSessionId, activeTopicId)]: [] };
-      useChatStore.setState({ messagesMap: newMaps }, false, 'internal_copyMessages');
-    }
-
-    // Get the current messages to generate AI response
-    // TODO: build chat graph here
-    // Get message from current node
-    const nodeMessages = nodeMeta.messages
-
+    // TODO: Get the graph messages from previous node
     const graphMessages: ChatMessage[] = []
+    
+    // Get the messages from current node
+    const currentMessages = getNodeMeta(activeNodeId)?.messages || [];
 
-    const mergeMessages = [...nodeMessages, ...graphMessages]
+    const allMessages = [...graphMessages, ...currentMessages];
 
-    // TODO: fetch AI response here
-    await internal_coreProcessMessage(mergeMessages, id, {});
+    await internal_coreProcessMessage(
+      allMessages, tempMessageId, {}
+    );
 
     set({ ...get(), isCreateingMessage: false });
 
@@ -141,6 +103,36 @@ export const flowAIChat: StateCreator<
     });
   },
   internal_createMessage: async (params, context) => {
+    const { 
+      activeNodeId, 
+      activeSessionId, 
+      activeTopicId,
+      setNodeMeta,
+     } = get();
+    // Set to node meta
+    if (!activeNodeId) {
+      console.warn('No active node, abort creating message.');
+      return;
+    }
+
+    const nodeMeta = get().getNodeMeta(activeNodeId);
+
+    const newMsgId = context?.tempMessageId || `temp-${nanoid()}`;
+
+    setNodeMeta(activeNodeId, { 
+      ...nodeMeta,
+      messages: [...nodeMeta.messages, {
+        content: params.content,
+        role: params.role,
+        id: newMsgId,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        meta: {}, 
+        topicId: activeTopicId,
+      } as ChatMessage], // Add a placeholder message],
+    })
+    
+    return newMsgId;
   },
   internal_coreProcessMessage: async (messages: ChatMessage[], userMessageId: string, params?: any) => {
     const { activeSessionId, activeTopicId, internal_fetchAIResponse } = get();

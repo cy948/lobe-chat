@@ -29,7 +29,8 @@ const useStyles = createStyles(({ css, token, isDarkMode }) => {
 
 export default function CanvasNode({ data, id }: CanvasNodeProps) {
     const { styles } = useStyles();
-    const [delNode, setNodeDetailDrawer, setActiveNode] = useFlowStore(s => [s.delNode, s.setNodeDetailDrawer, s.setActiveNode])
+    const [delNode, openInDetailBox
+        ] = useFlowStore(s => [s.delNode, s.openInDetailBox])
     const menu: DropdownProps['menu'] = {
         items: [
             {
@@ -47,9 +48,8 @@ export default function CanvasNode({ data, id }: CanvasNodeProps) {
         }
     };
 
-    const handleClick = (event) => {
-        setNodeDetailDrawer(true);
-        setActiveNode(id);
+    const handleClick = () => {
+        openInDetailBox(id); 
     }
 
     return (

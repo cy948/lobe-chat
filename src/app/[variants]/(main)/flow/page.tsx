@@ -6,7 +6,7 @@ import { createStyles } from 'antd-style';
 import { useFlowStore } from '@/store/flow';
 
 import FlowCanvas from './components/FlowCanvas';
-import DetailBox from './components/DetailBox';
+import DetailBox from './feature/DetailBox';
 
 const useStyles = createStyles(({ css, token, isDarkMode }) => {
     return {

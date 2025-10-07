@@ -16,6 +16,8 @@ export const flowDetailBox: StateCreator<
         set({ ...get(), detailBoxVisible: visible });
     },
     openInDetailBox(nodeId) {
-        set({ ...get(), detailBoxNodeId: nodeId, detailBoxVisible: true });
+        // Open the detail box for the specified node
+        console.log('Opening detail box for node:', nodeId);
+        set({ ...get(), activeNodeId: nodeId, detailBoxVisible: true });
     }
 })

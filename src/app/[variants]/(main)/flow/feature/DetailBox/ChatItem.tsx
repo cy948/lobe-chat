@@ -7,7 +7,7 @@ import { agentChatConfigSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';
 import { threadSelectors } from '@/store/chat/selectors';
 
-import ThreadDivider from './ThreadDivider';
+import ThreadDivider from './Divider';
 
 export interface ThreadChatItemProps {
   id: string;

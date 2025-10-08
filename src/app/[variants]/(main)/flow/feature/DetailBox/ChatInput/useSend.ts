@@ -6,7 +6,7 @@ import { agentSelectors } from '@/store/agent/slices/chat';
 import { useChatStore } from '@/store/chat';
 import { threadSelectors } from '@/store/chat/selectors';
 import { SendMessageParams } from '@/types/message';
-import { flowAIChatSelectors, useFlowStore } from '@/store/flow';
+import { canvasSelectors, flowAIChatSelectors, useFlowStore } from '@/store/flow';
 
 export type UseSendMessageParams = Pick<
   SendMessageParams,
@@ -15,9 +15,9 @@ export type UseSendMessageParams = Pick<
 
 export const useSendThreadMessage = () => {
   const [loading, setLoading] = useState(false);
-  const canNotSend = useChatStore(threadSelectors.isSendButtonDisabledByMessage);
-  const generating = useChatStore((s) => threadSelectors.isThreadAIGenerating(s));
-  const stop = useChatStore((s) => s.stopGenerateMessage);
+  const canNotSend = useFlowStore((s) => flowAIChatSelectors.isEditorButtonDisabled(s));
+  const generating = useFlowStore((s) => flowAIChatSelectors.isFlowAIGenerating(s));
+  const stop = useFlowStore((s) => s.stopGenerateMessage);
   const [sendMessage, updateInputMessage] = useFlowStore((s) => [
     s.sendMessage,
     s.updateInputMessage,
@@ -29,7 +29,7 @@ export const useSendThreadMessage = () => {
     const chatStore = useChatStore.getState();
 
     if (flowAIChatSelectors.isFlowAIGenerating(store)) return;
-    const canNotSend = threadSelectors.isSendButtonDisabledByMessage(store);
+    const canNotSend = flowAIChatSelectors.isEditorButtonDisabled(store);
 
     if (canNotSend) return;
 

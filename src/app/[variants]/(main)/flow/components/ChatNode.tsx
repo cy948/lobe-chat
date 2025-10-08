@@ -55,7 +55,7 @@ export default function CanvasNode({ data, id }: CanvasNodeProps) {
     return (
         <Card
             className={styles.flowNode}
-            title={<Typography.Title level={2}>{data.label}</Typography.Title>}
+            title={<Typography.Title level={5}>{data.label}</Typography.Title>}
             extra={
                 <Dropdown
                     menu={menu}

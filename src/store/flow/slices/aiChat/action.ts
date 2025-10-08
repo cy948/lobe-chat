@@ -1,23 +1,18 @@
 import { StateCreator } from "zustand/vanilla";
 import { ChatImageItem, ChatMessage, CreateMessageParams, MessageMetadata, MessageToolCall, ModelReasoning, SendMessageParams } from '@/types/message';
 import isEqual from 'fast-deep-equal';
-import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 import { FlowStore } from '@/store/flow/store';
-import { useChatStore } from '@/store/chat/store';
-import { useSessionStore } from "@/store/session";
 import { messageService } from "@/services/message";
-import { LOADING_FLAT } from "@/const/index";
+import { LOADING_FLAT, MESSAGE_CANCEL_FLAT } from "@/const/index";
 import { getAgentStoreState } from "@/store/agent";
 import { agentChatConfigSelectors, agentSelectors } from "@/store/agent/selectors";
 import { nanoid } from "node_modules/@lobechat/model-runtime/src/utils/uuid";
 import { chatService } from "@/services/chat";
 import { mutate, SWRResponse } from "swr";
 import { MessageDispatch, messagesReducer } from "@/store/chat/slices/message/reducer";
-import { GroundingSearch } from "@/types/index";
+import { ChatErrorType, GroundingSearch } from "@/types/index";
 import { preventLeavingFn, toggleBooleanList } from "@/store/chat/utils";
-import { ChatStoreState } from "@/store/chat";
 import { Action, setNamespace } from "@/utils/storeDebug";
-import { chatSelectors } from "@/store/chat/selectors";
 import { FlowStoreState } from "../../initialState";
 import { useClientDataSWR } from "@/libs/swr";
 
@@ -29,8 +24,8 @@ export interface FlowAIChatAction {
   setInputMessage: (message: string) => void;
 
   sendMessage: (params: SendMessageParams) => Promise<void>;
-  
-    // query
+
+  // query
   useFetchMessages: (
     enable: boolean,
     sessionId: string,
@@ -39,7 +34,21 @@ export interface FlowAIChatAction {
 
   refreshMessages: () => Promise<void>;
 
-  internal_createMessage: (params: CreateMessageParams, context: { tempMessageId?: string }) => Promise<string | undefined>;
+  /**
+ * Interrupts the ongoing ai message generation process
+ */
+  stopGenerateMessage: () => void;
+
+  /**
+   * Internal Methods
+   */
+
+  /**
+   * create a temp message for optimistic update
+   * otherwise the message will be too slow to show
+   */
+  internal_createTmpMessage: (params: CreateMessageParams) => string;
+  internal_createMessage: (params: CreateMessageParams, context?: { tempMessageId?: string, skipRefresh?: boolean }) => Promise<string | undefined>;
   internal_fetchAIResponse: (input: {
     messages: ChatMessage[];
     messageId: string;
@@ -126,6 +135,8 @@ export const flowAIChat: StateCreator<
     const {
       activeNodeId, activeSessionId, activeTopicId, getNodeMeta,
       internal_coreProcessMessage, internal_createMessage,
+      internal_toggleMessageLoading,
+      internal_createTmpMessage,
     } = get()
 
     // if message is empty, then stop
@@ -154,11 +165,23 @@ export const flowAIChat: StateCreator<
       topicId: activeTopicId,
     }
 
-    const tempMessageId = await internal_createMessage(newMessage, {});
+    const tempMessageId = await internal_createTmpMessage(newMessage);
+    internal_toggleMessageLoading(true, tempMessageId);
 
     if (!tempMessageId) {
       console.warn('Failed to create message, abort sending.');
       set({ ...get(), isCreateingMessage: false });
+      return;
+    }
+
+    const id = await internal_createMessage(newMessage, {
+      tempMessageId,
+    });
+
+    if (!id) {
+      set({ isCreateingMessage: false });
+      // Failed to create message
+      console.warn('Failed to create assistant message');
       return;
     }
 
@@ -171,7 +194,7 @@ export const flowAIChat: StateCreator<
     const allMessages = [...graphMessages, ...currentMessages];
 
     await internal_coreProcessMessage(
-      allMessages, tempMessageId, {}
+      allMessages, id, {}
     );
 
     set({ ...get(), isCreateingMessage: false });
@@ -195,11 +218,37 @@ export const flowAIChat: StateCreator<
       inputMessage: message,
     });
   },
+
+
+  stopGenerateMessage: () => {
+    const { chatLoadingIdsAbortController, internal_toggleChatLoading } = get();
+
+    if (!chatLoadingIdsAbortController) return;
+
+    chatLoadingIdsAbortController.abort(MESSAGE_CANCEL_FLAT);
+
+    internal_toggleChatLoading(false, undefined, n('stopGenerateMessage') as string);
+  },
+
+
+  internal_createTmpMessage: (message) => {
+    const { internal_dispatchMessage } = get();
+
+    // use optimistic update to avoid the slow waiting
+    const tempId = 'tmp_' + nanoid();
+    internal_dispatchMessage({ type: 'createMessage', id: tempId, value: message });
+
+    return tempId;
+  },
   internal_createMessage: async (params, context) => {
     const {
       activeNodeId,
       activeTopicId,
       setNodeMeta,
+      refreshMessages,
+      internal_toggleMessageLoading,
+      internal_dispatchMessage,
+      internal_createTmpMessage,
     } = get();
     // Set to node meta
     if (!activeNodeId) {
@@ -207,24 +256,58 @@ export const flowAIChat: StateCreator<
       return;
     }
 
+    if (!activeTopicId) {
+      console.warn('No active topic, abort creating message.');
+      return;
+    }
+
     const nodeMeta = get().getNodeMeta(activeNodeId);
 
-    const newMsgId = params?.id || context?.tempMessageId || `temp-${nanoid()}`;
+    if (!nodeMeta) {
+      console.warn('Node meta not found, abort creating message.');
+      return;
+    }
 
-    setNodeMeta(activeNodeId, {
-      ...nodeMeta,
-      messages: [...nodeMeta.messages, {
-        content: params.content,
-        role: params.role,
-        id: newMsgId,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        meta: {},
-        topicId: activeTopicId,
-      } as ChatMessage], // Add a placeholder message],
-    })
+    let tempId = context?.tempMessageId;
+    if (!tempId) {
+      tempId = internal_createTmpMessage(params);
+      internal_toggleMessageLoading(true, tempId);
+    }
 
-    return newMsgId;
+    try {
+      const newMsgId = await messageService.createMessage(params)
+      if (!context?.skipRefresh) {
+        internal_toggleMessageLoading(true, newMsgId);
+        await refreshMessages();
+      }
+      setNodeMeta(activeNodeId, {
+        ...nodeMeta,
+        messages: [...nodeMeta.messages, {
+          content: params.content,
+          role: params.role,
+          id: newMsgId,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          meta: {},
+          topicId: activeTopicId,
+        } as ChatMessage], // Add a placeholder message],
+      })
+      internal_toggleMessageLoading(false, tempId);
+      return newMsgId;
+    } catch (e) {
+      internal_toggleMessageLoading(false, tempId);
+      internal_dispatchMessage({
+        id: tempId,
+        type: 'updateMessage',
+        value: {
+          error: {
+            type: ChatErrorType.CreateMessageError,
+            message: (e as Error).message || 'Failed to create message',
+            body: e
+          }
+        }
+      })
+    }
   },
   internal_coreProcessMessage: async (messages: ChatMessage[], userMessageId: string) => {
     const {
@@ -248,7 +331,7 @@ export const flowAIChat: StateCreator<
       topicId: activeTopicId, // if there is activeTopicId，then add it to topicId
     };
 
-    const assistantId = await internal_createMessage(assistantMessage, {});
+    const assistantId = await internal_createMessage(assistantMessage);
 
     if (!assistantId) return;
 
@@ -270,6 +353,12 @@ export const flowAIChat: StateCreator<
       internal_toggleChatLoading,
       refreshMessages,
     } = get();
+
+    const abortController = internal_toggleChatLoading(
+      true,
+      messageId,
+      n('generateMessage(start)', { messageId, messages }),
+    );
 
     const agentConfig = agentSelectors.currentAgentConfig(getAgentStoreState());
     const chatConfig = agentChatConfigSelectors.currentChatConfig(getAgentStoreState());
@@ -300,7 +389,7 @@ export const flowAIChat: StateCreator<
     //   ? topicSelectors.currentActiveTopicSummary(get())
     //   : undefined;
     await chatService.createAssistantMessageStream({
-      // abortController,
+      abortController,
       params: {
         messages,
         model,

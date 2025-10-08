@@ -18,7 +18,7 @@ export const flowDetailBox: StateCreator<
     },
     openInDetailBox(nodeId) {
         // Open the detail box for the specified node
-        console.log('Opening detail box for node:', nodeId);
+        console.log('Opening detail box for node:', nodeId, ' in topicId: ', get().activeTopicId);
         set({ ...get(), activeNodeId: nodeId, detailBoxVisible: true });
     },
     updateInputMessage(message) {

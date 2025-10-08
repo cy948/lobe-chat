@@ -31,7 +31,7 @@ export interface FlowCanvasAction {
     loadNodeMessages: (nodeId: string) => Promise<void>;
 
     // TODO: Should with type
-    getNodeMeta: (nodeId: string) => FlowNodeMeta;
+    getNodeMeta: (nodeId: string) => FlowNodeMeta | undefined;
     setNodeMeta: (nodeId: string, meta: FlowNodeMeta) => void;
 }
 
@@ -71,6 +71,8 @@ export const flowCanvas: StateCreator<
             set({ activeTopicId: topicId });
         }
 
+        // Create Node meta
+        get().setNodeMeta(newNode.id, { messages: [] });
     },
     delNode: (id) => {
         const { nodes, edges } = get();
@@ -133,16 +135,6 @@ export const flowCanvas: StateCreator<
         
     },
     getNodeMeta(nodeId) {
-        if (!nodeId) {
-            // Create new meta
-            const newMeta: FlowNodeMeta = {
-                messageGroupId: undefined,
-                messageGroup: undefined,
-                messages: [],
-            }
-            get().setNodeMeta(nodeId, newMeta);
-            return newMeta;
-        }
         return get().nodeMetaMap[nodeId];
     },
 

@@ -4,9 +4,8 @@ import { useGeminiChineseWarning } from '@/hooks/useGeminiChineseWarning';
 import { getAgentStoreState } from '@/store/agent';
 import { agentSelectors } from '@/store/agent/slices/chat';
 import { useChatStore } from '@/store/chat';
-import { threadSelectors } from '@/store/chat/selectors';
 import { SendMessageParams } from '@/types/message';
-import { canvasSelectors, flowAIChatSelectors, useFlowStore } from '@/store/flow';
+import { flowAIChatSelectors, useFlowStore } from '@/store/flow';
 
 export type UseSendMessageParams = Pick<
   SendMessageParams,

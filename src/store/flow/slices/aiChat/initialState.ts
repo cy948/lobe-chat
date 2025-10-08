@@ -7,6 +7,7 @@ export interface FlowAIChatState {
     chatLoadingIds: string[];
     chatLoadingIdsAbortController?: AbortController;
     isCreateingMessage: boolean;
+    isGeneratingSummary: boolean;
 
     messageInputEditor: ChatInputEditor | null;
 
@@ -22,5 +23,6 @@ export const initialAiChatState: FlowAIChatState = {
     reasoningLoadingIds: [],
     messageEditingIds: [],
     isCreateingMessage: false,
+    isGeneratingSummary: false,
     messageInputEditor: null,
 };

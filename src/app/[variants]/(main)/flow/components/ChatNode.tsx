@@ -22,8 +22,20 @@ const useStyles = createStyles(({ css, token, isDarkMode }) => {
             // header: css`
             //     background: ${token.colorInfoBg}
             // `,
-            minWidth: 160,
-            minHeight: 120,
+            minWidth: 360,
+            minHeight: 240,
+            maxHeight: 240,
+            maxWidth: 360,
+            // overflow: 'hidden',
+        },
+        mdNode: {
+            maxHeight: 130,
+            maxWidth: 340,
+            overflow: 'auto',
+        },
+        handle: {
+            width: 15,
+            height: 15,
         }
     }
 });
@@ -73,9 +85,7 @@ export default function CanvasNode({ data, id }: CanvasNodeProps) {
                 <Flexbox align='center'>
                     {
                         editTitle ? (
-                            <>
-                                <Input onPressEnter={handleSubmit} value={value} defaultValue={nodeMeta?.title || 'Untitled'} onChange={e => setValue(e.target.value)}></Input>
-                            </>
+                            <Input onPressEnter={handleSubmit} value={value} defaultValue={nodeMeta?.title || 'Untitled'} onChange={e => setValue(e.target.value)} />
                         ) : (
                             <Typography.Title level={5} onDoubleClick={() => setEditTitle(true)}>{nodeMeta?.title || 'Untitled'}</Typography.Title>
                         )
@@ -92,11 +102,11 @@ export default function CanvasNode({ data, id }: CanvasNodeProps) {
             }
             onClick={handleClick}
         >
-            <Handle type="target" position={Position.Left} />
-            <Markdown>
+            <Handle className={styles.handle} type="target" position={Position.Left} />
+            <Markdown className={styles.mdNode}>
                 {nodeMeta?.summary || 'No summary yet. Generate or add one.'}
             </Markdown>
-            <Handle type="source" position={Position.Right} />
+            <Handle className={styles.handle} type="source" position={Position.Right} />
         </Card>
     );
 }

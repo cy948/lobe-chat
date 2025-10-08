@@ -9,13 +9,18 @@ const getActiveNodeMessages = (s: FlowStore) => {
     return s.getNodeMeta(nodeId)?.messages || [];
 };
 
+const getActiveNodeMeta = (s: FlowStore) => {
+    const nodeId = s.activeNodeId;
+    if (!nodeId) return undefined;
+    return s.getNodeMeta(nodeId);
+}
+
 const getActiveNodeMessageIds = (s: FlowStore) => {
     return getActiveNodeMessages(s).map((m) => m.id);
 }
 
 const getMessageById = (id: string) => (s: FlowStore) => 
     getActiveNodeMessages(s).find((m) => m.id === id);
-
 
 const currentChatLoadingState = (s: FlowStore) => !s.messagesInit;
 
@@ -25,4 +30,5 @@ export const canvasSelectors = {
     getActiveNodeMessageIds,
     getMessageById,
     currentChatLoadingState,
+    getActiveNodeMeta,
 }

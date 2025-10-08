@@ -15,6 +15,7 @@ import { preventLeavingFn, toggleBooleanList } from "@/store/chat/utils";
 import { Action, setNamespace } from "@/utils/storeDebug";
 import { FlowStoreState } from "../../initialState";
 import { useClientDataSWR } from "@/libs/swr";
+import { chainSummaryHistory } from "packages/prompts/src";
 
 const n = setNamespace('f');
 
@@ -24,6 +25,8 @@ export interface FlowAIChatAction {
   setInputMessage: (message: string) => void;
 
   sendMessage: (params: SendMessageParams) => Promise<void>;
+
+  generateHistorySummary: (nodeId?: string) => Promise<void>;
 
   // query
   useFetchMessages: (
@@ -131,6 +134,72 @@ export const flowAIChat: StateCreator<
   [],
   FlowAIChatAction
 > = (set, get) => ({
+  generateHistorySummary: async (nodeId) => {
+
+    const {
+      activeNodeId,
+      getNodeMeta,
+      setNodeMeta,
+      isGeneratingSummary,
+    } = get();
+
+
+    let targetNodeId = nodeId ?? activeNodeId;
+
+    if (!targetNodeId) {
+      console.warn('No active node, abort generating history summary.');
+      return;
+    }
+
+    const nodeMeta = getNodeMeta(targetNodeId);
+
+    if (!nodeMeta) {
+      console.warn('Node meta not found, abort generating history summary.');
+      return;
+    }
+
+    const messages = nodeMeta.messages;
+    if (!messages || messages.length === 0) {
+      console.warn('No messages in the node, abort generating history summary.');
+      return;
+    }
+
+    if (isGeneratingSummary) {
+      console.warn('Already generating summary, please wait.');
+      return;
+    }
+    set({ isGeneratingSummary: true });
+
+    let output = '';
+
+    // Generate summary using chatService
+    const agentStoreState = getAgentStoreState();
+    const agentConfig = agentSelectors.currentAgentConfig(agentStoreState);
+    const { model, provider } = agentSelectors.currentAgentConfig(agentStoreState);
+
+    try {
+      let historySummary = '';
+      await chatService.fetchPresetTaskResult({
+        onFinish: async (text) => {
+          historySummary = text;
+        },
+        params: {
+          ...chainSummaryHistory(messages), 
+          model, 
+          provider, 
+          stream: false
+        },
+      });
+      setNodeMeta(targetNodeId, {
+        ...nodeMeta,
+        summary: historySummary,
+      });
+    } catch (e) {
+      console.error('Failed to generate history summary:', e);
+    }
+
+    set({ isGeneratingSummary: false })
+  },
   sendMessage: async ({ message }) => {
     const {
       activeNodeId, activeSessionId, activeTopicId, getNodeMeta,
@@ -521,8 +590,7 @@ export const flowAIChat: StateCreator<
 
     get().setNodeMeta(get().activeNodeId!, {
       messages,
-    })
-
+    });
   },
   internal_toggleLoadingArrays: (key, loading, id, action) => {
     const abortControllerKey = `${key}AbortController`;

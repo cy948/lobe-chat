@@ -33,7 +33,7 @@ export interface FlowCanvasAction {
 
     // TODO: Should with type
     getNodeMeta: (nodeId: string) => FlowNodeMeta | undefined;
-    setNodeMeta: (nodeId: string, meta: FlowNodeMeta) => void;
+    setNodeMeta: (nodeId: string, meta: Partial<FlowNodeMeta>) => void;
 }
 
 const generateId = () => `node_${nanoid()}`;

@@ -212,7 +212,9 @@ export const flowAIChat: StateCreator<
     }
 
     // TODO: Get the graph messages from previous node
-    const graphMessages: ChatMessage[] = []
+    const graphMessages: ChatMessage[] = get().internal_buildGraphContext()
+
+    // console.log('Graph messages:', graphMessages);
 
     // Get the messages from current node
     const currentMessages = getNodeMeta(activeNodeId)?.messages || [];

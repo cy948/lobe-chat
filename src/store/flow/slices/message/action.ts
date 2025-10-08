@@ -13,6 +13,7 @@ import { FlowStoreState } from "../../initialState";
 import { useClientDataSWR } from "@/libs/swr";
 import { copyToClipboard } from '@lobehub/ui';
 import { canvasSelectors } from '../canvas/selector';
+import { FlowNodeMeta } from '../canvas/action';
 
 const SWR_USE_FETCH_MESSAGES = 'SWR_USE_FETCH_MESSAGES';
 
@@ -276,17 +277,83 @@ export const flowMessage: StateCreator<
             },
         ),
     internal_buildGraphContext() {
-        const { activeNodeId, edges } = get();
+        const { activeNodeId, edges, getNodeMeta } = get();
         if (!activeNodeId) {
             return [];
         }
 
-        const edgeMap: Map<string, string[]> = edges.reduce((map, edge) => {
-            if (!map.has(edge.source)) map.set(edge.source, []);
-            map.get(edge.source)!.push(edge.target);
+        // Build adjacency map for reverse traversal (find parent nodes)
+        const parentMap: Map<string, string[]> = edges.reduce((map, edge) => {
+            if (!map.has(edge.target)) map.set(edge.target, []);
+            map.get(edge.target)!.push(edge.source);
             return map;
         }, new Map<string, string[]>());
 
-        return []
+        // BFS to calculate distance from activeNodeId to all ancestor nodes
+        const distances = new Map<string, number>();
+        const queue: Array<{ nodeId: string; distance: number }> = [{ nodeId: activeNodeId, distance: 0 }];
+        const visited = new Set<string>();
+
+        while (queue.length > 0) {
+            const { nodeId, distance } = queue.shift()!;
+            
+            if (visited.has(nodeId)) continue;
+            visited.add(nodeId);
+            distances.set(nodeId, distance);
+
+            // Add parent nodes to queue with incremented distance
+            const parents = parentMap.get(nodeId) || [];
+            for (const parentId of parents) {
+                if (!visited.has(parentId)) {
+                    queue.push({ nodeId: parentId, distance: distance + 1 });
+                }
+            }
+        }
+
+        // Collect all messages with their node distances
+        const messagesWithDistance: Array<{ message: ChatMessage; distance: number; createdAt: number }> = [];
+
+        // Simple context building
+        
+        for (const [nodeId, distance] of distances.entries()) {
+            const nodeMeta = getNodeMeta(nodeId);
+            if (!nodeMeta) continue;
+            const msgs: ChatMessage[] = []
+            // If use summary
+            if (nodeMeta.useSummary && nodeMeta.summary) {
+                msgs.push({
+                    id: `summary_${nodeId}`,
+                    content: nodeMeta.summary,
+                    createdAt: Date.now(),
+                    role: 'user',
+                    updatedAt: Date.now(),
+                    meta: {}
+                })
+                // 
+                continue;
+            }
+
+            if (nodeMeta?.messages) {
+                for (const message of nodeMeta.messages) {
+                    messagesWithDistance.push({
+                        message,
+                        distance,
+                        createdAt: message.createdAt || 0,
+                    });
+                }
+            }
+        }
+
+        // Sort by distance (farther first), then by creation time
+        return messagesWithDistance
+            .sort((a, b) => {
+                // Primary sort: by distance (descending - farther nodes first)
+                if (a.distance !== b.distance) {
+                    return b.distance - a.distance;
+                }
+                // Secondary sort: by creation time (ascending - older first)
+                return a.createdAt - b.createdAt;
+            })
+            .map(item => item.message);
     },
 })

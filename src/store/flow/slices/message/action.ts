@@ -1,25 +1,18 @@
 import { StateCreator } from 'zustand/vanilla';
-import { ChatImageItem, ChatMessage, CreateMessageParams, MessageMetadata, MessageToolCall, ModelReasoning, SendMessageParams } from '@/types/message';
+import { ChatImageItem, ChatMessage, CreateMessageParams, MessageMetadata, MessageToolCall, ModelReasoning } from '@/types/message';
 import isEqual from 'fast-deep-equal';
 import { FlowStore } from '@/store/flow/store';
 import { messageService } from "@/services/message";
-import { LOADING_FLAT, MESSAGE_CANCEL_FLAT } from "@/const/index";
-import { getAgentStoreState } from "@/store/agent";
-import { agentChatConfigSelectors, agentSelectors } from "@/store/agent/selectors";
 import { nanoid } from "node_modules/@lobechat/model-runtime/src/utils/uuid";
-import { chatService } from "@/services/chat";
-import { mutate, SWRResponse } from "swr";
+import {SWRResponse } from "swr";
 import { MessageDispatch, messagesReducer } from "@/store/chat/slices/message/reducer";
 import { ChatErrorType, GroundingSearch } from "@/types/index";
 import { preventLeavingFn, toggleBooleanList } from "@/store/chat/utils";
-import { Action, setNamespace } from "@/utils/storeDebug";
+import { Action } from "@/utils/storeDebug";
 import { FlowStoreState } from "../../initialState";
 import { useClientDataSWR } from "@/libs/swr";
-import { chainSummaryHistory } from "packages/prompts/src";
 import { copyToClipboard } from '@lobehub/ui';
-import { flowMessageSelectors } from './selector';
 import { canvasSelectors } from '../canvas/selector';
-import message from 'antd/es/message';
 
 const SWR_USE_FETCH_MESSAGES = 'SWR_USE_FETCH_MESSAGES';
 
@@ -73,7 +66,7 @@ export interface FlowMessageAction {
         },
     ) => Promise<void>;
 
-    /**
+   /**
    * helper to toggle the loading state of the array,used by these three toggleXXXLoading
    */
     internal_toggleLoadingArrays: (
@@ -82,6 +75,11 @@ export interface FlowMessageAction {
         id?: string,
         action?: Action,
     ) => AbortController | undefined;
+
+    /**
+     * Build graph context
+     */
+    internal_buildGraphContext: () => ChatMessage[];
 }
 
 export const flowMessage: StateCreator<
@@ -277,4 +275,18 @@ export const flowMessage: StateCreator<
                 },
             },
         ),
+    internal_buildGraphContext() {
+        const { activeNodeId, edges } = get();
+        if (!activeNodeId) {
+            return [];
+        }
+
+        const edgeMap: Map<string, string[]> = edges.reduce((map, edge) => {
+            if (!map.has(edge.source)) map.set(edge.source, []);
+            map.get(edge.source)!.push(edge.target);
+            return map;
+        }, new Map<string, string[]>());
+
+        return []
+    },
 })

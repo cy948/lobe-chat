@@ -11,6 +11,8 @@ import { Action, setNamespace } from "@/utils/storeDebug";
 import { chainSummaryHistory } from "packages/prompts/src";
 import { canvasSelectors } from "../canvas/selector";
 
+const SWR_USE_FETCH_MESSAGES = 'SWR_USE_FETCH_MESSAGES';
+
 const n = setNamespace('f');
 
 export interface FlowAIChatAction {

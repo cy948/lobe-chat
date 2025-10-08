@@ -4,12 +4,22 @@ import { ActionIcon, Button, Collapse, CollapseProps } from '@lobehub/ui'
 import { Switch } from 'antd';
 import { RotateCcwIcon, SettingsIcon } from 'lucide-react';
 
-import { useFlowStore } from '@/store/flow';
+import { canvasSelectors, useFlowStore } from '@/store/flow';
 
 import SummaryDetail from './SummaryDetail';
 
 export default function NodeSummary() {
-    const [ isGeneratingSummary, generateHistorySummary ] = useFlowStore((s) => [s.isGeneratingSummary, s.generateHistorySummary]);
+    const [
+        isGeneratingSummary, 
+        generateHistorySummary,
+        useSummary,
+        setActiveNodeUseSummary,
+    ] = useFlowStore((s) => [
+        s.isGeneratingSummary, 
+        s.generateHistorySummary, 
+        canvasSelectors.getActiveNodeMeta(s)?.useSummary,
+        canvasSelectors.setActiveNodeUseSummary(s),
+    ]);
 
     const generateSummary = async () => {
         if (isGeneratingSummary) return;
@@ -24,7 +34,7 @@ export default function NodeSummary() {
                 <Flexbox horizontal gap={16}>
                     <Flexbox horizontal gap={8} align='center'>
                         Use Summary
-                        <Switch defaultValue={true} />
+                        <Switch value={useSummary} onChange={(checked) => setActiveNodeUseSummary(checked)} />
                     </Flexbox>
                     <Flexbox>
                         <Button loading={isGeneratingSummary} icon={RotateCcwIcon} onClick={() => generateSummary()}>

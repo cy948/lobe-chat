@@ -38,7 +38,11 @@ export default function SummaryDetail() {
     const expanded = true;
     const { t } = useTranslation('common');
 
-    const [setInputSummary, isGeneratingSummary, summary] = useFlowStore((s) => [
+    const [
+        setInputSummary, 
+        isGeneratingSummary, 
+        summary,
+    ] = useFlowStore((s) => [
         s.updateInputSummary,
         s.isGeneratingSummary,
         canvasSelectors.getActiveNodeMeta(s)?.summary,

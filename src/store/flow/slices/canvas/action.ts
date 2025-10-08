@@ -17,6 +17,7 @@ import { messageService } from '@/services/message';
 export interface FlowNodeMeta {
     messages: ChatMessage[];
     summary: string;
+    useSummary: boolean;
     title: string;
 }
 export interface FlowCanvasAction {
@@ -77,6 +78,7 @@ export const flowCanvas: StateCreator<
             messages: [],
             title: '',
             summary: '',
+            useSummary: true,
         });
     },
     delNode: async (id) => {

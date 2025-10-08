@@ -24,6 +24,12 @@ const getMessageById = (id: string) => (s: FlowStore) =>
 
 const currentChatLoadingState = (s: FlowStore) => !s.messagesInit;
 
+const setActiveNodeUseSummary = (s: FlowStore) => (use: boolean) => {
+    const nodeId = s.activeNodeId;
+    if (!nodeId) return;
+    s.setNodeMeta(nodeId, { useSummary: use });
+}
+
 export const canvasSelectors = {
     getNodeMessageIds,
     getActiveNodeMessages,
@@ -31,4 +37,5 @@ export const canvasSelectors = {
     getMessageById,
     currentChatLoadingState,
     getActiveNodeMeta,
+    setActiveNodeUseSummary,
 }

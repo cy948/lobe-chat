@@ -6,7 +6,9 @@ import {
     BackgroundVariant,
     Controls,
     MiniMap,
-    useReactFlow
+    useReactFlow,
+    NodeChange,
+    EdgeChange,
 } from '@xyflow/react';
 import { useFlowStore } from '@/store/flow';
 
@@ -31,15 +33,15 @@ export default function FlowCanvas() {
         s.setEdges,
     ]);
 
-    const onNodesChange = useCallback((changes) => setNodes(changes), []);
-    const onEdgesChange = useCallback((changes) => setEdges(changes), []);
-    const onConnect = useCallback((params) => addEdge(params), []);
+    const onNodesChange = useCallback((changes: NodeChange[]) => setNodes(changes), []);
+    const onEdgesChange = useCallback((changes: EdgeChange[]) => setEdges(changes), []);
+    const onConnect = useCallback((params: any) => addEdge(params), []);
 
     // 3. 定义 onPaneDoubleClick 回调函数
     const { screenToFlowPosition } = useReactFlow();
 
     // 双击添加节点
-    const onPaneClick = async (event) => {
+    const onPaneClick = async (event: any) => {
         // 检查是否为双击事件
         if (event.detail === 2) {
             // 将屏幕坐标转换为流程图内部坐标

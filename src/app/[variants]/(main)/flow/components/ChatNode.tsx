@@ -16,7 +16,7 @@ interface CanvasNodeProps {
     id: string;
 }
 
-const useStyles = createStyles(({ css, token, isDarkMode }) => {
+const useStyles = createStyles(() => {
     return {
         flowNode: {
             // header: css`
@@ -41,7 +41,7 @@ const useStyles = createStyles(({ css, token, isDarkMode }) => {
 });
 
 
-export default function CanvasNode({ data, id }: CanvasNodeProps) {
+export default function CanvasNode({ id }: CanvasNodeProps) {
     const { styles } = useStyles();
     const [delNode, openInDetailBox, updateSummaryTitle
     ] = useFlowStore(s => [s.delNode, s.openInDetailBox, s.updateSummaryTitle])

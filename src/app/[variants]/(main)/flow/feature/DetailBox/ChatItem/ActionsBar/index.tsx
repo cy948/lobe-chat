@@ -100,7 +100,6 @@ const Actions = memo<ActionsProps>(({ id, index }) => {
                 }
 
             }
-
         },
         [item],
     );

@@ -1,20 +1,13 @@
 import { StateCreator } from "zustand/vanilla";
-import { ChatImageItem, ChatMessage, CreateMessageParams, MessageMetadata, MessageToolCall, ModelReasoning, SendMessageParams } from '@/types/message';
-import isEqual from 'fast-deep-equal';
+import { ChatMessage, CreateMessageParams, SendMessageParams } from '@/types/message';
 import { FlowStore } from '@/store/flow/store';
 import { messageService } from "@/services/message";
 import { LOADING_FLAT, MESSAGE_CANCEL_FLAT } from "@/const/index";
 import { getAgentStoreState } from "@/store/agent";
 import { agentChatConfigSelectors, agentSelectors } from "@/store/agent/selectors";
-import { nanoid } from "node_modules/@lobechat/model-runtime/src/utils/uuid";
 import { chatService } from "@/services/chat";
-import { mutate, SWRResponse } from "swr";
-import { MessageDispatch, messagesReducer } from "@/store/chat/slices/message/reducer";
-import { ChatErrorType, GroundingSearch } from "@/types/index";
-import { preventLeavingFn, toggleBooleanList } from "@/store/chat/utils";
+import { mutate } from "swr";
 import { Action, setNamespace } from "@/utils/storeDebug";
-import { FlowStoreState } from "../../initialState";
-import { useClientDataSWR } from "@/libs/swr";
 import { chainSummaryHistory } from "packages/prompts/src";
 import { canvasSelectors } from "../canvas/selector";
 

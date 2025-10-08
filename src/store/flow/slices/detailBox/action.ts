@@ -39,7 +39,7 @@ export const flowDetailBox: StateCreator<
         if (!activeNodeId) return;
         const nodeMeta = getNodeMeta(activeNodeId);
         if (nodeMeta) {
-            get().setNodeMeta(activeNodeId, {
+            setNodeMeta(activeNodeId, {
                 ...nodeMeta,
                 summary,
             })

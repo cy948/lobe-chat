@@ -1,5 +1,3 @@
-import { ChatInputEditor } from "@/features/ChatInput";
-
 export interface FlowAIChatState {
     /**
      * @title 正在加载的聊天ID列表
@@ -8,21 +6,12 @@ export interface FlowAIChatState {
     chatLoadingIdsAbortController?: AbortController;
     isCreateingMessage: boolean;
     isGeneratingSummary: boolean;
-
-    messageInputEditor: ChatInputEditor | null;
-
-    messageEditingIds: string[];
-
-    messageLoadingIds: string[]; 
     reasoningLoadingIds: string[];
 }
 
 export const initialAiChatState: FlowAIChatState = {
     chatLoadingIds: [],
-    messageLoadingIds: [],
     reasoningLoadingIds: [],
-    messageEditingIds: [],
     isCreateingMessage: false,
     isGeneratingSummary: false,
-    messageInputEditor: null,
 };

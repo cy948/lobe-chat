@@ -25,8 +25,6 @@ import {
 } from '@/features/Conversation/components/VirtualizedList/VirtuosoContext';
 import { useAgentStore } from '@/store/agent';
 import { agentChatConfigSelectors } from '@/store/agent/selectors';
-import { useChatStore } from '@/store/chat';
-import { chatSelectors } from '@/store/chat/selectors';
 import { useUserStore } from '@/store/user';
 import { userGeneralSettingsSelectors } from '@/store/user/selectors';
 import { ChatMessage } from '@/types/message';
@@ -43,7 +41,7 @@ import {
 import { markdownElements } from '@/features/Conversation/components/MarkdownElements';
 import { InPortalThreadContext } from '@/features/Conversation/components/ChatItem/InPortalThreadContext';
 import { normalizeThinkTags, processWithArtifact } from '@/features/Conversation/components/ChatItem/utils';
-import { canvasSelectors, flowAIChatSelectors, useFlowStore } from '@/store/flow';
+import { canvasSelectors, flowAIChatSelectors, flowMessageSelectors, useFlowStore } from '@/store/flow';
 
 const rehypePlugins = markdownElements.map((element) => element.rehypePlugin).filter(Boolean);
 const remarkPlugins = markdownElements.map((element) => element.remarkPlugin).filter(Boolean);
@@ -83,7 +81,7 @@ export interface ChatListItemProps {
 const Item = memo<ChatListItemProps>(
     ({
         className,
-        enableHistoryDivider,
+        // enableHistoryDivider,
         id,
         actionBar,
         endRender,
@@ -100,23 +98,6 @@ const Item = memo<ChatListItemProps>(
         const item = useFlowStore(canvasSelectors.getMessageById(id), isEqual);
         const transitionMode = useUserStore(userGeneralSettingsSelectors.transitionMode);
 
-        // const [
-            // isMessageLoading,
-            // generating,
-            // isInRAGFlow,
-            // editing,
-            // toggleMessageEditing,
-            // updateMessageContent,
-        // ] = useChatStore((s) => [
-            // chatSelectors.isMessageLoading(id)(s),
-            // chatSelectors.isMessageGenerating(id)(s),
-            // chatSelectors.isMessageInRAGFlow(id)(s),
-            // chatSelectors.isMessageEditing(id)(s),
-            // s.toggleMessageEditing,
-            // s.modifyMessageContent,
-        // ]);
-
-
         const [
             isMessageLoading,
             generating, 
@@ -124,14 +105,12 @@ const Item = memo<ChatListItemProps>(
             toggleMessageEditing,
             updateMessageContent,
         ] = useFlowStore((s) => [
-            flowAIChatSelectors.isMessageLoading(id)(s),
+            flowMessageSelectors.isMessageLoading(id)(s),
             flowAIChatSelectors.isMessageGenerating(id)(s),
-            flowAIChatSelectors.isMessageEditing(id)(s),
+            flowMessageSelectors.isMessageEditing(id)(s),
             s.toggleMessageEditing,
             s.modifyMessageContent,
         ])
-
-        console.log('chat item', id, item, isMessageLoading, generating, editing);
 
         // when the message is in RAG flow or the AI generating, it should be in loading state
         const isProcessing = // isInRAGFlow || 

@@ -8,7 +8,7 @@ import { useFlowStore } from '@/store/flow';
 import FlowCanvas from './components/FlowCanvas';
 import DetailBox from './feature/DetailBox';
 
-const useStyles = createStyles(({ css, token, isDarkMode }) => {
+const useStyles = createStyles(({ token, isDarkMode }) => {
     return {
         canvasContainer: {
             width: '100vw',

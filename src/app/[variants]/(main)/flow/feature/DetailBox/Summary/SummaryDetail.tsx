@@ -4,7 +4,7 @@ import { Edit } from 'lucide-react';
 import SidebarHeader from '@/components/SidebarHeader';
 
 import { EditableMessage } from '@lobehub/ui/chat';
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import { canvasSelectors, useFlowStore } from '@/store/flow';
 import { useTranslation } from 'react-i18next';
 
@@ -55,7 +55,7 @@ export default function SummaryDetail() {
         <>
             <SidebarHeader
                 actions={
-                    <ActionIcon icon={Edit} onClick={() => setEditing(true)} size={'small'} title={t('edit')} />
+                    <ActionIcon icon={Edit} disabled={isGeneratingSummary} onClick={() => setEditing(true)} size={'small'} title={t('edit')} />
                 }
                 onClick={toggleExpanded}
                 style={{ cursor: 'pointer' }}
@@ -65,7 +65,7 @@ export default function SummaryDetail() {
                 className={cx(styles.promptBox, styles.animatedContainer)}
                 height={expanded ? 200 : 0}
                 // onClick={handleOpen}
-                onDoubleClick={(e) => {
+                onDoubleClick={() => {
                     // if (e.altKey) handleOpenWithEdit(e);
                     setEditing(true);
                 }}

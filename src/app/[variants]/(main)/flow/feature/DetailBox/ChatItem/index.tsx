@@ -1,7 +1,7 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo } from 'react';
 
 import ChatItem from './ChatItem';
-import ActionsBar from '@/features/Conversation/components/ChatItem/ActionsBar';
+import ActionsBar from './ActionsBar';
 import { useAgentStore } from '@/store/agent';
 import { agentChatConfigSelectors } from '@/store/agent/selectors';
 
@@ -23,7 +23,7 @@ const ThreadChatItem = memo<ThreadChatItemProps>(({ id, index }) => {
 
   return (
     <ChatItem
-      actionBar={<ActionsBar id={id} inPortalThread index={index} />}
+      actionBar={<ActionsBar id={id} index={index} />}
       enableHistoryDivider={enableHistoryDivider}
       id={id}
       inPortalThread

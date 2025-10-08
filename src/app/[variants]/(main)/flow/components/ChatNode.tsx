@@ -4,10 +4,12 @@ import {
 } from '@xyflow/react';
 import { Card, Dropdown, Typography } from 'antd';
 import { createStyles } from 'antd-style';
-import { ActionIcon, type DropdownProps, Icon, Markdown } from '@lobehub/ui';
+import { ActionIcon, type DropdownProps, Icon, Input, Markdown } from '@lobehub/ui';
 import { DeleteIcon, MoreVerticalIcon } from 'lucide-react';
 
 import { useFlowStore } from '@/store/flow';
+import { Flexbox } from 'react-layout-kit';
+import { useState } from 'react';
 
 interface CanvasNodeProps {
     data: { label: string; content: string };
@@ -29,8 +31,15 @@ const useStyles = createStyles(({ css, token, isDarkMode }) => {
 
 export default function CanvasNode({ data, id }: CanvasNodeProps) {
     const { styles } = useStyles();
-    const [delNode, openInDetailBox
-        ] = useFlowStore(s => [s.delNode, s.openInDetailBox])
+    const [delNode, openInDetailBox, updateSummaryTitle
+    ] = useFlowStore(s => [s.delNode, s.openInDetailBox, s.updateSummaryTitle])
+
+    const [editTitle, setEditTitle] = useState(false);
+
+    const nodeMeta = useFlowStore(s => s.getNodeMeta(id));
+
+    const [value, setValue] = useState();
+
     const menu: DropdownProps['menu'] = {
         items: [
             {
@@ -49,13 +58,30 @@ export default function CanvasNode({ data, id }: CanvasNodeProps) {
     };
 
     const handleClick = () => {
-        openInDetailBox(id); 
+        openInDetailBox(id);
+    }
+
+    const handleSubmit = () => {
+        setEditTitle(false);
+        updateSummaryTitle(value)
     }
 
     return (
         <Card
             className={styles.flowNode}
-            title={<Typography.Title level={5}>{data.label}</Typography.Title>}
+            title={
+                <Flexbox align='center'>
+                    {
+                        editTitle ? (
+                            <>
+                                <Input onPressEnter={handleSubmit} value={value} defaultValue={nodeMeta?.title || 'Untitled'} onChange={e => setValue(e.target.value)}></Input>
+                            </>
+                        ) : (
+                            <Typography.Title level={5} onDoubleClick={() => setEditTitle(true)}>{nodeMeta?.title || 'Untitled'}</Typography.Title>
+                        )
+                    }
+                </Flexbox>
+            }
             extra={
                 <Dropdown
                     menu={menu}
@@ -68,7 +94,7 @@ export default function CanvasNode({ data, id }: CanvasNodeProps) {
         >
             <Handle type="target" position={Position.Left} />
             <Markdown>
-                {data.content}
+                {nodeMeta?.summary || 'No summary yet. Generate or add one.'}
             </Markdown>
             <Handle type="source" position={Position.Right} />
         </Card>

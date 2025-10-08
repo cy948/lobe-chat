@@ -12,17 +12,18 @@ import { FlowStore } from '@/store/flow/store';
 import { ChatMessage } from '@/types/message';
 import { topicService } from '@/services/topic';
 import { nanoid } from 'nanoid';
+import { messageService } from '@/services/message';
 
 export interface FlowNodeMeta {
-  messageGroupId?: string;
-  messageGroup?: any;
-  messages: ChatMessage[];
+    messages: ChatMessage[];
+    summary: string;
+    title: string;
 }
 export interface FlowCanvasAction {
     setActiveNode: (id: string) => void;
 
     addNode: (node: Partial<NodeType>) => Promise<void>;
-    delNode: (id: string) => void;
+    delNode: (id: string) => Promise<void>;
     setNodes: (nodes: NodeChange[]) => void;
     addEdge: (edge: EdgeType) => void;
     setEdges: (edges: EdgeChange[]) => void;
@@ -61,7 +62,7 @@ export const flowCanvas: StateCreator<
 
         // Check if topic exists
         // If not, create a new topic
-        if (!activeTopicId){
+        if (!activeTopicId) {
             console.log('No active topic, try to create one first...');
             // Create a new topic
             const topicId = await topicService.createTopic({
@@ -72,16 +73,42 @@ export const flowCanvas: StateCreator<
         }
 
         // Create Node meta
-        get().setNodeMeta(newNode.id, { messages: [] });
+        get().setNodeMeta(newNode.id, { 
+            messages: [],
+            title: '',
+            summary: '',
+        });
     },
-    delNode: (id) => {
+    delNode: async (id) => {
         const { nodes, edges } = get();
         console.log('del node', id);
+
         set({
             ...get(),
             nodes: nodes.filter((n) => n.id !== id),
             edges: edges.filter((e) => e.source !== id && e.target !== id),
         });
+
+        try {
+            // Clean messages (should use db cascade delete?
+            const nodeMeta = get().getNodeMeta(id);
+            if (!nodeMeta || nodeMeta.messages.length === 0) return;
+            await messageService.removeMessages(nodeMeta.messages.map((m) => m.id!));
+
+        } catch (error) {
+            console.error('Failed to delete messages for node', id, error);
+        }
+
+        // Clean node meta
+        delete get().nodeMetaMap[id];
+
+        if (get().activeNodeId === id) {
+            set({ 
+                activeNodeId: undefined,
+                detailBoxVisible: false,
+            });
+        }
+
     },
     setNodes: (changes) => {
         const { nodes: currentNodes } = get();
@@ -132,7 +159,7 @@ export const flowCanvas: StateCreator<
     },
     loadNodeMessages: async (nodeId) => {
         // fetchFromRemote
-        
+
     },
     getNodeMeta(nodeId) {
         return get().nodeMetaMap[nodeId];

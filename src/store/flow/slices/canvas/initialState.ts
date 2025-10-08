@@ -29,6 +29,8 @@ export interface FlowCanvasState {
   activeSessionId: string;
 
   nodeDetail?: FlowNodeMeta;
+
+  messagesInit: boolean;
 }
 
 export const initialFlowCanvasState: FlowCanvasState = {
@@ -38,5 +40,6 @@ export const initialFlowCanvasState: FlowCanvasState = {
   edges: [],
   nodeMetaMap: {},
   nodeDetail: undefined,
+  messagesInit: false,
 };
 

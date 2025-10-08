@@ -1,6 +1,6 @@
 import React, { memo, useMemo } from 'react';
 
-import { ChatItem } from '@/features/Conversation';
+import ChatItem from './ChatItem';
 import ActionsBar from '@/features/Conversation/components/ChatItem/ActionsBar';
 import { useAgentStore } from '@/store/agent';
 import { agentChatConfigSelectors } from '@/store/agent/selectors';

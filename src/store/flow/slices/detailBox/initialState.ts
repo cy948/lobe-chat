@@ -11,6 +11,9 @@ export interface FlowDetailBoxState {
     isDetailBoxInitialized?: boolean;
 
     inputMessage: string;
+
+    inputSummary: string;
+
 }
 
 export const initialFlowDetailBoxState: FlowDetailBoxState = {
@@ -19,4 +22,5 @@ export const initialFlowDetailBoxState: FlowDetailBoxState = {
     isCreatingNode: false,
     isCreatingMessage: false,
     inputMessage: '',
+    inputSummary: '',
 };

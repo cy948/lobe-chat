@@ -1,10 +1,10 @@
-import { useFlowStore } from '@/store/flow';
-
 import { createStyles } from 'antd-style';
+
 
 import Header from './Header';
 import ChatList from './ChatList';
 import ChatInput from './ChatInput';
+import Summary from './Summary';
 import { Flexbox } from 'react-layout-kit';
 
 interface DetailBoxProps {
@@ -25,32 +25,14 @@ const useStyles = createStyles(({ css, token, isDarkMode }) => {
 
 export default function DetailBox(props: DetailBoxProps) {
     const { styles } = useStyles();
-    const [
-        inputMessage,
-        setInputMessage,
-        sendMessage,
-        isCreateingMessage,
-    ] = useFlowStore(s => [
-        s.inputMessage,
-        s.setInputMessage,
-        s.sendMessage,
-        s.isCreateingMessage,
-    ]);
 
     return (
-        <Flexbox>
+        <Flexbox height={'100%'}>
             <Header title='title' />
             <Flexbox height={'100%'}>
+                <Summary />
                 <ChatList />
             </Flexbox>
-            {/* <Input
-                    value={inputMessage}
-                    onInput={(e) => setInputMessage(e.target.value)}
-                    onPressEnter={() => {
-                        sendMessage();
-                    }}
-                    disabled={isCreateingMessage}
-                /> */}
             <ChatInput />
         </Flexbox>
     );

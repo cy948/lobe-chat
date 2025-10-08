@@ -10,6 +10,8 @@ export interface FlowAIChatState {
 
     messageInputEditor: ChatInputEditor | null;
 
+    messageEditingIds: string[];
+
     messageLoadingIds: string[]; 
     reasoningLoadingIds: string[];
 }
@@ -18,6 +20,7 @@ export const initialAiChatState: FlowAIChatState = {
     chatLoadingIds: [],
     messageLoadingIds: [],
     reasoningLoadingIds: [],
+    messageEditingIds: [],
     isCreateingMessage: false,
     messageInputEditor: null,
 };

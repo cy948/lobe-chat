@@ -1,8 +1,9 @@
 import React, { memo, useCallback } from 'react';
 import { Flexbox } from 'react-layout-kit';
 
-import { SkeletonList, VirtualizedList } from '@/features/Conversation';
-import { useFetchThreads } from '@/hooks/useFetchThreads';
+import { SkeletonList } from '@/features/Conversation';
+import VirtualizedList from './VirtualizedList'
+// import { useFetchThreads } from '@/hooks/useFetchThreads';
 
 import ThreadChatItem from './ChatItem';
 import { useFlowStore, canvasSelectors } from '@/store/flow';
@@ -12,21 +13,23 @@ interface ChatListProps {
 }
 
 const ChatList = memo(({ mobile }: ChatListProps) => {
-  const [isInit, data ] = useFlowStore((s) => [s.isDetailBoxInitialized, canvasSelectors.getActiveNodeMessageIds(s)]);
+  const [isInit, data] = useFlowStore((s) => [s.isDetailBoxInitialized, canvasSelectors.getActiveNodeMessageIds(s)]);
 
-  useFetchThreads();
+  // useFetchThreads();
 
   const itemContent = useCallback(
     (index: number, id: string) => <ThreadChatItem id={id} index={index} />,
     [mobile],
   );
 
-  if (!isInit)
+  if (!isInit) {
+    console.log("Detail box not initialized");
     return (
       <Flexbox flex={1} height={'100%'}>
         <SkeletonList mobile={mobile} />
       </Flexbox>
     );
+  }
 
   return (
     <Flexbox

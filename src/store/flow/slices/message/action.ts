@@ -3,7 +3,7 @@ import { ChatImageItem, ChatMessage, CreateMessageParams, MessageMetadata, Messa
 import isEqual from 'fast-deep-equal';
 import { FlowStore } from '@/store/flow/store';
 import { messageService } from "@/services/message";
-import { nanoid } from "node_modules/@lobechat/model-runtime/src/utils/uuid";
+import { nanoid } from "@/utils/uuid";
 import {SWRResponse } from "swr";
 import { MessageDispatch, messagesReducer } from "@/store/chat/slices/message/reducer";
 import { ChatErrorType, GroundingSearch } from "@/types/index";
@@ -13,7 +13,6 @@ import { FlowStoreState } from "../../initialState";
 import { useClientDataSWR } from "@/libs/swr";
 import { copyToClipboard } from '@lobehub/ui';
 import { canvasSelectors } from '../canvas/selector';
-import { FlowNodeMeta } from '../canvas/action';
 
 const SWR_USE_FETCH_MESSAGES = 'SWR_USE_FETCH_MESSAGES';
 
@@ -277,7 +276,7 @@ export const flowMessage: StateCreator<
             },
         ),
     internal_buildGraphContext() {
-        const { activeNodeId, edges, getNodeMeta } = get();
+        const { activeNodeId, edges, nodes, getNodeMeta } = get();
         if (!activeNodeId) {
             return [];
         }
@@ -323,7 +322,7 @@ export const flowMessage: StateCreator<
             if (nodeMeta.useSummary && nodeMeta.summary) {
                 msgs.push({
                     id: `summary_${nodeId}`,
-                    content: nodeMeta.summary,
+                    content: `<summary><title>${nodeMeta.title}</title>${nodeMeta.summary}</summary>`,
                     createdAt: Date.now(),
                     role: 'user',
                     updatedAt: Date.now(),
@@ -333,7 +332,20 @@ export const flowMessage: StateCreator<
                 continue;
             }
 
+            // TODO: should warp the messages with xml tags?
             if (nodeMeta?.messages) {
+                messagesWithDistance.push({
+                    message: {
+                        id: `node_title_${nodeId}`,
+                        role: 'user',
+                        content: `Node titled "${nodeMeta.title}" start:`,
+                        createdAt: Date.now(),
+                        updatedAt: Date.now(),
+                        meta: {}
+                    },
+                    distance,
+                    createdAt: Date.now(),
+                })
                 for (const message of nodeMeta.messages) {
                     messagesWithDistance.push({
                         message,
@@ -341,16 +353,23 @@ export const flowMessage: StateCreator<
                         createdAt: message.createdAt || 0,
                     });
                 }
+                messagesWithDistance.push({
+                    message: {
+                        id: `node_title_end_${nodeId}`,
+                        role: 'user',
+                        content: `Node titled "${nodeMeta.title}" end.`,
+                        createdAt: Date.now(),
+                        updatedAt: Date.now(),
+                        meta: {}
+                    },
+                    distance,
+                    createdAt: Date.now(),
+                })
             }
         }
 
-        // TODO: add graph description
-        // Candidates:
-        // - https://aclanthology.org/2025.acl-long.321.pdf
-
-
         // Sort by distance as BFS (farther first), then by creation time
-        return messagesWithDistance
+        const retMsgs = messagesWithDistance
             .sort((a, b) => {
                 // Primary sort: by distance (descending - farther nodes first)
                 if (a.distance !== b.distance) {
@@ -360,5 +379,30 @@ export const flowMessage: StateCreator<
                 return a.createdAt - b.createdAt;
             })
             .map(item => item.message);
+        
+        // TODO(Improvement): Better graph description
+        // Necessary: A graph description can let model know what user sees
+        // Unnecessarily: The graph description can be poorly generated or understood
+
+        const graphDesc = edges.reduce((desc, edge) => {
+            const sourceNode = getNodeMeta(edge.source);
+            const targetNode = getNodeMeta(edge.target);
+            if (sourceNode && targetNode) {
+                desc.push(`(${sourceNode.title} -> ${targetNode.title})`);
+            }
+            return desc;
+        }, [] as string[]).join(', ');
+
+        // Add graph description at the end of the context
+        retMsgs.push({
+            id: `graph_description_${activeNodeId}`,
+            role: 'user',
+            content: `The above conversation messages are from a knowledge graph. And the edges are ${graphDesc}`,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            meta: {}
+        })
+
+        return retMsgs;
     },
 })

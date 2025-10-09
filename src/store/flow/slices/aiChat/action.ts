@@ -8,7 +8,7 @@ import { agentChatConfigSelectors, agentSelectors } from "@/store/agent/selector
 import { chatService } from "@/services/chat";
 import { mutate } from "swr";
 import { Action, setNamespace } from "@/utils/storeDebug";
-import { chainSummaryHistory } from "packages/prompts/src";
+import { chainSummaryHistory } from '@lobechat/prompts';
 import { canvasSelectors } from "../canvas/selector";
 
 const SWR_USE_FETCH_MESSAGES = 'SWR_USE_FETCH_MESSAGES';

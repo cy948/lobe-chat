@@ -151,7 +151,7 @@ export const flowMessage: StateCreator<
     }
 
     // Collect all messages with their node distances
-    const messagesWithDistance: Array<{
+    let messagesWithDistance: Array<{
       createdAt: number;
       distance: number;
       message: ChatMessage;
@@ -162,54 +162,59 @@ export const flowMessage: StateCreator<
     for (const [nodeId, distance] of distances.entries()) {
       const nodeMeta = getNodeMeta(nodeId);
       if (!nodeMeta) continue;
-      const msgs: ChatMessage[] = [];
       // If use summary
       if (nodeMeta.useSummary && nodeMeta.summary) {
-        msgs.push({
-          content: `<summary><title>${nodeMeta.title}</title>${nodeMeta.summary}</summary>`,
-          createdAt: Date.now(),
-          id: `summary_${nodeId}`,
-          meta: {},
-          role: 'user',
-          updatedAt: Date.now(),
-        });
-        //
-        continue;
-      }
-
-      // TODO: should warp the messages with xml tags?
-      if (nodeMeta?.messages) {
         messagesWithDistance.push({
-          createdAt: Date.now(),
+          createdAt: nodeMeta.messages[-1].updatedAt || 0,
           distance,
           message: {
-            content: `Node titled "${nodeMeta.title}" start:`,
+            content: `<summary><title>${nodeMeta.title}</title>${nodeMeta.summary}</summary>`,
             createdAt: Date.now(),
-            id: `node_title_${nodeId}`,
+            id: `summary_${nodeId}`,
             meta: {},
             role: 'user',
             updatedAt: Date.now(),
           },
         });
+        continue;
+      }
+
+      // TODO: should warp the messages with xml tags?
+      if (nodeMeta?.messages && nodeMeta.messages.length > 0) {
+        // TODO: Add before `for` loop would cause loop skip ???
+
+        // messagesWithDistance.push({
+        //   createdAt: Date.now(),
+        //   distance,
+        //   message: {
+        //     content: `Node titled "${nodeMeta.title}" start:`,
+        //     createdAt: Date.now(),
+        //     id: `node_title_${nodeId}`,
+        //     meta: {},
+        //     role: 'user',
+        //     updatedAt: Date.now(),
+        //   },
+        // });
         for (const message of nodeMeta.messages) {
+          // console.log('Add Graph context message:', message);
           messagesWithDistance.push({
             createdAt: message.createdAt || 0,
             distance,
             message,
           });
         }
-        messagesWithDistance.push({
-          createdAt: Date.now(),
-          distance,
-          message: {
-            content: `Node titled "${nodeMeta.title}" end.`,
-            createdAt: Date.now(),
-            id: `node_title_end_${nodeId}`,
-            meta: {},
-            role: 'user',
-            updatedAt: Date.now(),
-          },
-        });
+        // messagesWithDistance.push({
+        //   createdAt: Date.now(),
+        //   distance,
+        //   message: {
+        //     content: `Node titled "${nodeMeta.title}" end.`,
+        //     createdAt: Date.now(),
+        //     id: `node_title_end_${nodeId}`,
+        //     meta: {},
+        //     role: 'user',
+        //     updatedAt: Date.now(),
+        //   },
+        // });
       }
     }
 
@@ -249,6 +254,8 @@ export const flowMessage: StateCreator<
       role: 'user',
       updatedAt: Date.now(),
     });
+
+    console.log('Built graph context messages:', retMsgs);
 
     return retMsgs;
   },

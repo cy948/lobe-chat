@@ -1,11 +1,10 @@
 import React, { memo } from 'react';
 
-import ChatItem from './ChatItem';
-import ActionsBar from './ActionsBar';
 import { useAgentStore } from '@/store/agent';
 import { agentChatConfigSelectors } from '@/store/agent/selectors';
+import { canvasSelectors, useFlowStore } from '@/store/flow';
 
-import { useFlowStore, canvasSelectors } from '@/store/flow';
+import ChatItem from './ChatItem';
 
 export interface ThreadChatItemProps {
   id: string;
@@ -13,22 +12,14 @@ export interface ThreadChatItemProps {
 }
 
 const ThreadChatItem = memo<ThreadChatItemProps>(({ id, index }) => {
-  const [historyLength] = useFlowStore((s) => [
-    canvasSelectors.getActiveNodeMessageIds(s).length,
-  ]);
+  const [historyLength] = useFlowStore((s) => [canvasSelectors.getActiveNodeMessageIds(s).length]);
 
   const enableHistoryDivider = useAgentStore(
     agentChatConfigSelectors.enableHistoryDivider(historyLength, index),
   );
 
   return (
-    <ChatItem
-      actionBar={<ActionsBar id={id} index={index} />}
-      enableHistoryDivider={enableHistoryDivider}
-      id={id}
-      inPortalThread
-      index={index}
-    />
+    <ChatItem enableHistoryDivider={enableHistoryDivider} id={id} inPortalThread index={index} />
   );
 });
 

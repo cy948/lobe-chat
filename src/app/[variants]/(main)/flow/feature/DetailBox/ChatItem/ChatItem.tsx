@@ -2,63 +2,25 @@
 
 import { createStyles } from 'antd-style';
 import isEqual from 'fast-deep-equal';
-import {
-    MouseEventHandler,
-    ReactNode,
-    memo,
-    use,
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-} from 'react';
-import { useTranslation } from 'react-i18next';
+import { ReactNode, memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Flexbox } from 'react-layout-kit';
 
-import { HtmlPreviewAction } from '@/components/HtmlPreview';
 import { isDesktop } from '@/const/version';
-import ChatItem from '@/features/ChatItem';
 import {
-    VirtuosoContext,
-    removeVirtuosoVisibleItem,
-    upsertVirtuosoVisibleItem,
+  removeVirtuosoVisibleItem,
+  upsertVirtuosoVisibleItem,
 } from '@/features/Conversation/components/VirtualizedList/VirtuosoContext';
-import { useAgentStore } from '@/store/agent';
-import { agentChatConfigSelectors } from '@/store/agent/selectors';
-import { useUserStore } from '@/store/user';
-import { userGeneralSettingsSelectors } from '@/store/user/selectors';
-import { ChatMessage } from '@/types/message';
+import { InPortalThreadContext } from '@/features/Conversation/context/InPortalThreadContext';
+import { canvasSelectors, flowMessageSelectors, useFlowStore } from '@/store/flow';
 
-import ErrorMessageExtra, { useErrorContent } from '@/features/Conversation/Error';
-import { renderMessagesExtra } from '@/features/Conversation/Extras';
-import {
-    markdownCustomRenders,
-    renderBelowMessages,
-    renderMessages,
-    useAvatarsClick,
-} from '@/features/Conversation/Messages';
-// import History from '@/features/Conversation/components/History';
-import { markdownElements } from '@/features/Conversation/components/MarkdownElements';
-import { InPortalThreadContext } from '@/features/Conversation/components/ChatItem/InPortalThreadContext';
-import { normalizeThinkTags, processWithArtifact } from '@/features/Conversation/components/ChatItem/utils';
-import { canvasSelectors, flowAIChatSelectors, flowMessageSelectors, useFlowStore } from '@/store/flow';
-
-const rehypePlugins = markdownElements.map((element) => element.rehypePlugin).filter(Boolean);
-const remarkPlugins = markdownElements.map((element) => element.remarkPlugin).filter(Boolean);
-
-const isHtmlCode = (content: string, language: string) => {
-    return (
-        language === 'html' ||
-        (language === '' && content.includes('<html>')) ||
-        (language === '' && content.includes('<!DOCTYPE html>'))
-    );
-};
+import AssistantMessage from './Assistant';
+import UserMessage from './User';
 
 const useStyles = createStyles(({ css, prefixCls }) => ({
-    loading: css`
+  loading: css`
     opacity: 0.6;
   `,
-    message: css`
+  message: css`
     position: relative;
     // prevent the textarea too long
     .${prefixCls}-input {
@@ -68,288 +30,112 @@ const useStyles = createStyles(({ css, prefixCls }) => ({
 }));
 
 export interface ChatListItemProps {
-    actionBar?: ReactNode;
-    className?: string;
-    disableEditing?: boolean;
-    enableHistoryDivider?: boolean;
-    endRender?: ReactNode;
-    id: string;
-    inPortalThread?: boolean;
-    index: number;
+  className?: string;
+  disableEditing?: boolean;
+  enableHistoryDivider?: boolean;
+  endRender?: ReactNode;
+  id: string;
+  inPortalThread?: boolean;
+  index: number;
 }
 
 const Item = memo<ChatListItemProps>(
-    ({
-        className,
-        // enableHistoryDivider,
-        id,
-        actionBar,
-        endRender,
-        disableEditing,
-        inPortalThread = false,
-        index,
-    }) => {
-        const { t } = useTranslation('common');
-        const { styles, cx } = useStyles();
-        const containerRef = useRef<HTMLDivElement | null>(null);
+  ({ className, id, endRender, disableEditing, inPortalThread = false, index }) => {
+    const { styles, cx } = useStyles();
+    const containerRef = useRef<HTMLDivElement | null>(null);
 
-        const type = useAgentStore(agentChatConfigSelectors.displayMode);
-        // const item = useChatStore(chatSelectors.getMessageById(id), isEqual);
-        const item = useFlowStore(canvasSelectors.getMessageById(id), isEqual);
-        const transitionMode = useUserStore(userGeneralSettingsSelectors.transitionMode);
+    // const item = useChatStore(chatSelectors.getMessageById(id), isEqual);
+    const item = useFlowStore(canvasSelectors.getMessageById(id), isEqual);
 
-        const [
-            isMessageLoading,
-            generating, 
-            editing,
-            toggleMessageEditing,
-            updateMessageContent,
-        ] = useFlowStore((s) => [
-            flowMessageSelectors.isMessageLoading(id)(s),
-            flowAIChatSelectors.isMessageGenerating(id)(s),
-            flowMessageSelectors.isMessageEditing(id)(s),
-            s.toggleMessageEditing,
-            s.modifyMessageContent,
-        ])
+    // const [isMessageLoading] = useChatStore((s) => [chatSelectors.isMessageLoading(id)(s)]);
+    const [isMessageLoading] = useFlowStore((s) => [flowMessageSelectors.isMessageLoading(id)(s)]);
 
-        // when the message is in RAG flow or the AI generating, it should be in loading state
-        const isProcessing = // isInRAGFlow || 
-            generating;
-        const animated = transitionMode === 'fadeIn' && generating;
+    // ======================= Performance Optimization ======================= //
+    // these useMemo/useCallback are all for the performance optimization
+    // maybe we can remove it in React 19
+    // ======================================================================== //
 
-        const onAvatarsClick = useAvatarsClick(item?.role);
+    useEffect(() => {
+      if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') return;
 
-        const renderMessage = useCallback(
-            (editableContent: ReactNode) => {
-                if (!item?.role) return;
-                const RenderFunction = renderMessages[item.role] ?? renderMessages['default'];
+      const element = containerRef.current;
+      if (!element) return;
 
-                if (!RenderFunction) return;
+      const root = element.closest('[data-virtuoso-scroller]');
+      const thresholds = [0, 0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 1];
+      const options: any = { threshold: thresholds };
 
-                return <RenderFunction {...item} editableContent={editableContent} />;
-            },
-            [item],
-        );
+      if (root instanceof Element) options.root = root;
 
-        const BelowMessage = useCallback(
-            ({ data }: { data: ChatMessage }) => {
-                if (!item?.role) return;
-                const RenderFunction = renderBelowMessages[item.role] ?? renderBelowMessages['default'];
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.target !== element) return;
 
-                if (!RenderFunction) return;
+          if (entry.isIntersecting) {
+            const { bottom, top } = entry.intersectionRect;
 
-                return <RenderFunction {...data} />;
-            },
-            [item?.role],
-        );
+            upsertVirtuosoVisibleItem(index, {
+              bottom,
+              ratio: entry.intersectionRatio,
+              top,
+            });
+          } else {
+            removeVirtuosoVisibleItem(index);
+          }
+        });
+      }, options);
 
-        const MessageExtra = useCallback(
-            ({ data }: { data: ChatMessage }) => {
-                if (!item?.role) return;
-                let RenderFunction;
-                if (renderMessagesExtra?.[item.role]) RenderFunction = renderMessagesExtra[item.role];
+      observer.observe(element);
 
-                if (!RenderFunction) return;
-                return <RenderFunction {...data} />;
-            },
-            [item?.role],
-        );
+      return () => {
+        observer.disconnect();
+        removeVirtuosoVisibleItem(index);
+      };
+    }, [index]);
 
-        const markdownCustomRender = useCallback(
-            (dom: ReactNode, { text }: { text: string }) => {
-                if (!item?.role) return dom;
-                let RenderFunction;
+    const onContextMenu = useCallback(async () => {
+      if (isDesktop && item) {
+        const { electronSystemService } = await import('@/services/electron/system');
 
-                if (renderMessagesExtra?.[item.role]) RenderFunction = markdownCustomRenders[item.role];
-                if (!RenderFunction) return dom;
+        electronSystemService.showContextMenu('chat', {
+          content: item.content,
+          hasError: !!item.error,
+          messageId: id,
+          role: item.role,
+        });
+      }
+    }, [id, item]);
 
-                return <RenderFunction displayMode={type} dom={dom} id={id} text={text} />;
-            },
-            [item?.role, type],
-        );
+    const renderContent = useMemo(() => {
+      switch (item?.role) {
+        case 'user': {
+          return <UserMessage {...item} disableEditing={disableEditing} index={index} />;
+        }
 
-        const error = useErrorContent(item?.error);
+        case 'assistant': {
+          return <AssistantMessage {...item} disableEditing={disableEditing} index={index} />;
+        }
+      }
 
-        // remove line breaks in artifact tag to make the ast transform easier
-        const message =
-            !editing && item?.role === 'assistant'
-                ? normalizeThinkTags(processWithArtifact(item?.content))
-                : item?.content;
+      return null;
+    }, [item]);
 
-        // ======================= Performance Optimization ======================= //
-        // these useMemo/useCallback are all for the performance optimization
-        // maybe we can remove it in React 19
-        // ======================================================================== //
+    if (!item) return;
 
-        const components = useMemo(
-            () =>
-                Object.fromEntries(
-                    markdownElements.map((element) => {
-                        const Component = element.Component;
-
-                        return [element.tag, (props: any) => <Component {...props} id={id} />];
-                    }),
-                ),
-            [id],
-        );
-
-        const markdownProps = useMemo(
-            () => ({
-                animated,
-                citations: item?.role === 'user' ? undefined : item?.search?.citations,
-                componentProps: {
-                    highlight: {
-                        actionsRender: ({ content, actionIconSize, language, originalNode }: any) => {
-                            const showHtmlPreview = isHtmlCode(content, language);
-
-                            return (
-                                <>
-                                    {showHtmlPreview && <HtmlPreviewAction content={content} size={actionIconSize} />}
-                                    {originalNode}
-                                </>
-                            );
-                        },
-                    },
-                },
-                components,
-                customRender: markdownCustomRender,
-                enableCustomFootnotes: item?.role === 'assistant',
-                rehypePlugins: item?.role === 'user' ? undefined : rehypePlugins,
-                remarkPlugins: item?.role === 'user' ? undefined : remarkPlugins,
-                showFootnotes:
-                    item?.role === 'user'
-                        ? undefined
-                        : item?.search?.citations &&
-                        // if the citations are all empty, we should not show the citations
-                        item?.search?.citations.length > 0 &&
-                        // if the citations's url and title are all the same, we should not show the citations
-                        item?.search?.citations.every((item) => item.title !== item.url),
-            }),
-            [animated, components, markdownCustomRender, item?.role, item?.search],
-        );
-
-        const onChange = useCallback((value: string) => updateMessageContent(id, value), [id]);
-        const virtuosoRef = use(VirtuosoContext);
-
-        useEffect(() => {
-            if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') return;
-
-            const element = containerRef.current;
-            if (!element) return;
-
-            const root = element.closest('[data-virtuoso-scroller]');
-            const thresholds = [0, 0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 1];
-            const options: any = { threshold: thresholds };
-
-            if (root instanceof Element) options.root = root;
-
-            const observer = new IntersectionObserver((entries) => {
-                entries.forEach((entry) => {
-                    if (entry.target !== element) return;
-
-                    if (entry.isIntersecting) {
-                        const { bottom, top } = entry.intersectionRect;
-
-                        upsertVirtuosoVisibleItem(index, {
-                            bottom,
-                            ratio: entry.intersectionRatio,
-                            top,
-                        });
-                    } else {
-                        removeVirtuosoVisibleItem(index);
-                    }
-                });
-            }, options);
-
-            observer.observe(element);
-
-            return () => {
-                observer.disconnect();
-                removeVirtuosoVisibleItem(index);
-            };
-        }, [index]);
-
-        const onDoubleClick = useCallback<MouseEventHandler<HTMLDivElement>>(
-            (e) => {
-                if (!item || disableEditing) return;
-                if (item.id === 'default' || item.error) return;
-                if (item.role && ['assistant', 'user'].includes(item.role) && e.altKey) {
-                    toggleMessageEditing(id, true);
-
-                    virtuosoRef?.current?.scrollIntoView({ align: 'start', behavior: 'auto', index });
-                }
-            },
-            [item, disableEditing],
-        );
-
-        const text = useMemo(
-            () => ({
-                cancel: t('cancel'),
-                confirm: t('ok'),
-                edit: t('edit'),
-            }),
-            [t],
-        );
-
-        const onEditingChange = useCallback((edit: boolean) => {
-            toggleMessageEditing(id, edit);
-        }, []);
-
-        const onContextMenu = useCallback(async () => {
-            if (isDesktop && item) {
-                const { electronSystemService } = await import('@/services/electron/system');
-
-                electronSystemService.showContextMenu('chat', {
-                    content: item.content,
-                    hasError: !!item.error,
-                    messageId: id,
-                    role: item.role,
-                });
-            }
-        }, [id, item]);
-
-        const belowMessage = useMemo(() => item && <BelowMessage data={item} />, [item]);
-        const errorMessage = useMemo(() => item && <ErrorMessageExtra data={item} />, [item]);
-        const messageExtra = useMemo(() => item && <MessageExtra data={item} />, [item]);
-
-        return (
-            item && (
-                <InPortalThreadContext.Provider value={inPortalThread}>
-                    {/* {enableHistoryDivider && <History />} */}
-                    <Flexbox
-                        className={cx(styles.message, className, isMessageLoading && styles.loading)}
-                        data-index={index}
-                        onContextMenu={onContextMenu}
-                        ref={containerRef}
-                    >
-                        <ChatItem
-                            actions={actionBar}
-                            avatar={item.meta}
-                            belowMessage={belowMessage}
-                            editing={editing}
-                            error={error}
-                            errorMessage={errorMessage}
-                            loading={isProcessing}
-                            markdownProps={markdownProps}
-                            message={message}
-                            messageExtra={messageExtra}
-                            onAvatarClick={onAvatarsClick}
-                            onChange={onChange}
-                            onDoubleClick={onDoubleClick}
-                            onEditingChange={onEditingChange}
-                            placement={type === 'chat' ? (item.role === 'user' ? 'right' : 'left') : 'left'}
-                            primary={item.role === 'user'}
-                            renderMessage={renderMessage}
-                            text={text}
-                            time={item.updatedAt || item.createdAt}
-                            variant={type === 'chat' ? 'bubble' : 'docs'}
-                        />
-                        {endRender}
-                    </Flexbox>
-                </InPortalThreadContext.Provider>
-            )
-        );
-    },
+    return (
+      <InPortalThreadContext.Provider value={inPortalThread}>
+        <Flexbox
+          className={cx(styles.message, className, isMessageLoading && styles.loading)}
+          data-index={index}
+          onContextMenu={onContextMenu}
+          ref={containerRef}
+        >
+          {renderContent}
+          {endRender}
+        </Flexbox>
+      </InPortalThreadContext.Provider>
+    );
+  },
 );
 
 Item.displayName = 'ChatItem';

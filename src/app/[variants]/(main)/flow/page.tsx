@@ -1,12 +1,11 @@
 'use client';
 
-import { Row, Col } from 'antd'
 import { createStyles } from 'antd-style';
 
-import { useFlowStore } from '@/store/flow';
-
 import FlowCanvas from './components/FlowCanvas';
+import PortalPanel from './components/PortalPanel';
 import DetailBox from './feature/DetailBox';
+import { Flexbox } from 'react-layout-kit';
 
 const useStyles = createStyles(({ token, isDarkMode }) => {
     return {
@@ -24,18 +23,15 @@ const useStyles = createStyles(({ token, isDarkMode }) => {
 
 const FlowPage = () => {
     const { styles } = useStyles();
-    const [detailBoxVisible] = useFlowStore(s => [s.detailBoxVisible]);
 
     return (
         <div className={styles.canvasContainer}>
-            <Row className={styles.canvasBox} gutter={16}>
-                <Col span={detailBoxVisible ? 16 : 24}>
-                    <FlowCanvas />
-                </Col>
-                <Col span={detailBoxVisible ? 8 : 0}>
-                    {detailBoxVisible && <DetailBox />}
-                </Col>
-            </Row>
+            <Flexbox className={styles.canvasBox} horizontal>
+                <FlowCanvas />
+                <PortalPanel>
+                    <DetailBox />
+                </PortalPanel>
+            </Flexbox>
         </div>
     );
 };

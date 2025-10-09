@@ -14,6 +14,7 @@ import { useChatStore } from '@/store/chat';
 import { chatPortalSelectors } from '@/store/chat/selectors';
 import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors';
+import { useFlowStore } from '@/store/flow';
 
 const useStyles = createStyles(({ css, token }) => ({
   content: css`
@@ -37,9 +38,13 @@ const PortalPanel = memo(({ children }: PropsWithChildren) => {
   const { styles } = useStyles();
   const { md = true } = useResponsive();
 
-  const [showPortal ] = useChatStore((s) => [
-    chatPortalSelectors.showPortal(s),
-  ]);
+  // const [showPortal ] = useChatStore((s) => [
+  //   chatPortalSelectors.showPortal(s),
+  // ]);
+
+  const [ showPortal ] = useFlowStore((s) => [
+    s.detailBoxVisible
+  ])
 
   const [portalWidth, updateSystemStatus] = useGlobalStore((s) => [
     systemStatusSelectors.portalWidth(s),

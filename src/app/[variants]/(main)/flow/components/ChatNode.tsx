@@ -7,7 +7,7 @@ import { createStyles } from 'antd-style';
 import { ActionIcon, type DropdownProps, Icon, Input, Markdown } from '@lobehub/ui';
 import { DeleteIcon, MoreVerticalIcon } from 'lucide-react';
 
-import { canvasSelectors, useFlowStore } from '@/store/flow';
+import { useFlowStore } from '@/store/flow';
 import { Flexbox } from 'react-layout-kit';
 import { useState } from 'react';
 
@@ -47,14 +47,12 @@ export default function CanvasNode({ id }: CanvasNodeProps) {
         delNode,
         openInDetailBox,
         updateSummaryTitle,
-        useSummary,
-        setActiveNodeUseSummary,
+        setNodeMeta,
     ] = useFlowStore(s => [
         s.delNode,
         s.openInDetailBox,
         s.updateSummaryTitle,
-        canvasSelectors.getActiveNodeMeta(s)?.useSummary,
-        canvasSelectors.setActiveNodeUseSummary(s),
+        s.setNodeMeta,
     ])
 
     const [editTitle, setEditTitle] = useState(false);
@@ -105,18 +103,16 @@ export default function CanvasNode({ id }: CanvasNodeProps) {
                             <Typography.Title level={5} onDoubleClick={() => setEditTitle(true)}>{nodeMeta?.title || 'Untitled'}</Typography.Title>
                         )
                     }
-                    <Flexbox style={{ marginLeft: 'auto' }}>
+                    <Flexbox style={{ marginLeft: 'auto' }} align='center' horizontal>
                         <Switch
-                            checkedChildren={'使用总结'}
-                            unCheckedChildren={'使用聊天历史'}
-                            value={useSummary} onChange={(checked) => setActiveNodeUseSummary(checked)}
+                            value={nodeMeta?.useSummary} onChange={(checked) => setNodeMeta(id, { useSummary: checked })}
                         />
                     </Flexbox>
                 </Flexbox>
             }
             extra={
                 <Dropdown
-                    menu={menu}
+                    menu={menu as any}
                     trigger={['click', 'hover']}
                 >
                     <ActionIcon size={'small'} icon={MoreVerticalIcon} />

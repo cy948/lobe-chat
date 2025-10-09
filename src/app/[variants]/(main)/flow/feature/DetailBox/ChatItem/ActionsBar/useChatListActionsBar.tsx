@@ -1,24 +1,16 @@
 import type { ActionIconGroupItemType } from '@lobehub/ui';
-import {
-  ArrowBigUpDashIcon,
-  Copy,
-  Edit,
-  ListRestart,
-  RotateCcw,
-  Trash,
-} from 'lucide-react';
+import { ArrowBigUpDashIcon, Copy, Edit, ListRestart, RotateCcw, Trash } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-
 
 interface ChatListActionsBar {
   copy: ActionIconGroupItemType;
   del: ActionIconGroupItemType;
   delAndRegenerate: ActionIconGroupItemType;
-  setAsSummary: ActionIconGroupItemType;
   divider: { type: 'divider' };
   edit: ActionIconGroupItemType;
   regenerate: ActionIconGroupItemType;
+  setAsSummary: ActionIconGroupItemType;
 }
 
 export const useChatListActionsBar = ({
@@ -49,11 +41,6 @@ export const useChatListActionsBar = ({
           ns: 'chat',
         }),
       },
-      setAsSummary: {
-        icon: ArrowBigUpDashIcon,
-        key: 'setAsSummary',
-        label: '设为总结',
-      },
       divider: {
         type: 'divider',
       },
@@ -66,6 +53,11 @@ export const useChatListActionsBar = ({
         icon: RotateCcw,
         key: 'regenerate',
         label: t('regenerate', { defaultValue: 'Regenerate' }),
+      },
+      setAsSummary: {
+        icon: ArrowBigUpDashIcon,
+        key: 'setAsSummary',
+        label: '设为总结',
       },
     }),
     [hasThread],

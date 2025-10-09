@@ -6,15 +6,10 @@ import isEqual from 'fast-deep-equal';
 import { PropsWithChildren, memo, useState } from 'react';
 import { Flexbox } from 'react-layout-kit';
 
-import {
-  CHAT_PORTAL_MAX_WIDTH,
-  CHAT_PORTAL_WIDTH,
-} from '@/const/layoutTokens';
-import { useChatStore } from '@/store/chat';
-import { chatPortalSelectors } from '@/store/chat/selectors';
+import { CHAT_PORTAL_MAX_WIDTH, CHAT_PORTAL_WIDTH } from '@/const/layoutTokens';
+import { useFlowStore } from '@/store/flow';
 import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors';
-import { useFlowStore } from '@/store/flow';
 
 const useStyles = createStyles(({ css, token }) => ({
   content: css`
@@ -42,9 +37,7 @@ const PortalPanel = memo(({ children }: PropsWithChildren) => {
   //   chatPortalSelectors.showPortal(s),
   // ]);
 
-  const [ showPortal ] = useFlowStore((s) => [
-    s.detailBoxVisible
-  ])
+  const [showPortal] = useFlowStore((s) => [s.detailBoxVisible]);
 
   const [portalWidth, updateSystemStatus] = useGlobalStore((s) => [
     systemStatusSelectors.portalWidth(s),

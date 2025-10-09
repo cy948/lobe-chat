@@ -1,15 +1,15 @@
-import { ChatInputEditor } from "@/features/ChatInput";
+import { ChatInputEditor } from '@/features/ChatInput';
 
 export interface FlowMessageState {
-  messagesInit: boolean;
   messageEditingIds: string[];
   messageInputEditor: ChatInputEditor | null;
   messageLoadingIds: string[];
+  messagesInit: boolean;
 }
 
 export const initialFlowMessageState: FlowMessageState = {
   messageEditingIds: [],
+  messageInputEditor: null,
   messageLoadingIds: [],
   messagesInit: false,
-  messageInputEditor: null,
 };

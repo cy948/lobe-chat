@@ -1,74 +1,65 @@
-import { StateCreator } from "zustand/vanilla";
-import { ChatMessage, CreateMessageParams, SendMessageParams } from '@/types/message';
-import { FlowStore } from '@/store/flow/store';
-import { messageService } from "@/services/message";
-import { LOADING_FLAT, MESSAGE_CANCEL_FLAT } from "@/const/index";
-import { getAgentStoreState } from "@/store/agent";
-import { agentChatConfigSelectors, agentSelectors } from "@/store/agent/selectors";
-import { chatService } from "@/services/chat";
-import { mutate } from "swr";
-import { Action, setNamespace } from "@/utils/storeDebug";
 import { chainSummaryHistory } from '@lobechat/prompts';
-import { canvasSelectors } from "../canvas/selector";
+import { mutate } from 'swr';
+import { StateCreator } from 'zustand/vanilla';
+
+import { LOADING_FLAT, MESSAGE_CANCEL_FLAT } from '@/const/index';
+import { chatService } from '@/services/chat';
+import { messageService } from '@/services/message';
+import { getAgentStoreState } from '@/store/agent';
+import { agentChatConfigSelectors, agentSelectors } from '@/store/agent/selectors';
+import { FlowStore } from '@/store/flow/store';
+import { ChatMessage, CreateMessageParams, SendMessageParams } from '@/types/message';
+import { Action, setNamespace } from '@/utils/storeDebug';
+
+import { canvasSelectors } from '../canvas/selector';
 
 const SWR_USE_FETCH_MESSAGES = 'SWR_USE_FETCH_MESSAGES';
 
 const n = setNamespace('f');
 
 export interface FlowAIChatAction {
-  setInputMessage: (message: string) => void;
-
-  sendMessage: (params: SendMessageParams) => Promise<void>;
-  /**
- * Regenerates a specific message in the chat
- */
-  regenerateMessage: (id: string) => Promise<void>;
-
-  generateHistorySummary: (nodeId?: string) => Promise<void>;
-
-  refreshMessages: () => Promise<void>;
-
-  /**
- * Interrupts the ongoing ai message generation process
- */
-  stopGenerateMessage: () => void;
-
-  /**
-   * Internal Methods
-   */
-  /**
- * Resends a specific message, optionally using a trace ID for tracking
- */
-  internal_resendMessage: (
-    id: string,
-    params?: {
-      traceId?: string;
-      messages?: ChatMessage[];
-      threadId?: string;
-      inPortalThread?: boolean;
-    },
-  ) => Promise<void>;
-
   /**
    * Deletes an existing message and generates a new one in its place
    */
   delAndRegenerateMessage: (id: string) => Promise<void>;
 
+  generateHistorySummary: (nodeId?: string) => Promise<void>;
+  internal_coreProcessMessage: (
+    messages: ChatMessage[],
+    messageId: string,
+    options?: any,
+  ) => Promise<void>;
+
   internal_fetchAIResponse: (input: {
-    messages: ChatMessage[];
     messageId: string;
+    messages: ChatMessage[];
     model: string;
     provider: string;
   }) => Promise<{
-    isFunctionCall: boolean;
     content: string;
+    isFunctionCall: boolean;
     traceId?: string;
   }>;
-  internal_coreProcessMessage: (messages: ChatMessage[], messageId: string, options?: any) => Promise<void>;
 
   /**
- * Toggles the loading state for AI message generation, managing the UI feedback
- */
+   * Internal Methods
+   */
+  /**
+   * Resends a specific message, optionally using a trace ID for tracking
+   */
+  internal_resendMessage: (
+    id: string,
+    params?: {
+      inPortalThread?: boolean;
+      messages?: ChatMessage[];
+      threadId?: string;
+      traceId?: string;
+    },
+  ) => Promise<void>;
+
+  /**
+   * Toggles the loading state for AI message generation, managing the UI feedback
+   */
   internal_toggleChatLoading: (
     loading: boolean,
     id?: string,
@@ -76,15 +67,29 @@ export interface FlowAIChatAction {
   ) => AbortController | undefined;
 
   /**
- * Toggles the loading state for AI message reasoning, managing the UI feedback
- */
+   * Toggles the loading state for AI message reasoning, managing the UI feedback
+   */
   internal_toggleChatReasoning: (
     loading: boolean,
     id?: string,
     action?: string,
   ) => AbortController | undefined;
-}
 
+  refreshMessages: () => Promise<void>;
+
+  /**
+   * Regenerates a specific message in the chat
+   */
+  regenerateMessage: (id: string) => Promise<void>;
+  sendMessage: (params: SendMessageParams) => Promise<void>;
+
+  setInputMessage: (message: string) => void;
+
+  /**
+   * Interrupts the ongoing ai message generation process
+   */
+  stopGenerateMessage: () => void;
+}
 
 export const flowAIChat: StateCreator<
   FlowStore,
@@ -92,15 +97,12 @@ export const flowAIChat: StateCreator<
   [],
   FlowAIChatAction
 > = (set, get) => ({
+  delAndRegenerateMessage: async (id) => {
+    get().internal_resendMessage(id);
+    get().deleteMessage(id);
+  },
   generateHistorySummary: async (nodeId) => {
-
-    const {
-      activeNodeId,
-      getNodeMeta,
-      setNodeMeta,
-      isGeneratingSummary,
-    } = get();
-
+    const { activeNodeId, getNodeMeta, setNodeMeta, isGeneratingSummary } = get();
 
     let targetNodeId = nodeId ?? activeNodeId;
 
@@ -142,7 +144,7 @@ export const flowAIChat: StateCreator<
           ...chainSummaryHistory(messages),
           model,
           provider,
-          stream: false
+          stream: false,
         },
       });
       setNodeMeta(targetNodeId, {
@@ -153,121 +155,22 @@ export const flowAIChat: StateCreator<
       console.error('Failed to generate history summary:', e);
     }
 
-    set({ isGeneratingSummary: false })
-  },
-  sendMessage: async ({ message }) => {
-    const {
-      activeNodeId, activeSessionId, activeTopicId, getNodeMeta,
-      internal_coreProcessMessage, internal_createMessage,
-      // internal_toggleMessageLoading,
-      // internal_createTmpMessage,
-    } = get()
-
-    // if message is empty, then stop
-    if (!message) return;
-
-    if (!activeNodeId) {
-      console.warn('No active node, abort sending.');
-      return
-    }
-
-    // Set loading
-    set({ ...get(), isCreateingMessage: true });
-
-    // Get node meta
-    const nodeMeta = get().getNodeMeta(activeNodeId);
-    if (!nodeMeta) {
-      console.warn('Node meta not found, abort sending.');
-      set({ ...get(), isCreateingMessage: false });
-      return;
-    }
-
-    let newMessage: CreateMessageParams = {
-      content: message,
-      role: 'user',
-      sessionId: activeSessionId,
-      topicId: activeTopicId,
-    }
-
-    let tempMessageId: string | undefined = undefined;
-
-    // const tempMessageId = await internal_createTmpMessage(newMessage);
-    // internal_toggleMessageLoading(true, tempMessageId);
-
-    // if (!tempMessageId) {
-    //   console.warn('Failed to create message, abort sending.');
-    //   set({ ...get(), isCreateingMessage: false });
-    //   return;
-    // }
-
-    const id = await internal_createMessage(newMessage, {
-      tempMessageId,
-    });
-
-    if (!id) {
-      set({ isCreateingMessage: false });
-      // Failed to create message
-      console.warn('Failed to create assistant message');
-      return;
-    }
-
-    // TODO: Get the graph messages from previous node
-    const graphMessages: ChatMessage[] = get().internal_buildGraphContext()
-
-    // console.log('Graph messages:', graphMessages);
-
-    // Get the messages from current node
-    const currentMessages = getNodeMeta(activeNodeId)?.messages || [];
-
-    const allMessages = [...graphMessages, ...currentMessages];
-
-    await internal_coreProcessMessage(
-      allMessages, id, {}
-    );
-
-    set({ ...get(), isCreateingMessage: false });
-
-  },
-  delAndRegenerateMessage: async (id) => {
-    get().internal_resendMessage(id);
-    get().deleteMessage(id);
-  },
-  regenerateMessage: async (id) => {
-    await get().internal_resendMessage(id);
-  },
-  setInputMessage: (message) => {
-    set({
-      ...get(),
-      inputMessage: message,
-    });
-  },
-  stopGenerateMessage: () => {
-    const { chatLoadingIdsAbortController, internal_toggleChatLoading } = get();
-
-    if (!chatLoadingIdsAbortController) return;
-
-    chatLoadingIdsAbortController.abort(MESSAGE_CANCEL_FLAT);
-
-    internal_toggleChatLoading(false, undefined, n('stopGenerateMessage') as string);
+    set({ isGeneratingSummary: false });
   },
   internal_coreProcessMessage: async (messages: ChatMessage[], userMessageId: string) => {
-    const {
-      activeSessionId,
-      activeTopicId,
-      internal_createMessage,
-      internal_fetchAIResponse,
-    } = get();
+    const { activeSessionId, activeTopicId, internal_createMessage, internal_fetchAIResponse } =
+      get();
 
     const agentStoreState = getAgentStoreState();
     const { model, provider } = agentSelectors.currentAgentConfig(agentStoreState);
 
     const assistantMessage: CreateMessageParams = {
-      role: 'assistant',
       content: LOADING_FLAT,
       fromModel: model,
       fromProvider: provider,
-
       parentId: userMessageId,
+
+      role: 'assistant',
       sessionId: activeSessionId,
       topicId: activeTopicId, // if there is activeTopicId，then add it to topicId
     };
@@ -277,9 +180,9 @@ export const flowAIChat: StateCreator<
     if (!assistantId) return;
 
     // 4. fetch the AI response
-    const { isFunctionCall, content } = await internal_fetchAIResponse({
-      messages,
+    await internal_fetchAIResponse({
       messageId: assistantId,
+      messages,
       model,
       provider: provider!,
     });
@@ -331,13 +234,6 @@ export const flowAIChat: StateCreator<
     //   : undefined;
     await chatService.createAssistantMessageStream({
       abortController,
-      params: {
-        messages,
-        model,
-        provider,
-        ...agentConfig.params,
-        plugins: agentConfig.plugins,
-      },
       // historySummary: historySummary?.content,
       // trace: {
       //   traceId: params?.traceId,
@@ -350,14 +246,12 @@ export const flowAIChat: StateCreator<
         await messageService.updateMessageError(messageId, error);
         await refreshMessages();
       },
-      onFinish: async (
-        content,
-        { reasoning, usage, speed },
-      ) => {
+
+      onFinish: async (content, { reasoning, usage, speed }) => {
         // update the content after fetch result
         await internal_updateMessageContent(messageId, content, {
-          reasoning: !!reasoning ? { ...reasoning, duration } : undefined,
           metadata: speed ? { ...usage, ...speed } : usage,
+          reasoning: !!reasoning ? { ...reasoning, duration } : undefined,
         });
       },
       onMessageHandle: async (chunk) => {
@@ -432,19 +326,22 @@ export const flowAIChat: StateCreator<
             });
             break;
           }
-
         }
+      },
+      params: {
+        messages,
+        model,
+        provider,
+        ...agentConfig.params,
+        plugins: agentConfig.plugins,
       },
     });
 
     internal_toggleChatLoading(false, messageId, n('generateMessage(end)') as string);
 
-    return { isFunctionCall, traceId: msgTraceId, content: output };
+    return { content: output, isFunctionCall, traceId: msgTraceId };
   },
-  internal_resendMessage: async (
-    messageId,
-    { traceId, messages: outChats, threadId: outThreadId, inPortalThread } = {},
-  ) => {
+  internal_resendMessage: async (messageId, { messages: outChats } = {}) => {
     // 1. 构造所有相关的历史记录
     const chats = outChats ?? canvasSelectors.getActiveNodeMessages(get());
 
@@ -480,15 +377,107 @@ export const flowAIChat: StateCreator<
 
     await internal_coreProcessMessage(contextMessages, latestMsg.id);
   },
-
-  refreshMessages: async () => {
-    const { activeSessionId, activeTopicId } = get()
-    await mutate([SWR_USE_FETCH_MESSAGES, activeSessionId, activeTopicId]);
-  },
   internal_toggleChatLoading: (loading, id, action) => {
     return get().internal_toggleLoadingArrays('chatLoadingIds', loading, id, action);
   },
   internal_toggleChatReasoning: (loading, id, action) => {
     return get().internal_toggleLoadingArrays('reasoningLoadingIds', loading, id, action);
   },
-})
+  refreshMessages: async () => {
+    const { activeSessionId, activeTopicId } = get();
+    await mutate([SWR_USE_FETCH_MESSAGES, activeSessionId, activeTopicId]);
+  },
+  regenerateMessage: async (id) => {
+    await get().internal_resendMessage(id);
+  },
+
+  sendMessage: async ({ message }) => {
+    const {
+      activeNodeId,
+      activeSessionId,
+      activeTopicId,
+      getNodeMeta,
+      internal_coreProcessMessage,
+      internal_createMessage,
+      // internal_toggleMessageLoading,
+      // internal_createTmpMessage,
+    } = get();
+
+    // if message is empty, then stop
+    if (!message) return;
+
+    if (!activeNodeId) {
+      console.warn('No active node, abort sending.');
+      return;
+    }
+
+    // Set loading
+    set({ ...get(), isCreateingMessage: true });
+
+    // Get node meta
+    const nodeMeta = get().getNodeMeta(activeNodeId);
+    if (!nodeMeta) {
+      console.warn('Node meta not found, abort sending.');
+      set({ ...get(), isCreateingMessage: false });
+      return;
+    }
+
+    let newMessage: CreateMessageParams = {
+      content: message,
+      role: 'user',
+      sessionId: activeSessionId,
+      topicId: activeTopicId,
+    };
+
+    let tempMessageId: string | undefined = undefined;
+
+    // const tempMessageId = await internal_createTmpMessage(newMessage);
+    // internal_toggleMessageLoading(true, tempMessageId);
+
+    // if (!tempMessageId) {
+    //   console.warn('Failed to create message, abort sending.');
+    //   set({ ...get(), isCreateingMessage: false });
+    //   return;
+    // }
+
+    const id = await internal_createMessage(newMessage, {
+      tempMessageId,
+    });
+
+    if (!id) {
+      set({ isCreateingMessage: false });
+      // Failed to create message
+      console.warn('Failed to create assistant message');
+      return;
+    }
+
+    // TODO: Get the graph messages from previous node
+    const graphMessages: ChatMessage[] = get().internal_buildGraphContext();
+
+    // console.log('Graph messages:', graphMessages);
+
+    // Get the messages from current node
+    const currentMessages = getNodeMeta(activeNodeId)?.messages || [];
+
+    const allMessages = [...graphMessages, ...currentMessages];
+
+    await internal_coreProcessMessage(allMessages, id, {});
+
+    set({ ...get(), isCreateingMessage: false });
+  },
+  setInputMessage: (message) => {
+    set({
+      ...get(),
+      inputMessage: message,
+    });
+  },
+  stopGenerateMessage: () => {
+    const { chatLoadingIdsAbortController, internal_toggleChatLoading } = get();
+
+    if (!chatLoadingIdsAbortController) return;
+
+    chatLoadingIdsAbortController.abort(MESSAGE_CANCEL_FLAT);
+
+    internal_toggleChatLoading(false, undefined, n('stopGenerateMessage') as string);
+  },
+});

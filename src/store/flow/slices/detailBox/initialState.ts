@@ -1,26 +1,23 @@
-
-
 export interface FlowDetailBoxState {
-    detailBoxVisible: boolean;
+  activeNodeId?: string;
 
-    activeNodeId?: string;
+  detailBoxVisible: boolean;
 
-    isCreatingNode?: boolean;
-    isCreatingMessage?: boolean;
+  inputMessage: string;
+  inputSummary: string;
 
-    isDetailBoxInitialized?: boolean;
+  isCreatingMessage?: boolean;
 
-    inputMessage: string;
+  isCreatingNode?: boolean;
 
-    inputSummary: string;
-
+  isDetailBoxInitialized?: boolean;
 }
 
 export const initialFlowDetailBoxState: FlowDetailBoxState = {
-    detailBoxVisible: false,
-    activeNodeId: undefined,
-    isCreatingNode: false,
-    isCreatingMessage: false,
-    inputMessage: '',
-    inputSummary: '',
+  activeNodeId: undefined,
+  detailBoxVisible: false,
+  inputMessage: '',
+  inputSummary: '',
+  isCreatingMessage: false,
+  isCreatingNode: false,
 };

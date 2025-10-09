@@ -8,6 +8,7 @@ import { PortalFile } from './initialState';
 export interface ChatPortalAction {
   closeArtifact: () => void;
   closeFilePreview: () => void;
+  closeFlowDetailBox: () => void;
   closeMessageDetail: () => void;
   closeToolUI: () => void;
   openArtifact: (artifact: PortalArtifact) => void;
@@ -15,8 +16,6 @@ export interface ChatPortalAction {
   openMessageDetail: (messageId: string) => void;
   openToolUI: (messageId: string, identifier: string) => void;
   togglePortal: (open?: boolean) => void;
-  openFlowDetailBox: (nodeId: string) => void;
-  closeFlowDetailBox: () => void;
 }
 
 export const chatPortalSlice: StateCreator<
@@ -32,6 +31,7 @@ export const chatPortalSlice: StateCreator<
   closeFilePreview: () => {
     set({ portalFile: undefined }, false, 'closeFilePreview');
   },
+  closeFlowDetailBox: () => {},
   closeMessageDetail: () => {
     set({ portalMessageDetail: undefined }, false, 'openMessageDetail');
   },
@@ -43,11 +43,17 @@ export const chatPortalSlice: StateCreator<
 
     set({ portalArtifact: artifact }, false, 'openArtifact');
   },
+
   openFilePreview: (portal) => {
     get().togglePortal(true);
 
     set({ portalFile: portal }, false, 'openFilePreview');
   },
+
+  // updateArtifactContent: (content) => {
+  //   set({ portalArtifact: content }, false, 'updateArtifactContent');
+  // },
+
   openMessageDetail: (messageId) => {
     get().togglePortal(true);
 
@@ -63,14 +69,4 @@ export const chatPortalSlice: StateCreator<
     const showInspector = open === undefined ? !get().showPortal : open;
     set({ showPortal: showInspector }, false, 'toggleInspector');
   },
-  // updateArtifactContent: (content) => {
-  //   set({ portalArtifact: content }, false, 'updateArtifactContent');
-  // },
-
-  openFlowDetailBox: (nodeId: string) => {
-    get().togglePortal(true);
-  },
-  closeFlowDetailBox: () => {
-    
-  }
 });

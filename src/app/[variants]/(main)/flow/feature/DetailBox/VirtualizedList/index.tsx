@@ -4,14 +4,16 @@ import { ReactNode, forwardRef, memo, useCallback, useEffect, useRef, useState }
 import { Flexbox } from 'react-layout-kit';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 
-import WideScreenContainer from '@/features/Conversation/components/WideScreenContainer';
-import { useChatStore } from '@/store/chat';
-import { chatSelectors } from '@/store/chat/selectors';
-
 import AutoScroll from '@/features/Conversation/components/AutoScroll';
 import SkeletonList from '@/features/Conversation/components/SkeletonList';
-import { VirtuosoContext, resetVirtuosoVisibleItems, setVirtuosoGlobalRef } from './VirtuosoContext';
+import WideScreenContainer from '@/features/Conversation/components/WideScreenContainer';
 import { canvasSelectors, useFlowStore } from '@/store/flow';
+
+import {
+  VirtuosoContext,
+  resetVirtuosoVisibleItems,
+  setVirtuosoGlobalRef,
+} from './VirtuosoContext';
 
 interface VirtualizedListProps {
   dataSource: string[];
@@ -34,8 +36,8 @@ const VirtualizedList = memo<VirtualizedListProps>(({ mobile, dataSource, itemCo
   const [isScrolling, setIsScrolling] = useState(false);
 
   // const [
-  // id, 
-  // isFirstLoading, 
+  // id,
+  // isFirstLoading,
   // isCurrentChatLoaded
   // ] = useChatStore((s) => [
   // chatSelectors.currentChatKey(s),
@@ -43,14 +45,11 @@ const VirtualizedList = memo<VirtualizedListProps>(({ mobile, dataSource, itemCo
   // chatSelectors.isCurrentChatLoaded(s),
   // ]);
 
-  const [
-    id,
-    isFirstLoading,
-  ] = useFlowStore((s) => [
+  const [id, isFirstLoading] = useFlowStore((s) => [
     // TODO: should have a unique ID
     `${s.activeSessionId}${s.activeTopicId}`,
     canvasSelectors.currentChatLoadingState(s),
-  ])
+  ]);
 
   const getFollowOutput = useCallback(() => {
     const newFollowOutput = dataSource.length > prevDataLengthRef.current ? 'auto' : false;

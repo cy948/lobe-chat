@@ -24,6 +24,7 @@ export default function FlowCanvas() {
         addEdge,
         setNodes,
         setEdges,
+        delNode,
     ] = useFlowStore(s => [
         s.edges,
         s.nodes,
@@ -31,11 +32,17 @@ export default function FlowCanvas() {
         s.addEdge,
         s.setNodes,
         s.setEdges,
+        s.delNode,
     ]);
 
     const onNodesChange = useCallback((changes: NodeChange[]) => setNodes(changes), []);
     const onEdgesChange = useCallback((changes: EdgeChange[]) => setEdges(changes), []);
     const onConnect = useCallback((params: any) => addEdge(params), []);
+    // const onNodesDelete = useCallback((nodes: Node[]) => {
+    //     if (deleted && deleted.length > 0) {
+    //         delNode(deleted[0].id);
+    //     }
+    // }, [])
 
     // 3. 定义 onPaneDoubleClick 回调函数
     const { screenToFlowPosition } = useReactFlow();
@@ -64,6 +71,8 @@ export default function FlowCanvas() {
             onPaneClick={onPaneClick}
             fitView
             nodeTypes={nodeTypes}
+            deleteKeyCode={['Delete']}
+            // onNodesDelete={onNodesDelete}
         >
             <Controls />
             <MiniMap />

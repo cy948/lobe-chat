@@ -2,12 +2,12 @@ import {
     Handle,
     Position,
 } from '@xyflow/react';
-import { Card, Dropdown, Typography } from 'antd';
+import { Card, Dropdown, Switch, Typography } from 'antd';
 import { createStyles } from 'antd-style';
 import { ActionIcon, type DropdownProps, Icon, Input, Markdown } from '@lobehub/ui';
 import { DeleteIcon, MoreVerticalIcon } from 'lucide-react';
 
-import { useFlowStore } from '@/store/flow';
+import { canvasSelectors, useFlowStore } from '@/store/flow';
 import { Flexbox } from 'react-layout-kit';
 import { useState } from 'react';
 
@@ -43,14 +43,29 @@ const useStyles = createStyles(() => {
 
 export default function CanvasNode({ id }: CanvasNodeProps) {
     const { styles } = useStyles();
-    const [delNode, openInDetailBox, updateSummaryTitle
-    ] = useFlowStore(s => [s.delNode, s.openInDetailBox, s.updateSummaryTitle])
+    const [
+        delNode,
+        openInDetailBox,
+        updateSummaryTitle,
+        useSummary,
+        setActiveNodeUseSummary,
+    ] = useFlowStore(s => [
+        s.delNode,
+        s.openInDetailBox,
+        s.updateSummaryTitle,
+        canvasSelectors.getActiveNodeMeta(s)?.useSummary,
+        canvasSelectors.setActiveNodeUseSummary(s),
+    ])
 
     const [editTitle, setEditTitle] = useState(false);
 
     const nodeMeta = useFlowStore(s => s.getNodeMeta(id));
 
-    const [value, setValue] = useState();
+    const body = nodeMeta?.useSummary ?
+        nodeMeta.summary :
+        (nodeMeta?.messages?.[nodeMeta.messages.length - 1]?.content || 'no content yet, try talk to me!');
+
+    const [value, setValue] = useState(nodeMeta?.title || 'Untitled');
 
     const menu: DropdownProps['menu'] = {
         items: [
@@ -82,7 +97,7 @@ export default function CanvasNode({ id }: CanvasNodeProps) {
         <Card
             className={styles.flowNode}
             title={
-                <Flexbox align='center'>
+                <Flexbox align='center' horizontal>
                     {
                         editTitle ? (
                             <Input onPressEnter={handleSubmit} value={value} defaultValue={nodeMeta?.title || 'Untitled'} onChange={e => setValue(e.target.value)} />
@@ -90,6 +105,13 @@ export default function CanvasNode({ id }: CanvasNodeProps) {
                             <Typography.Title level={5} onDoubleClick={() => setEditTitle(true)}>{nodeMeta?.title || 'Untitled'}</Typography.Title>
                         )
                     }
+                    <Flexbox style={{ marginLeft: 'auto' }}>
+                        <Switch
+                            checkedChildren={'使用总结'}
+                            unCheckedChildren={'使用聊天历史'}
+                            value={useSummary} onChange={(checked) => setActiveNodeUseSummary(checked)}
+                        />
+                    </Flexbox>
                 </Flexbox>
             }
             extra={
@@ -104,7 +126,7 @@ export default function CanvasNode({ id }: CanvasNodeProps) {
         >
             <Handle className={styles.handle} type="target" position={Position.Left} />
             <Markdown className={styles.mdNode}>
-                {nodeMeta?.summary || 'No summary yet. Generate or add one.'}
+                {body}
             </Markdown>
             <Handle className={styles.handle} type="source" position={Position.Right} />
         </Card>

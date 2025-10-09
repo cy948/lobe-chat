@@ -78,7 +78,7 @@ export const flowCanvas: StateCreator<
             messages: [],
             title: '',
             summary: '',
-            useSummary: true,
+            useSummary: false,
         });
     },
     delNode: async (id) => {

@@ -344,7 +344,12 @@ export const flowMessage: StateCreator<
             }
         }
 
-        // Sort by distance (farther first), then by creation time
+        // TODO: add graph description
+        // Candidates:
+        // - https://aclanthology.org/2025.acl-long.321.pdf
+
+
+        // Sort by distance as BFS (farther first), then by creation time
         return messagesWithDistance
             .sort((a, b) => {
                 // Primary sort: by distance (descending - farther nodes first)

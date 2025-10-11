@@ -10,9 +10,10 @@ export enum SidebarTabKey {
   Chat = 'chat',
   Discover = 'discover',
   Files = 'files',
+  Flow = 'flow',
   Image = 'image',
   Me = 'me',
-  Setting = 'settings',
+  Setting = 'settings'
 }
 
 export enum ChatSettingsTabs {

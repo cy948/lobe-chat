@@ -7,20 +7,20 @@ import {
   applyNodeChanges,
   addEdge as valAddEdge,
 } from '@xyflow/react';
-import { nanoid } from 'nanoid';
 import { StateCreator } from 'zustand/vanilla';
 
 import { messageService } from '@/services/message';
 import { topicService } from '@/services/topic';
 import { FlowStore } from '@/store/flow/store';
-import { ChatMessage } from '@/types/message';
+import { SWRResponse } from 'swr';
+import { useClientDataSWR } from '@/libs/swr';
+import { flowService } from '@/services/flow';
+import { FlowNodeMeta, FlowState } from '@/types/flow';
 
-export interface FlowNodeMeta {
-  messages: ChatMessage[];
-  summary: string;
-  title: string;
-  useSummary: boolean;
-}
+const SWR_USE_FETCH_NODE_METAS = 'flow-node-metas';
+
+
+
 export interface FlowCanvasAction {
   addEdge: (edge: EdgeType) => void;
 
@@ -34,10 +34,13 @@ export interface FlowCanvasAction {
   setEdges: (edges: EdgeChange[]) => void;
 
   setNodeMeta: (nodeId: string, meta: Partial<FlowNodeMeta>) => void;
-  setNodes: (nodes: NodeChange[]) => void;
-}
+  setNodes: (nodes: NodeChange[]) => Promise<void>;
 
-const generateId = () => `node_${nanoid()}`;
+  useFetchCanvasState: (
+    enable: boolean,
+    topicId?: string,
+  ) => SWRResponse<FlowState | undefined>;
+}
 
 export const flowCanvas: StateCreator<
   FlowStore,
@@ -54,36 +57,51 @@ export const flowCanvas: StateCreator<
   },
   addNode: async (node) => {
     const { nodes, activeTopicId, activeSessionId } = get();
-    const newNode: NodeType = {
-      data: node.data || { description: '', label: '聊聊你的想法' },
-      id: node.id || generateId(),
-      position: node.position || { x: 0, y: 0 },
-      type: node.type || 'custom',
-    };
-    set({
-      ...get(),
-      nodes: [...nodes, newNode],
-    });
+
+    let topicId = activeTopicId;
 
     // Check if topic exists
     // If not, create a new topic
-    if (!activeTopicId) {
+    if (!topicId) {
       console.log('No active topic, try to create one first...');
       // Create a new topic
-      const topicId = await topicService.createTopic({
+      topicId = await topicService.createTopic({
         sessionId: activeSessionId,
         title: 'Flow Topic',
       });
+      // Create a new flow session
+      await flowService.createCanvasState(topicId);
+
       set({ activeTopicId: topicId });
     }
 
+    console.log('Adding node to topic:', topicId);
+
+    // Try create node
     // Create Node meta
-    get().setNodeMeta(newNode.id, {
-      messages: [],
+    const newNodeMetaItem = await flowService.createNodeMeta(topicId, {
       summary: '',
       title: '',
       useSummary: false,
+    })
+
+    const newNode: NodeType = {
+      data: node.data || { description: '', label: '聊聊你的想法' },
+      id: newNodeMetaItem.id,
+      position: node.position || { x: 0, y: 0 },
+      type: node.type || 'custom',
+    };
+
+    const newNodes = [...nodes, newNode];
+    set({
+      ...get(),
+      nodes: newNodes,
     });
+
+    get().setNodeMeta(newNode.id, newNodeMetaItem.metadata as FlowNodeMeta);
+
+    // Update canvas state in backend
+    await flowService.updateCanvasState(topicId, { nodes: newNodes });
   },
   delNode: async (id) => {
     const { nodes, edges } = get();
@@ -98,8 +116,8 @@ export const flowCanvas: StateCreator<
     try {
       // Clean messages (should use db cascade delete?
       const nodeMeta = get().getNodeMeta(id);
-      if (!nodeMeta || nodeMeta.messages.length === 0) return;
-      await messageService.removeMessages(nodeMeta.messages.map((m) => m.id!));
+      // Try delete node meta
+      await flowService.removeNodeMeta(id);
     } catch (error) {
       console.error('Failed to delete messages for node', id, error);
     }
@@ -166,11 +184,40 @@ export const flowCanvas: StateCreator<
     });
   },
 
-  setNodes: (changes) => {
-    const { nodes: currentNodes } = get();
+  setNodes: async (changes) => {
+    const { activeTopicId, nodes: currentNodes } = get();
+    if (!activeTopicId) {
+      console.warn('No active topic, can not update nodes');
+      return;
+    }
+    const newNodes = applyNodeChanges(changes, currentNodes);
     set({
       ...get(),
-      nodes: applyNodeChanges(changes, currentNodes),
+      nodes: newNodes,
     });
+    await flowService.updateCanvasState(activeTopicId, { nodes: newNodes });
   },
+
+  useFetchCanvasState: (enable, topicId) =>
+    useClientDataSWR<FlowState | undefined>(
+      enable ? [SWR_USE_FETCH_NODE_METAS, topicId] : null,
+      async ([, topicId]: [string, string | undefined]) =>
+        flowService.getCanvasState(topicId),
+      {
+        onSuccess: (flowState) => {
+          console.log(flowState)
+          // const nextMap: Record<string, FlowNodeMeta> = metas.reduce((acc, meta) => {
+          //   acc[meta] = meta;
+          //   return acc;
+          // }, {} as Record<string, FlowNodeMeta>);
+
+          // if (get().nodeMetaInit && isEqual(nextMap, get().nodeMetaMap)) return;
+
+          // set({
+          //   nodeMetaInit: true,
+          //   nodeMetaMap: nextMap,
+          // })
+        }
+      }
+    )
 });

@@ -1,0 +1,10 @@
+
+import { ClientService } from './client';
+// import { ServerService } from './server';
+
+// export const messageService =
+//   process.env.NEXT_PUBLIC_SERVICE_MODE === 'server' || isDesktop
+//     ? new ServerService()
+//     : new ClientService();
+
+export const flowService = new ClientService();

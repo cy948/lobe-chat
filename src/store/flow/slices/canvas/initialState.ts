@@ -1,6 +1,6 @@
 import type { Edge as EdgeType, Node as NodeType } from '@xyflow/react';
 
-import type { FlowNodeMeta } from './action';
+import type { FlowNodeMeta } from '@/types/flow';
 
 export interface FlowCanvasState {
   activeSessionId: string;
@@ -22,6 +22,7 @@ export interface FlowCanvasState {
   loadingTopic: boolean;
   nodeDetail?: FlowNodeMeta;
 
+  nodeMetaInit?: boolean;
   /**
    * @description NodeId 与 messageGroup 映射
    */

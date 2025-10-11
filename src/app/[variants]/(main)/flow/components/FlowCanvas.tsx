@@ -15,10 +15,14 @@ import { useCallback } from 'react';
 import { useFlowStore } from '@/store/flow';
 
 import CustomNode from './ChatNode';
+import { useFetchFlowState } from '@/hooks/useFetchFlow';
 
 const nodeTypes = { custom: CustomNode };
 
 export default function FlowCanvas() {
+
+  useFetchFlowState();
+
   const [edges, nodes, addNode, addEdge, setNodes, setEdges] = useFlowStore((s) => [
     s.edges,
     s.nodes,
@@ -28,7 +32,7 @@ export default function FlowCanvas() {
     s.setEdges,
   ]);
 
-  const onNodesChange = useCallback((changes: NodeChange[]) => setNodes(changes), []);
+  const onNodesChange = useCallback(async (changes: NodeChange[]) => await setNodes(changes), []);
   const onEdgesChange = useCallback((changes: EdgeChange[]) => setEdges(changes), []);
   const onConnect = useCallback((params: any) => addEdge(params), []);
   // const onNodesDelete = useCallback((nodes: Node[]) => {

@@ -6,6 +6,7 @@ import { FlowState, FlowNodeMeta } from '@/types/flow';
 import { FlowStateModel, FlowMetaDataModel } from '@/database/models/flow';
 import { TopicModel } from '@/database/models/topic';
 import { FlowNodeMetaItem, FlowStateItem } from '@/database/schemas';
+import { MessageModel } from '@/database/models/message';
 
 export class ClientService extends BaseClientService implements IFlowService {
 
@@ -19,6 +20,10 @@ export class ClientService extends BaseClientService implements IFlowService {
 
     private get topicModel(): TopicModel {
         return new TopicModel(clientDB as any, this.userId);
+    }
+
+    private get messageModel(): MessageModel {
+        return new MessageModel(clientDB as any, this.userId);
     }
 
     constructor(userId?: string) {
@@ -75,5 +80,15 @@ export class ClientService extends BaseClientService implements IFlowService {
             nodes: flowState?.metadata?.nodes || [],
             nodeMetas: flowState?.nodeMeta || undefined,
         } as FlowState : undefined;
+    }
+
+    async getFlowState(stateId?: string) {
+        if (!stateId) return
+
+        const flowState = await this.flowStateModel.findById(stateId)
+        if (!flowState) return
+        const messages = await this.messageModel.query({
+            topicId: flowState.topicId,
+        })
     }
 }

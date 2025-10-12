@@ -105,6 +105,7 @@ export const flowMessage: StateCreator<
     get().internal_dispatchMessage({ ids, type: 'deleteMessages' });
     await get().refreshMessages();
   },
+
   internal_buildGraphContext() {
     const { activeNodeId, edges, getNodeMeta } = get();
     if (!activeNodeId) {
@@ -306,6 +307,9 @@ export const flowMessage: StateCreator<
             updatedAt: Date.now(),
           } as ChatMessage,
         ], // Add a placeholder message],
+        messageIds: [
+          ...nodeMeta.messageIds, newMsgId
+        ]
       });
       internal_toggleMessageLoading(false, tempId);
       return newMsgId;

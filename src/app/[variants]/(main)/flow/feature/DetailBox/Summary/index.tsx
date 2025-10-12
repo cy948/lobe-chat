@@ -1,4 +1,4 @@
-import { ActionIcon, Button, Collapse, CollapseProps } from '@lobehub/ui';
+import { ActionIcon, Button, Collapse, CollapseProps, Tag } from '@lobehub/ui';
 import { Switch } from 'antd';
 import { RotateCcwIcon, SettingsIcon } from 'lucide-react';
 import { Flexbox } from 'react-layout-kit';
@@ -8,13 +8,19 @@ import { canvasSelectors, useFlowStore } from '@/store/flow';
 import SummaryDetail from './SummaryDetail';
 
 export default function NodeSummary() {
-  const [isGeneratingSummary, generateHistorySummary, useSummary, setActiveNodeUseSummary] =
-    useFlowStore((s) => [
-      s.isGeneratingSummary,
-      s.generateHistorySummary,
-      canvasSelectors.getActiveNodeMeta(s)?.useSummary,
-      canvasSelectors.setActiveNodeUseSummary(s),
-    ]);
+  const [
+    isGeneratingSummary,
+    generateHistorySummary,
+    useSummary,
+    setActiveNodeUseSummary,
+    nodeMeta,
+  ] = useFlowStore((s) => [
+    s.isGeneratingSummary,
+    s.generateHistorySummary,
+    canvasSelectors.getActiveNodeMeta(s)?.useSummary,
+    canvasSelectors.setActiveNodeUseSummary(s),
+    canvasSelectors.getActiveNodeMeta(s),
+  ]);
 
   const generateSummary = async () => {
     if (isGeneratingSummary) return;
@@ -28,6 +34,7 @@ export default function NodeSummary() {
       extra: (
         <Flexbox gap={16} horizontal>
           <Flexbox align="center" gap={8} horizontal>
+            {!nodeMeta?.isLatestSummary && <Tag color="warning">Summary Outdated</Tag>}
             Use Summary
             <Switch onChange={(checked) => setActiveNodeUseSummary(checked)} value={useSummary} />
           </Flexbox>

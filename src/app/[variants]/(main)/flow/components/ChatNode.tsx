@@ -2,7 +2,7 @@ import { ActionIcon, type DropdownProps, Icon, Input, Markdown } from '@lobehub/
 import { Handle, Position } from '@xyflow/react';
 import { Card, Dropdown, Switch, Typography } from 'antd';
 import { createStyles } from 'antd-style';
-import { DeleteIcon, MoreVerticalIcon } from 'lucide-react';
+import { DeleteIcon, MoreVerticalIcon, TimerIcon, TimerOffIcon } from 'lucide-react';
 import { useState } from 'react';
 import { Flexbox } from 'react-layout-kit';
 
@@ -102,6 +102,9 @@ export default function CanvasNode({ id }: CanvasNodeProps) {
               onChange={(e) => setValue(e.target.value)}
               onPressEnter={handleSubmit}
               value={value}
+              style={{
+                minWidth: 100,
+              }}
             />
           ) : (
             <Typography.Title level={5} onDoubleClick={() => setEditTitle(true)}>
@@ -109,9 +112,14 @@ export default function CanvasNode({ id }: CanvasNodeProps) {
             </Typography.Title>
           )}
           <Flexbox align="center" horizontal style={{ marginLeft: 'auto' }}>
-            <Switch
+            {/* <Switch
               onChange={(checked) => setNodeMeta(id, { useSummary: checked })}
               value={nodeMeta?.useSummary}
+            /> */}
+            <ActionIcon 
+              icon={nodeMeta?.useSummary ? TimerIcon : TimerOffIcon} 
+              onClick={() => setNodeMeta(id, { useSummary: !nodeMeta?.useSummary })}
+              title={nodeMeta?.useSummary ? 'Using summary as context' : 'Using messages context'}
             />
           </Flexbox>
         </Flexbox>

@@ -399,6 +399,7 @@ export const flowAIChat: StateCreator<
       getNodeMeta,
       internal_coreProcessMessage,
       internal_createMessage,
+      setNodeMeta,
       // internal_toggleMessageLoading,
       // internal_createTmpMessage,
     } = get();
@@ -415,7 +416,7 @@ export const flowAIChat: StateCreator<
     set({ ...get(), isCreateingMessage: true });
 
     // Get node meta
-    const nodeMeta = get().getNodeMeta(activeNodeId);
+    const nodeMeta = getNodeMeta(activeNodeId);
     if (!nodeMeta) {
       console.warn('Node meta not found, abort sending.');
       set({ ...get(), isCreateingMessage: false });
@@ -457,9 +458,15 @@ export const flowAIChat: StateCreator<
     // console.log('Graph messages:', graphMessages);
 
     // Get the messages from current node
-    const currentMessages = getNodeMeta(activeNodeId)?.messages || [];
+    const currentMessages = nodeMeta.messages;
 
     const allMessages = [...graphMessages, ...currentMessages];
+
+    // Reset summary status
+    await setNodeMeta(activeNodeId, {
+      ...nodeMeta,
+      isLatestSummary: false,
+    })
 
     await internal_coreProcessMessage(allMessages, id, {});
 

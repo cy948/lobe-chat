@@ -20,7 +20,11 @@ import { debounce } from 'lodash';
 
 const SWR_USE_FETCH_NODE_METAS = 'flow-node-metas';
 
-
+interface ChildNode {
+  id: string;
+  meta: FlowNodeMeta;
+  distance: number;
+}
 
 export interface FlowCanvasAction {
   addEdge: (edge: EdgeType) => Promise<void>;
@@ -41,6 +45,10 @@ export interface FlowCanvasAction {
     enable: boolean,
     stateId?: string,
   ) => SWRResponse<FlowState | undefined>;
+
+  internal_searchChildNodes: (
+    nodeId: string,
+  ) => { children: ChildNode[]; edges: EdgeType[] };
 }
 
 export const flowCanvas: StateCreator<
@@ -126,7 +134,7 @@ export const flowCanvas: StateCreator<
 
     try {
       // Clean messages (should use db cascade delete?
-      const nodeMeta = get().getNodeMeta(id);
+      // const nodeMeta = get().getNodeMeta(id);
       // Try delete node meta
       await flowService.removeNodeMeta(id);
     } catch (error) {
@@ -233,6 +241,7 @@ export const flowCanvas: StateCreator<
       {
         onSuccess: (flowState) => {
           console.log(flowState)
+
           // const nextMap: Record<string, FlowNodeMeta> = metas.reduce((acc, meta) => {
           //   acc[meta] = meta;
           //   return acc;
@@ -246,7 +255,64 @@ export const flowCanvas: StateCreator<
           // })
         }
       }
-    )
+    ),
+
+  internal_searchChildNodes(nodeId) {
+    // TODO: check implementation
+    const { edges, getNodeMeta } = get();
+
+
+    const parentMap: Map<string, string[]> = edges.reduce((map, edge) => {
+      if (!map.has(edge.target)) map.set(edge.target, []);
+      map.get(edge.target)!.push(edge.source);
+      return map;
+    }, new Map<string, string[]>());
+
+
+    let activedEdges: EdgeType[] = []
+    // BFS to calculate distance from nodeId to all ancestor nodes
+    const distances = new Map<string, number>();
+    const queue: Array<{ distance: number; nodeId: string }> = [
+      { distance: 0, nodeId: nodeId },
+    ];
+    const visited = new Set<string>();
+
+    while (queue.length > 0) {
+      const { nodeId, distance } = queue.shift()!;
+
+      if (visited.has(nodeId)) continue;
+      visited.add(nodeId);
+      distances.set(nodeId, distance);
+
+      // Add parent nodes to queue with incremented distance
+      const parents = parentMap.get(nodeId) || [];
+      for (const parentId of parents) {
+        if (!visited.has(parentId)) {
+          queue.push({ distance: distance + 1, nodeId: parentId });
+          activedEdges.push({
+            id: `${parentId}-${nodeId}`,
+            source: parentId,
+            target: nodeId,
+          });
+        }
+      }
+    }
+
+    // Build ChildNode array from distances (excluding the original nodeId if desired)
+    const result: ChildNode[] = [];
+    for (const [id, distance] of distances.entries()) {
+      if (id === nodeId) continue; // skip the root node itself if needed
+      const meta = getNodeMeta(id);
+      if (meta) {
+        result.push({ id, meta, distance });
+      }
+    }
+    
+    return {
+      edges: activedEdges,
+      children: result 
+    };
+  },
 });
 
 /**

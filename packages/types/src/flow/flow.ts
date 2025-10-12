@@ -8,6 +8,8 @@ export interface FlowNodeMeta {
     summary: string;
     title: string;
     useSummary: boolean;
+    id?: string;
+    isLatestSummary?: boolean;
 }
 
 export interface FlowState {

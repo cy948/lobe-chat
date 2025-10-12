@@ -1,4 +1,8 @@
 import { StateCreator } from 'zustand/vanilla';
+import {
+  type EdgeChange,
+  type Edge as EdgeType,
+} from '@xyflow/react';
 
 import { toggleBooleanList } from '@/store/chat/utils';
 import { FlowStore } from '@/store/flow/store';
@@ -23,10 +27,23 @@ export const flowDetailBox: StateCreator<
     await get().internal_updateMessageContent(id, content);
   },
   openInDetailBox(nodeId) {
+    const { edges, internal_searchChildNodes } = get()
     // Open the detail box for the specified node
     console.log('Opening detail box for node:', nodeId, 'in topicId:', get().activeTopicId);
+    // Set edges to active with internal_search
+    const { edges: activeEdges } = internal_searchChildNodes(nodeId)
+    // TODO: should improve perf
+    const newEdges = edges.map(edge => {
+      if (activeEdges.find(e => e.source === edge.source && e.target === edge.target)) {
+        return { ...edge, animated: true } as EdgeType;
+      }
+      return { ...edge, animated: false } as EdgeType;
+    })
+
+    // console.log('Active edges:', activeEdges, 'New edges:', newEdges);
+
     // TODO: fetch messages then set inited
-    set({ ...get(), activeNodeId: nodeId, detailBoxVisible: true, isDetailBoxInitialized: true });
+    set({ ...get(), activeNodeId: nodeId, detailBoxVisible: true, isDetailBoxInitialized: true, edges: newEdges });
     // TODO: should fetch node meta
     set({ ...get(), messagesInit: true });
   },

@@ -32,14 +32,20 @@ export default function SummaryDetail() {
   const { styles, cx } = useStyles();
   const [editing, setEditing] = useState(false);
   // const [expanded, setExpanded] = useState(false);
-  const expanded = true;
   const { t } = useTranslation('common');
 
-  const [setInputSummary, isGeneratingSummary, summary] = useFlowStore((s) => [
+  const [
+    setInputSummary, 
+    isGeneratingSummary, 
+    summary
+  ] = useFlowStore((s) => [
     s.updateInputSummary,
     s.isGeneratingSummary,
     canvasSelectors.getActiveNodeMeta(s)?.summary,
   ]);
+
+
+  const expanded = true;
 
   const nodeMeta = useFlowStore((s) => canvasSelectors.getActiveNodeMeta(s));
 
@@ -87,7 +93,7 @@ export default function SummaryDetail() {
             setInputSummary(e);
           }}
           onEditingChange={setEditing}
-          placeholder={`${t('settingAgent.prompt.placeholder', { ns: 'setting' })}...`}
+          placeholder={`编写当前结点的总结`}
           styles={{ markdown: { opacity: 0.5, overflow: 'visible' } }}
           text={{
             cancel: t('cancel'),

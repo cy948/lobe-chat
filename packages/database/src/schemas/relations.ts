@@ -8,6 +8,7 @@ import { asyncTasks } from './asyncTask';
 import { chatGroups, chatGroupsAgents } from './chatGroup';
 import { documentChunks, documents } from './document';
 import { files, knowledgeBases } from './file';
+import { flowStates, flowNodeMeta } from './flow';
 import { generationBatches, generationTopics, generations } from './generation';
 import { messageGroups, messages, messagesFiles } from './message';
 import { chunks, unstructuredChunks } from './rag';
@@ -329,3 +330,29 @@ export const messageGroupsRelations = relations(messageGroups, ({ many, one }) =
   childGroups: many(messageGroups),
   messages: many(messages),
 }));
+
+// Flow 相关关系定义
+export const flowStatesRelations = relations(flowStates, ({ one, many }) => ({
+  user: one(users, {
+    fields: [flowStates.userId],
+    references: [users.id],
+  }),
+  topic: one(topics, {
+    fields: [flowStates.topicId],
+    references: [topics.id],
+  }),
+  nodeMeta: many(flowNodeMeta),
+}));
+
+export const flowNodeMetaRelations = relations(flowNodeMeta, ({ one }) => ({
+  user: one(users, {
+    fields: [flowNodeMeta.userId],
+    references: [users.id],
+  }),
+  flowState: one(flowStates, {
+    fields: [flowNodeMeta.flowStateId],
+    references: [flowStates.id],
+  }),
+}));
+
+

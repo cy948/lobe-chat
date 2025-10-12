@@ -8,7 +8,7 @@ import { TopicModel } from '@/database/models/topic';
 import { FlowNodeMetaItem, FlowStateItem } from '@/database/schemas';
 
 export class ClientService extends BaseClientService implements IFlowService {
-    
+
     private get flowStateModel(): FlowStateModel {
         return new FlowStateModel(clientDB as any, this.userId);
     }
@@ -20,26 +20,19 @@ export class ClientService extends BaseClientService implements IFlowService {
     private get topicModel(): TopicModel {
         return new TopicModel(clientDB as any, this.userId);
     }
-    
+
     constructor(userId?: string) {
         super(userId);
     }
 
-    async updateNodeMeta(id: string, meta: Partial<FlowNodeMeta>): Promise<void> {}
+    async updateNodeMeta(id: string, meta: Partial<FlowNodeMeta>): Promise<void> {
+        await this.flowMetaModel.update(id, meta);
+    }
 
-    async createNodeMeta(topicId: string, meta: Partial<FlowNodeMeta>) {
+    async createNodeMeta(stateId: string, meta: Partial<FlowNodeMeta>) {
         // Use meta to avoid unused variable error
-        const topic = await this.topicModel.findById(topicId);
-        if (!topic) {
-            throw new Error('Topic not found');
-        }
-        // Find state
-        const flowState = await this.flowStateModel.findByTopicId(topicId);
-        if (!flowState) {
-            throw new Error('Flow state not found');
-        }
         return await this.flowMetaModel.create({
-            flowStateId: flowState.id,
+            flowStateId: stateId,
             metadata: {
                 messageIds: [],
                 messages: [],
@@ -57,26 +50,30 @@ export class ClientService extends BaseClientService implements IFlowService {
 
     async createCanvasState(topicId: string) {
         // Create 
-        return await this.flowStateModel.create({
+        const state = await this.flowStateModel.create({
             metadata: {
                 edges: [],
                 nodes: [],
             },
             topicId
-        });
+        })
+        return state.id
     }
 
-    updateCanvasState(topicId: string, state: Partial<FlowState>): Promise<FlowState> {}
+    async updateCanvasState(id: string, state: Partial<FlowState>): Promise<string> {
+        // await this.flowStateModel
+        await this.flowStateModel.update(id, state);
+        return id;
+    }
 
-    async getCanvasState(topicId?: string) {
-        if (!topicId) {
-            return;
-        }
+    async getCanvasState(stateId?: string) {
+        if (!stateId) return
         // TODO:
-        const flowState = await this.flowStateModel.findByTopicId(topicId)
-        return {
-            ...flowState?.metadata,
-            nodeMetas: flowState?.nodeMetas || [],
-        } as FlowState;
+        const flowState = await this.flowStateModel.findById(stateId)
+        return flowState ? {
+            edges: flowState?.metadata?.edges || [],
+            nodes: flowState?.metadata?.nodes || [],
+            nodeMetas: flowState?.nodeMeta || undefined,
+        } as FlowState : undefined;
     }
 }

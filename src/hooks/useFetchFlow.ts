@@ -12,13 +12,11 @@ export const useFetchFlowState = () => {
     //     s.useFetchMessages,
     //   ]);
 
-    const [activeTopicId, useFetchCanvasState] = useFlowStore((s) => [
-        s.activeTopicId,
+    const [activeStateId, useFetchCanvasState] = useFlowStore((s) => [
+        s.activeStateId,
         s.useFetchCanvasState,
     ])
 
-    console.log('useFetchFlowState', { isDBInited, activeTopicId });
-
     //   useFetchMessages(isDBInited, sessionId, activeTopicId);
-    useFetchCanvasState(isDBInited, activeTopicId);
+    useFetchCanvasState(isDBInited, activeStateId);
 };

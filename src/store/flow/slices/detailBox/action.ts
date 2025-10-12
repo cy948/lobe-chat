@@ -27,7 +27,7 @@ export const flowDetailBox: StateCreator<
     console.log('Opening detail box for node:', nodeId, 'in topicId:', get().activeTopicId);
     // TODO: fetch messages then set inited
     set({ ...get(), activeNodeId: nodeId, detailBoxVisible: true, isDetailBoxInitialized: true });
-    // TODO: should fetch messages
+    // TODO: should fetch node meta
     set({ ...get(), messagesInit: true });
   },
   setDetailBoxVisible(visible) {

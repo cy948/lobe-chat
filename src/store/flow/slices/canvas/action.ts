@@ -16,13 +16,14 @@ import { SWRResponse } from 'swr';
 import { useClientDataSWR } from '@/libs/swr';
 import { flowService } from '@/services/flow';
 import { FlowNodeMeta, FlowState } from '@/types/flow';
+import { debounce } from 'lodash';
 
 const SWR_USE_FETCH_NODE_METAS = 'flow-node-metas';
 
 
 
 export interface FlowCanvasAction {
-  addEdge: (edge: EdgeType) => void;
+  addEdge: (edge: EdgeType) => Promise<void>;
 
   addNode: (node: Partial<NodeType>) => Promise<void>;
   delNode: (id: string) => Promise<void>;
@@ -31,14 +32,14 @@ export interface FlowCanvasAction {
   loadTopic: () => Promise<void>;
 
   setActiveNode: (id: string) => void;
-  setEdges: (edges: EdgeChange[]) => void;
+  setEdges: (edges: EdgeChange[]) => Promise<void>;
 
-  setNodeMeta: (nodeId: string, meta: Partial<FlowNodeMeta>) => void;
+  setNodeMeta: (nodeId: string, meta: Partial<FlowNodeMeta>) => Promise<void>;
   setNodes: (nodes: NodeChange[]) => Promise<void>;
 
   useFetchCanvasState: (
     enable: boolean,
-    topicId?: string,
+    stateId?: string,
   ) => SWRResponse<FlowState | undefined>;
 }
 
@@ -48,42 +49,52 @@ export const flowCanvas: StateCreator<
   [],
   FlowCanvasAction
 > = (set, get) => ({
-  addEdge: (edge) => {
-    const { edges } = get();
+  addEdge: async (edge) => {
+    const { activeStateId, edges } = get();
+    if (!activeStateId) {
+      console.warn('No active state, can not add edge');
+      return;
+    }
+
+    const newEdges = valAddEdge(edge, edges);
+
     set({
       ...get(),
-      edges: valAddEdge(edge, edges),
+      edges: newEdges,
     });
+
+    await flowService.updateCanvasState(activeStateId, { edges: newEdges });
   },
   addNode: async (node) => {
-    const { nodes, activeTopicId, activeSessionId } = get();
+    const { nodes, activeTopicId, activeSessionId, activeStateId } = get();
 
     let topicId = activeTopicId;
+    let stateId = activeStateId;
 
     // Check if topic exists
     // If not, create a new topic
-    if (!topicId) {
-      console.log('No active topic, try to create one first...');
+    if (!topicId || !stateId) {
+      console.log('No active topic or state, try to create one first...');
       // Create a new topic
       topicId = await topicService.createTopic({
         sessionId: activeSessionId,
         title: 'Flow Topic',
       });
       // Create a new flow session
-      await flowService.createCanvasState(topicId);
+      stateId = await flowService.createCanvasState(topicId);
 
-      set({ activeTopicId: topicId });
+      set({ activeTopicId: topicId, activeStateId: stateId });
     }
 
     console.log('Adding node to topic:', topicId);
 
     // Try create node
     // Create Node meta
-    const newNodeMetaItem = await flowService.createNodeMeta(topicId, {
+    const newNodeMetaItem = await flowService.createNodeMeta(stateId, {
       summary: '',
       title: '',
       useSummary: false,
-    })
+    });
 
     const newNode: NodeType = {
       data: node.data || { description: '', label: '聊聊你的想法' },
@@ -101,7 +112,7 @@ export const flowCanvas: StateCreator<
     get().setNodeMeta(newNode.id, newNodeMetaItem.metadata as FlowNodeMeta);
 
     // Update canvas state in backend
-    await flowService.updateCanvasState(topicId, { nodes: newNodes });
+    await flowService.updateCanvasState(stateId, { nodes: newNodes });
   },
   delNode: async (id) => {
     const { nodes, edges } = get();
@@ -163,15 +174,25 @@ export const flowCanvas: StateCreator<
   setActiveNode(id) {
     set({ ...get(), activeNodeId: id });
   },
-  setEdges: (changes) => {
-    const { edges: currentEdges } = get();
+  setEdges: async (changes) => {
+    const { activeStateId, edges: currentEdges } = get();
+    if (!activeStateId) {
+      console.warn('No active state, can not update edges');
+      return;
+    }
     set({
       ...get(),
       edges: applyEdgeChanges(changes, currentEdges),
     });
+
+    await flowService.updateCanvasState(activeStateId, { edges: get().edges });
   },
-  setNodeMeta(nodeId, meta) {
-    const { nodeMetaMap } = get();
+  setNodeMeta: async (nodeId, meta) => {
+    const { nodeMetaMap, activeStateId } = get();
+    if (!activeStateId) {
+      console.warn('No active state, can not update node meta');
+      return;
+    }
     set({
       ...get(),
       nodeMetaMap: {
@@ -182,12 +203,16 @@ export const flowCanvas: StateCreator<
         },
       },
     });
+
+    debounce(async () => {
+      await flowService.updateNodeMeta(nodeId, meta);
+    }, 1000)();
   },
 
   setNodes: async (changes) => {
-    const { activeTopicId, nodes: currentNodes } = get();
-    if (!activeTopicId) {
-      console.warn('No active topic, can not update nodes');
+    const { activeStateId, nodes: currentNodes } = get();
+    if (!activeStateId) {
+      console.warn('No active state, can not update nodes');
       return;
     }
     const newNodes = applyNodeChanges(changes, currentNodes);
@@ -195,14 +220,16 @@ export const flowCanvas: StateCreator<
       ...get(),
       nodes: newNodes,
     });
-    await flowService.updateCanvasState(activeTopicId, { nodes: newNodes });
+    debounce(async () => {
+      await flowService.updateCanvasState(activeStateId, { nodes: newNodes });
+    }, 1000)();
   },
 
-  useFetchCanvasState: (enable, topicId) =>
+  useFetchCanvasState: (enable, stateId) =>
     useClientDataSWR<FlowState | undefined>(
-      enable ? [SWR_USE_FETCH_NODE_METAS, topicId] : null,
-      async ([, topicId]: [string, string | undefined]) =>
-        flowService.getCanvasState(topicId),
+      enable ? [SWR_USE_FETCH_NODE_METAS, stateId] : null,
+      async ([, stateId]: [string, string | undefined]) =>
+        flowService.getCanvasState(stateId),
       {
         onSuccess: (flowState) => {
           console.log(flowState)
@@ -221,3 +248,11 @@ export const flowCanvas: StateCreator<
       }
     )
 });
+
+/**
+ * TODO(flow): 
+ * - Should refactor the messages store in RDB
+ *   - fetch messages and canvas conf at init
+ *   - only update message if message update
+ *   - if messages being change or rm, update node meta
+ */

@@ -3,6 +3,9 @@ import { and, count, desc, eq, gt, ilike, inArray, isNull, sql } from 'drizzle-o
 import { flowNodeMeta, flowStates, FlowNodeMetaItem, messages } from '../schemas';
 import { LobeChatDatabase } from '../type';
 import { FlowNodeMeta, FlowState } from '@/types/flow';
+import { PartialDeep } from 'type-fest';
+
+import { merge } from '@/utils/merge';
 
 interface CreateFlowStateParams {
     topicId: string;
@@ -21,17 +24,38 @@ export class FlowStateModel {
     findByTopicId = async (topicId: string) => {
         return await this.db.query.flowStates.findFirst({
             where: and(eq(flowStates.topicId, topicId), eq(flowStates.userId, this.userId)),
+            // with: withNodeMeta ? {
+            //     nodeMeta: true,
+            // } : undefined,
+        });
+    }
+
+    findById = async (id: string) => {
+        return await this.db.query.flowStates.findFirst({
+            where: and(eq(flowStates.id, id), eq(flowStates.userId, this.userId)),
             with: {
-                nodeMetas: true,
+                nodeMeta: true,
             }
         });
     }
 
     create = async (flowState: CreateFlowStateParams) => {
-        return await this.db.insert(flowStates).values({
+        const [state] = await this.db.insert(flowStates).values({
             ...flowState,
             userId: this.userId,
         }).returning();
+        return state
+    }
+
+    update = async (id: string, flowState: Partial<FlowState>) => {
+        const prevState = await this.findById(id);
+        if (!prevState) {
+            return
+        }
+        const [state] = await this.db.update(flowStates).set({
+            metadata: merge(prevState.metadata, flowState),
+        }).where(and(eq(flowStates.id, id), eq(flowStates.userId, this.userId))).returning();
+        return state;
     }
 
     delete = async (id: string) => {
@@ -41,7 +65,7 @@ export class FlowStateModel {
 }
 
 interface CreateFlowMetaDataParams {
-    metadata: FlowNodeMeta;
+    metadata: Exclude<FlowNodeMeta, 'messages'>;
     flowStateId: string;
 }
 
@@ -65,6 +89,19 @@ export class FlowMetaDataModel {
             ...flowMeta,
             userId: this.userId,
         }).returning();
+        return meta;
+    }
+
+    update = async (id: string, flowMeta: Partial<Exclude<FlowNodeMeta, 'messages'>>) => {
+        const prevMeta = await this.findById(id);
+        if (!prevMeta) {
+            return;
+        }
+        const [meta] = await this.db.update(flowNodeMeta).set({
+            ...flowMeta,
+            metadata: merge(prevMeta.metadata, flowMeta),
+            userId: this.userId,
+        }).where(and(eq(flowNodeMeta.id, id), eq(flowNodeMeta.userId, this.userId))).returning();
         return meta;
     }
 

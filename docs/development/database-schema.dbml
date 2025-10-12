@@ -965,6 +965,20 @@ table users {
   updated_at "timestamp with time zone" [not null, default: `now()`]
 }
 
+table flow_node_meta {
+  id uuid [pk, not null, default: `gen_random_uuid()`]
+  flow_state_id uuid [not null]
+  user_id text [not null]
+  metadata jsonb [not null]
+}
+
+table flow_states {
+  id uuid [pk, not null, default: `gen_random_uuid()`]
+  topic_id text [not null]
+  user_id text [not null]
+  metadata jsonb
+}
+
 ref: agents_files.file_id > files.id
 
 ref: agents_files.agent_id > agents.id
@@ -1002,6 +1016,14 @@ ref: files.embedding_task_id - async_tasks.id
 ref: files_to_sessions.file_id > files.id
 
 ref: files_to_sessions.session_id > sessions.id
+
+ref: flow_node_meta.user_id - users.id
+
+ref: flow_node_meta.flow_state_id > flow_states.id
+
+ref: flow_states.user_id - users.id
+
+ref: flow_states.topic_id - topics.id
 
 ref: generation_batches.user_id - users.id
 

@@ -33,8 +33,8 @@ export default function FlowCanvas() {
   ]);
 
   const onNodesChange = useCallback(async (changes: NodeChange[]) => await setNodes(changes), []);
-  const onEdgesChange = useCallback((changes: EdgeChange[]) => setEdges(changes), []);
-  const onConnect = useCallback((params: any) => addEdge(params), []);
+  const onEdgesChange = useCallback(async (changes: EdgeChange[]) => await setEdges(changes), []);
+  const onConnect = useCallback(async (params: any) => await addEdge(params), []);
   // const onNodesDelete = useCallback((nodes: Node[]) => {
   //     if (deleted && deleted.length > 0) {
   //         delNode(deleted[0].id);

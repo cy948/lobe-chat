@@ -1,6 +1,6 @@
 import { ActionIcon, type DropdownProps, Icon, Input, Markdown } from '@lobehub/ui';
 import { Handle, Position } from '@xyflow/react';
-import { Card, Dropdown, Switch, Typography } from 'antd';
+import { Card, Dropdown, Typography } from 'antd';
 import { createStyles } from 'antd-style';
 import { DeleteIcon, MoreVerticalIcon, TimerIcon, TimerOffIcon } from 'lucide-react';
 import { useState } from 'react';
@@ -101,10 +101,10 @@ export default function CanvasNode({ id }: CanvasNodeProps) {
               defaultValue={nodeMeta?.title || 'Untitled'}
               onChange={(e) => setValue(e.target.value)}
               onPressEnter={handleSubmit}
-              value={value}
               style={{
                 minWidth: 100,
               }}
+              value={value}
             />
           ) : (
             <Typography.Title level={5} onDoubleClick={() => setEditTitle(true)}>
@@ -116,8 +116,8 @@ export default function CanvasNode({ id }: CanvasNodeProps) {
               onChange={(checked) => setNodeMeta(id, { useSummary: checked })}
               value={nodeMeta?.useSummary}
             /> */}
-            <ActionIcon 
-              icon={nodeMeta?.useSummary ? TimerIcon : TimerOffIcon} 
+            <ActionIcon
+              icon={nodeMeta?.useSummary ? TimerIcon : TimerOffIcon}
               onClick={() => setNodeMeta(id, { useSummary: !nodeMeta?.useSummary })}
               title={nodeMeta?.useSummary ? 'Using summary as context' : 'Using messages context'}
             />

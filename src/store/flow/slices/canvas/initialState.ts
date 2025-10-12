@@ -5,6 +5,11 @@ import type { FlowNodeMeta } from '@/types/flow';
 export interface FlowCanvasState {
   activeSessionId: string;
   /**
+   * @title 当前活动topic的 Canvas State
+   */
+  activeStateId?: string;
+
+  /**
    * ==============
    * 非持久化 state
    * ==============
@@ -13,11 +18,6 @@ export interface FlowCanvasState {
    * @title 当前活动的话题
    */
   activeTopicId?: string;
-
-  /**
-   * @title 当前活动topic的 Canvas State 
-   */
-  activeStateId?: string;
 
   /**
    * @title 图

@@ -21,8 +21,6 @@ import { nanoid } from '@/utils/uuid';
 import { FlowStoreState } from '../../initialState';
 import { canvasSelectors } from '../canvas/selector';
 
-const SWR_USE_FETCH_MESSAGES = 'SWR_USE_FETCH_MESSAGES';
-
 export interface FlowMessageAction {
   copyMessage: (id: string, content: string) => Promise<void>;
   deleteMessage: (id: string) => Promise<void>;
@@ -230,24 +228,28 @@ export const flowMessage: StateCreator<
       .reduce((desc, edge) => {
         const sourceNode = getNodeMeta(edge.source);
         const targetNode = getNodeMeta(edge.target);
+        const sourceName = sourceNode?.title || edge.source;
+        const targetName = targetNode?.title || edge.target;
         if (sourceNode && targetNode) {
-          desc.push(`(${sourceNode.title} -> ${targetNode.title})`);
+          desc.push(`(${sourceName} -> ${targetName})`);
         }
         return desc;
       }, [] as string[])
       .join(', ');
 
     // Add graph description at the end of the context
-    retMsgs.push({
-      content: `The above conversation messages are from a knowledge graph. And the edges are ${graphDesc}`,
-      createdAt: Date.now(),
-      id: `graph_description_${activeNodeId}`,
-      meta: {},
-      role: 'user',
-      updatedAt: Date.now(),
-    });
+    // Only add when there are more than SOME edges
+    if (edges.length > 3)
+      retMsgs.push({
+        content: `The above conversation messages are from a knowledge graph. And the edges are ${graphDesc}`,
+        createdAt: Date.now(),
+        id: `graph_description_${activeNodeId}`,
+        meta: {},
+        role: 'user',
+        updatedAt: Date.now(),
+      });
 
-    console.log('Built graph context messages:', retMsgs);
+    // console.log('Built graph context messages:', retMsgs);
 
     return retMsgs;
   },
@@ -295,6 +297,8 @@ export const flowMessage: StateCreator<
       }
       setNodeMeta(activeNodeId, {
         ...nodeMeta,
+        // Add a placeholder message],
+        messageIds: [...nodeMeta.messageIds, newMsgId],
         messages: [
           ...nodeMeta.messages,
           {
@@ -306,10 +310,7 @@ export const flowMessage: StateCreator<
             topicId: activeTopicId,
             updatedAt: Date.now(),
           } as ChatMessage,
-        ], // Add a placeholder message],
-        messageIds: [
-          ...nodeMeta.messageIds, newMsgId
-        ]
+        ],
       });
       internal_toggleMessageLoading(false, tempId);
       return newMsgId;

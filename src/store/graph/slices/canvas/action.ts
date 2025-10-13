@@ -136,10 +136,11 @@ export const graphCanvas: StateCreator<
 
   useFetchCanvasState: (isDBInited, stateId) =>
     useClientDataSWR<GraphState | undefined>(
-      isDBInited && stateId ? [SWR_USE_FETCH_GRAPH_CANVAS, stateId] : null,
-      async ([, stateId]: [string, string]) => graphService.fetchState(stateId),
+      isDBInited? [SWR_USE_FETCH_GRAPH_CANVAS, stateId] : null,
+      async ([, stateId]: [string, string | undefined]) => graphService.fetchState(stateId),
       {
         onSuccess: (state) => {
+          console.log('Fetched graph canvas state', stateId, state);
           if (!state) return
           // decide whether to set canvas state
           const nextStateMap = {

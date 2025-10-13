@@ -18,42 +18,50 @@ export class ClientService extends BaseClientService implements IGraphService {
 
 
   fetchState = async (stateId?: string): Promise<GraphState | undefined> => {
-    let retState: GraphState | undefined = undefined;
+    try {
+      let retState: GraphState | undefined = undefined;
 
-    if (stateId) {
-      const state = await this.graphStateModel.findById(stateId);
-      if (state) {
-        retState = {
-          id: state.id,
-          state: state.state,
-          nodes: state.nodes.map((node) => ({
-            id: node.id,
-            meta: node.meta,
-            messages: node.messages || undefined,
-          } as GraphNode)),
+      console.log('fetchState', { stateId });
+
+      if (stateId) {
+        const state = await this.graphStateModel.findById(stateId);
+        if (state) {
+          retState = {
+            id: state.id,
+            state: state.state,
+            nodes: state.nodes.map((node) => ({
+              id: node.id,
+              meta: node.meta,
+              messages: node.messages || undefined,
+            } as GraphNode)),
+          }
         }
       }
-    }
 
-    if (!retState) {
-      // Try fetch the latest state
-      // TODO: should use a TopicList rather than create a new state every time
-      const latest = await this.graphStateModel.findLatest();
-      if (!latest) {
-        // No state found, try create one
-        const newState = await this.graphStateModel.create({
-          nodes: [],
-          edges: [],
-        });
-        retState = {
-          id: newState.id,
-          state: newState.state,
-          nodes: []
+      if (!retState) {
+        // Try fetch the latest state
+        // TODO: should use a TopicList rather than create a new state every time
+        const latest = await this.graphStateModel.findLatest();
+        if (!latest) {
+          // No state found, try create one
+          const newState = await this.graphStateModel.create({
+            nodes: [],
+            edges: [],
+          });
+          retState = {
+            id: newState.id,
+            state: newState.state,
+            nodes: []
+          }
         }
       }
-    }
 
-    return retState;
+      console.log('fetchState result', { retState });
+
+      return retState;
+    } catch (e) {
+      console.log(e)
+    }
   }
 
   updateState = async (stateId: string, state: Partial<CanvasState>) => {

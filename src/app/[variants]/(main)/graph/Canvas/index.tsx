@@ -64,6 +64,8 @@ export default function Canvas() {
         }
     }, [screenToFlowPosition]);
 
+    console.log('Canvas render', { isInit, state });
+
     return (
         isInit && state &&
         <ReactFlow

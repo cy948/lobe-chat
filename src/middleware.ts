@@ -45,6 +45,7 @@ export const config = {
     '/me',
     '/me(.*)',
     '/flow',
+    '/graph(.*)',
 
     '/login(.*)',
     '/signup(.*)',

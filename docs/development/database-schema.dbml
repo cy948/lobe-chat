@@ -430,6 +430,7 @@ table messages {
   group_id text
   target_id text
   message_group_id varchar(255)
+  graph_node_id uuid
   accessed_at "timestamp with time zone" [not null, default: `now()`]
   created_at "timestamp with time zone" [not null, default: `now()`]
   updated_at "timestamp with time zone" [not null, default: `now()`]
@@ -979,6 +980,19 @@ table flow_states {
   metadata jsonb
 }
 
+table graph_nodes {
+  id uuid [pk, not null, default: `gen_random_uuid()`]
+  graph_state_id uuid [not null]
+  user_id text [not null]
+  meta jsonb [not null]
+}
+
+table graph_states {
+  id uuid [pk, not null, default: `gen_random_uuid()`]
+  user_id text [not null]
+  state jsonb [not null]
+}
+
 ref: agents_files.file_id > files.id
 
 ref: agents_files.agent_id > agents.id
@@ -1036,6 +1050,10 @@ ref: generations.user_id - users.id
 ref: generations.generation_batch_id > generation_batches.id
 
 ref: generations.async_task_id - async_tasks.id
+
+ref: graph_nodes.user_id - users.id
+
+ref: graph_states.user_id - users.id
 
 ref: message_groups.user_id - users.id
 

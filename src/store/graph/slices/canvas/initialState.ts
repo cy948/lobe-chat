@@ -1,14 +1,15 @@
-import type { Edge as EdgeType, Node as NodeType } from '@xyflow/react';
+import { CanvasState } from '@/types/graph';
 
 export interface GraphCanvasState {
+  activeStateId?: string;
+  stateMap: Record<string, CanvasState>;
+  isStateInit: boolean;
   /**
    * @title 图
    */
-  edges: EdgeType[];
-  nodes: NodeType[];
 }
 
 export const initialGraphCanvasState: GraphCanvasState = {
-  edges: [],
-  nodes: [],
+  isStateInit: false,
+  stateMap: {},
 };

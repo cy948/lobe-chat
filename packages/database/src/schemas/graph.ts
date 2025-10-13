@@ -1,5 +1,5 @@
 import { pgTable, text, uuid, jsonb } from 'drizzle-orm/pg-core';
-import { CanvasState, GraphNode } from '@/types/graph';
+import { CanvasState, GraphNodeMeta } from '@/types/graph';
 import { users } from './user';
 
 export const graphState = pgTable('graph_states', {
@@ -21,7 +21,7 @@ export const graphNodes = pgTable('graph_nodes', {
     userId: text('user_id')
         .references(() => users.id, { onDelete: 'cascade' })
         .notNull(),
-    data: jsonb('data').notNull().$type<GraphNode>(),
+    meta: jsonb('meta').notNull().$type<GraphNodeMeta>(),
 })
 
 export type NewGraphNode = typeof graphNodes.$inferInsert;

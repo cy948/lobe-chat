@@ -1,20 +1,70 @@
 import { clientDB } from '@/database/client/db';
-import { FlowMetaDataModel, FlowStateModel } from '@/database/models/flow';
-import { MessageModel } from '@/database/models/message';
-import { TopicModel } from '@/database/models/topic';
 import { BaseClientService } from '@/services/baseClientService';
-import { FlowNodeMeta, FlowState } from '@/types/flow';
 
-import { GraphState } from '@/types/graph';
+import { GraphNode, GraphState, CanvasState, GraphNodeMeta } from '@/types/graph';
 
 import { IGraphService } from './type';
+import { GraphStateModel, GraphNodeModel } from '@/database/models/graph';
 
 export class ClientService extends BaseClientService implements IGraphService {
-  fetchState = async (stateId?: string): Promise<GraphState | undefined> => {
-    if (!stateId) return;
 
-    // TODO: 
-    return {} as any
+  private get graphStateModel(): GraphStateModel {
+    return new GraphStateModel(clientDB as any, this.userId);
   }
 
+  private get graphNodeModel(): GraphNodeModel {
+    return new GraphNodeModel(clientDB as any, this.userId);
+  }
+
+
+  fetchState = async (stateId?: string): Promise<GraphState | undefined> => {
+    let retState: GraphState | undefined = undefined;
+
+    if (stateId) {
+      const state = await this.graphStateModel.findById(stateId);
+      if (state) {
+        retState = {
+          id: state.id,
+          state: state.state,
+          nodes: state.nodes.map((node) => ({
+            id: node.id,
+            meta: node.meta,
+            messages: node.messages || undefined,
+          } as GraphNode)),
+        }
+      }
+    }
+
+    if (!retState) {
+      // Try fetch the latest state
+      // TODO: should use a TopicList rather than create a new state every time
+      const latest = await this.graphStateModel.findLatest();
+      if (!latest) {
+        // No state found, try create one
+        const newState = await this.graphStateModel.create({
+          nodes: [],
+          edges: [],
+        });
+        retState = {
+          id: newState.id,
+          state: newState.state,
+          nodes: []
+        }
+      }
+    }
+
+    return retState;
+  }
+
+  updateState = async (stateId: string, state: Partial<CanvasState>) => {
+    return await this.graphStateModel.update(stateId, state);
+  }
+
+  createNode = async (stateId: string, meta: Partial<GraphNodeMeta>) => {
+    return await this.graphNodeModel.create(stateId, meta);
+  }
+
+  updateNode = async (nodeId: string, meta: Partial<GraphNodeMeta>) => {
+    return await this.graphNodeModel.update(nodeId, meta);
+  }
 }

@@ -12,13 +12,10 @@ import {
 } from '@xyflow/react';
 import { useCallback } from 'react';
 
-import { useFlowStore } from '@/store/flow';
-
 import ChatNode from './ChatNode';
 import TextNode from './TextNode';
 
-import { useFetchFlowState } from '@/hooks/useFetchFlow';
-import { useGraphStore } from '@/store/graph';
+import { canvasSelectors, useGraphStore } from '@/store/graph';
 import { useFetchGraphState } from '@/hooks/useFetchGraph';
 
 const nodeTypes = {
@@ -31,11 +28,19 @@ export default function Canvas() {
     useFetchGraphState();
 
     const [
-        nodes, 
-        edges
-    ] = useGraphStore((s) =>[
-        s.nodes,
-        s.edges,
+        isInit,
+        state,
+        addNode,
+        addEdge,
+        setNodes,
+        setEdges,
+    ] = useGraphStore((s) => [
+        s.isStateInit,
+        canvasSelectors.getActiveCanvasState(s),
+        s.addNode,
+        s.addEdge,
+        s.setNodes,
+        s.setEdges,
     ])
 
     const onNodesChange = useCallback(async (changes: NodeChange[]) => await setNodes(changes), []);
@@ -55,17 +60,18 @@ export default function Canvas() {
                 y: event.clientY,
             });
 
-            await addNode({ position });
+            await addNode({ position }, { type: 'chat' });
         }
     }, [screenToFlowPosition]);
 
     return (
+        isInit && state &&
         <ReactFlow
             deleteKeyCode={['Delete']}
-            edges={edges}
+            edges={state.edges}
             fitView
             nodeTypes={nodeTypes}
-            nodes={nodes}
+            nodes={state.nodes}
             onConnect={onConnect}
             onEdgesChange={onEdgesChange}
             onNodesChange={onNodesChange}

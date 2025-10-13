@@ -669,5 +669,19 @@
     "bps": true,
     "folderMillis": 1760233362323,
     "hash": "346ca720d0c6f774ad514f8f25ca9aa823c412675a2c16ad23156194b8219343"
+  },
+  {
+    "sql": [
+      "CREATE TABLE \"graph_nodes\" (\n\t\"id\" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,\n\t\"graph_state_id\" uuid NOT NULL,\n\t\"user_id\" text NOT NULL,\n\t\"meta\" jsonb NOT NULL\n);\n",
+      "\nCREATE TABLE \"graph_states\" (\n\t\"id\" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,\n\t\"user_id\" text NOT NULL,\n\t\"state\" jsonb NOT NULL\n);\n",
+      "\nALTER TABLE \"messages\" ADD COLUMN \"graph_node_id\" uuid;",
+      "\nALTER TABLE \"graph_nodes\" ADD CONSTRAINT \"graph_nodes_graph_state_id_graph_states_id_fk\" FOREIGN KEY (\"graph_state_id\") REFERENCES \"public\".\"graph_states\"(\"id\") ON DELETE cascade ON UPDATE no action;",
+      "\nALTER TABLE \"graph_nodes\" ADD CONSTRAINT \"graph_nodes_user_id_users_id_fk\" FOREIGN KEY (\"user_id\") REFERENCES \"public\".\"users\"(\"id\") ON DELETE cascade ON UPDATE no action;",
+      "\nALTER TABLE \"graph_states\" ADD CONSTRAINT \"graph_states_user_id_users_id_fk\" FOREIGN KEY (\"user_id\") REFERENCES \"public\".\"users\"(\"id\") ON DELETE cascade ON UPDATE no action;",
+      "\nALTER TABLE \"messages\" ADD CONSTRAINT \"messages_graph_node_id_graph_nodes_id_fk\" FOREIGN KEY (\"graph_node_id\") REFERENCES \"public\".\"graph_nodes\"(\"id\") ON DELETE cascade ON UPDATE no action;"
+    ],
+    "bps": true,
+    "folderMillis": 1760357797260,
+    "hash": "f1f66b078431d55c3b7a61e6e7f22800ebdf2238f114c54a9834160cb878a13d"
   }
 ]

@@ -14,7 +14,7 @@ import { useCallback } from 'react';
 
 import { useFlowStore } from '@/store/flow';
 
-import CustomNode from './ChatNode';
+import CustomNode from '../../graph/Canvas/ChatNode';
 import { useFetchFlowState } from '@/hooks/useFetchFlow';
 
 const nodeTypes = { custom: CustomNode };

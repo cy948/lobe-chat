@@ -15,6 +15,7 @@ import { chunks, unstructuredChunks } from './rag';
 import { sessionGroups, sessions } from './session';
 import { threads, topicDocuments, topics } from './topic';
 import { users } from './user';
+import { graphNodes, graphState } from './graph';
 
 export const agentsToSessions = pgTable(
   'agents_to_sessions',
@@ -355,4 +356,19 @@ export const flowNodeMetaRelations = relations(flowNodeMeta, ({ one }) => ({
   }),
 }));
 
+// Graph 相关关系定义
+export const graphStateRelations = relations(graphState, ({ one, many }) => ({
+  user: one(users, {
+    fields: [graphState.userId],
+    references: [users.id],
+  }),
+  nodes: many(graphNodes),
+}));
 
+export const graphNodesRelations = relations(graphNodes, ({ one, many }) => ({
+  user: one(users, {
+    fields: [graphNodes.userId],
+    references: [users.id],
+  }),
+  messages: many(messages)
+}));

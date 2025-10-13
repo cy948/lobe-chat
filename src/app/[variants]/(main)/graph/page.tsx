@@ -3,9 +3,8 @@
 import { createStyles } from 'antd-style';
 import { Flexbox } from 'react-layout-kit';
 
-import FlowCanvas from './components/FlowCanvas';
-import PortalPanel from '../graph/Portal/PortalPanel';
-import DetailBox from '../graph/Portal/DetailBox';
+import FlowCanvas from './Canvas';
+import Portal from './Portal';
 
 const useStyles = createStyles(({ token, isDarkMode }) => {
   return {
@@ -22,14 +21,11 @@ const useStyles = createStyles(({ token, isDarkMode }) => {
 
 const FlowPage = () => {
   const { styles } = useStyles();
-
   return (
     <div className={styles.canvasContainer}>
       <Flexbox className={styles.canvasBox} horizontal>
         <FlowCanvas />
-        <PortalPanel>
-          <DetailBox />
-        </PortalPanel>
+        <Portal />
       </Flexbox>
     </div>
   );

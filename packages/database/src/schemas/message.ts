@@ -24,6 +24,7 @@ import { chunks, embeddings } from './rag';
 import { sessions } from './session';
 import { threads, topics } from './topic';
 import { users } from './user';
+import { graphNodes } from './graph';
 
 /**
  * Message groups table for multi-models parallel conversations
@@ -120,6 +121,12 @@ export const messages = pgTable(
     messageGroupId: varchar255('message_group_id').references(() => messageGroups.id, {
       onDelete: 'cascade',
     }),
+
+    // used for graph
+    graphNodeId: uuid('graph_node_id').references(() => graphNodes.id, {
+      onDelete: 'cascade',
+    }),
+
     ...timestamps,
   },
   (table) => [

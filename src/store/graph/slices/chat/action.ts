@@ -11,8 +11,7 @@ import { GraphStore } from '@/store/graph/store';
 import { ChatMessage, CreateMessageParams, SendMessageParams } from '@/types/message';
 import { Action, setNamespace } from '@/utils/storeDebug';
 
-import { messageMapKey } from '../../utils';
-import { canvasSelectors } from '../canvas/selector';
+import { messageMapKey, nodeMapKey } from '../../utils';
 
 const n = setNamespace('f');
 
@@ -410,7 +409,8 @@ export const graphChat: StateCreator<
     set({ isCreatingMessage: true });
 
     // Get node meta
-    const nodeMeta = canvasSelectors.getNodeMeta(get())(activeStateId, nodeId);
+    // const nodeMeta = canvasSelectors.getNodeMeta(get())(activeStateId, nodeId);
+    const nodeMeta = get().nodeMetaMap[nodeMapKey(activeStateId, nodeId)];
     if (!nodeMeta) {
       console.warn('Node meta not found, abort sending.');
       set({ isCreatingMessage: false });

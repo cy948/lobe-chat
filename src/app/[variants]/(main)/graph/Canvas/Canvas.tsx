@@ -1,5 +1,6 @@
 'use client';
 
+import { Dropdown, DropdownProps, Icon } from '@lobehub/ui';
 import {
   Background,
   BackgroundVariant,
@@ -10,7 +11,8 @@ import {
   ReactFlow,
   useReactFlow,
 } from '@xyflow/react';
-import { useCallback } from 'react';
+import { BoxSelectIcon, LucideMapPinPlusInside } from 'lucide-react';
+import { useCallback, useState } from 'react';
 
 import { useFetchGraphState } from '@/hooks/useFetchGraph';
 import { canvasSelectors, useGraphStore } from '@/store/graph';
@@ -25,6 +27,12 @@ const nodeTypes = {
 
 export default function Canvas() {
   useFetchGraphState();
+
+  const { screenToFlowPosition } = useReactFlow();
+
+  const [menu, setMenu] = useState<{ nodeId?: string, x: number; y: number; } | null>(null);
+
+  const closeMenu = () => setMenu(null);
 
   const [isInit, state, addNode, addEdge, setNodes, setEdges, onDelNodes] = useGraphStore((s) => [
     s.isStateInit,
@@ -42,11 +50,11 @@ export default function Canvas() {
   const onNodesDelete = useCallback(async (nodes: any) => await onDelNodes(nodes), []);
 
   // 3. 定义 onPaneDoubleClick 回调函数
-  const { screenToFlowPosition } = useReactFlow();
 
   // 双击添加节点
   const onPaneClick = useCallback(
     async (event: any) => {
+      closeMenu();
       // 检查是否为双击事件
       if (event.detail === 2) {
         // 将屏幕坐标转换为流程图内部坐标
@@ -59,6 +67,41 @@ export default function Canvas() {
       }
     },
     [screenToFlowPosition],
+  );
+
+  const menuItems: DropdownProps['menu'] = {
+    items: [
+      {
+        children: [
+          { key: 'CreateText', label: '文本结点' },
+          { key: 'CreateChat', label: '对话结点' },
+        ],
+        icon: <Icon icon={LucideMapPinPlusInside} />,
+        key: 'createNode',
+        label: '创建结点',
+      },
+      {
+        icon: <Icon icon={BoxSelectIcon} />,
+        key: 'arrange',
+        label: '整理视图',
+      },
+    ],
+  };
+
+  const onPaneContext = useCallback(
+    (event: any) => {
+      event.preventDefault();
+      setMenu({ x: event.screenX, y: event.screenY });
+    },
+    [setMenu],
+  );
+
+  const onHandleMenuClick = useCallback(
+    (key: string) => {
+      console.log('Menu click:', key);
+      closeMenu();
+    },
+    [closeMenu],
   );
 
   return (
@@ -75,7 +118,17 @@ export default function Canvas() {
         onNodesChange={onNodesChange}
         onNodesDelete={onNodesDelete}
         onPaneClick={onPaneClick}
+        onPaneContextMenu={onPaneContext}
       >
+        {menu && (
+          <Dropdown
+            menu={{ items: menuItems.items, onClick: ({ key }) => onHandleMenuClick(key) }}
+            open
+            trigger={[]}
+          >
+            <div style={{ backgroundColor: 'red', left: menu.x, position: 'fixed', top: menu.y }} />
+          </Dropdown>
+        )}
         <Controls />
         <MiniMap />
         <Background gap={12} size={1} variant={BackgroundVariant.Dots} />

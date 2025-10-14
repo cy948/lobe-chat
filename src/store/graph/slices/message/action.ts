@@ -189,8 +189,6 @@ export const graphMessage: StateCreator<
     // Getn node meta
     const oldMessages = messageSelectors.getNodeMessages(get())(nodeId) || [];
 
-    console.log('Dispatch message', oldMessages, payload);
-
     const messages = messagesReducer(oldMessages, payload);
 
     const nextMap = {

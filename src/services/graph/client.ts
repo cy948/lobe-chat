@@ -21,8 +21,6 @@ export class ClientService extends BaseClientService implements IGraphService {
     try {
       let retState: GraphState | undefined = undefined;
 
-      console.log('fetchState', { stateId });
-
       if (stateId) {
         const state = await this.graphStateModel.findById(stateId);
         if (state) {
@@ -42,6 +40,7 @@ export class ClientService extends BaseClientService implements IGraphService {
         // Try fetch the latest state
         // TODO: should use a TopicList rather than create a new state every time
         const latest = await this.graphStateModel.findLatest();
+        // console.log('Found latest state', latest);
         if (!latest) {
           // No state found, try create one
           const newState = await this.graphStateModel.create({
@@ -53,10 +52,18 @@ export class ClientService extends BaseClientService implements IGraphService {
             state: newState.state,
             nodes: []
           }
+        } else {
+          retState = {
+            id: latest.id,
+            state: latest.state,
+            nodes: latest.nodes.map((node) => ({
+              id: node.id,
+              meta: node.meta,
+              messages: node.messages || undefined,
+            } as GraphNode)),
+          }
         }
       }
-
-      console.log('fetchState result', { retState });
 
       return retState;
     } catch (e) {

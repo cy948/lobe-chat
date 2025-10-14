@@ -111,6 +111,11 @@ export const messagesRelations = relations(messages, ({ many, one }) => ({
     fields: [messages.messageGroupId],
     references: [messageGroups.id],
   }),
+
+  graphNode: one(graphNodes, {
+    fields: [messages.graphNodeId],
+    references: [graphNodes.id],
+  }),
 }));
 
 export const agentsRelations = relations(agents, ({ many }) => ({
@@ -369,6 +374,10 @@ export const graphNodesRelations = relations(graphNodes, ({ one, many }) => ({
   user: one(users, {
     fields: [graphNodes.userId],
     references: [users.id],
+  }),
+  graphState: one(graphState, {
+    fields: [graphNodes.stateId],
+    references: [graphState.id],
   }),
   messages: many(messages)
 }));

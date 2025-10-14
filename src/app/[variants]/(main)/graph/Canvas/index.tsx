@@ -1,87 +1,16 @@
 'use client';
 
-import {
-    Background,
-    BackgroundVariant,
-    Controls,
-    EdgeChange,
-    MiniMap,
-    NodeChange,
-    ReactFlow,
-    useReactFlow,
-} from '@xyflow/react';
-import { useCallback } from 'react';
+import Canvas from './Canvas';
+import BrandTextLoading from '@/components/Loading/BrandTextLoading';
+import { useGlobalStore } from '@/store/global';
+import { systemStatusSelectors } from '@/store/global/selectors';
 
-import ChatNode from './ChatNode';
-import TextNode from './TextNode';
+export default function GraphCanvas() {
 
-import { canvasSelectors, useGraphStore } from '@/store/graph';
-import { useFetchGraphState } from '@/hooks/useFetchGraph';
+    const isDBInited = useGlobalStore(systemStatusSelectors.isDBInited)
 
-const nodeTypes = {
-    chat: ChatNode,
-    text: TextNode,
-};
-
-export default function Canvas() {
-
-    useFetchGraphState();
-
-    const [
-        isInit,
-        state,
-        addNode,
-        addEdge,
-        setNodes,
-        setEdges,
-    ] = useGraphStore((s) => [
-        s.isStateInit,
-        canvasSelectors.getActiveCanvasState(s),
-        s.addNode,
-        s.addEdge,
-        s.setNodes,
-        s.setEdges,
-    ])
-
-    const onNodesChange = useCallback(async (changes: NodeChange[]) => await setNodes(changes), []);
-    const onEdgesChange = useCallback(async (changes: EdgeChange[]) => await setEdges(changes), []);
-    const onConnect = useCallback(async (params: any) => await addEdge(params), []);
-
-    // 3. 定义 onPaneDoubleClick 回调函数
-    const { screenToFlowPosition } = useReactFlow();
-
-    // 双击添加节点
-    const onPaneClick = useCallback(async (event: any) => {
-        // 检查是否为双击事件
-        if (event.detail === 2) {
-            // 将屏幕坐标转换为流程图内部坐标
-            const position = screenToFlowPosition({
-                x: event.clientX,
-                y: event.clientY,
-            });
-
-            await addNode({ position }, { type: 'chat' });
-        }
-    }, [screenToFlowPosition]);
-
-    console.log('Canvas render', { isInit, state });
-
+    // TODO: add skeleton loading
     return (
-        isInit && state &&
-        <ReactFlow
-            deleteKeyCode={['Delete']}
-            edges={state.edges}
-            fitView
-            nodeTypes={nodeTypes}
-            nodes={state.nodes}
-            onConnect={onConnect}
-            onEdgesChange={onEdgesChange}
-            onNodesChange={onNodesChange}
-            onPaneClick={onPaneClick}
-        >
-            <Controls />
-            <MiniMap />
-            <Background gap={12} size={1} variant={BackgroundVariant.Dots} />
-        </ReactFlow>
+        isDBInited ? <Canvas /> : <BrandTextLoading />
     );
 }

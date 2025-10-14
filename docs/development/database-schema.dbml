@@ -1053,6 +1053,8 @@ ref: generations.async_task_id - async_tasks.id
 
 ref: graph_nodes.user_id - users.id
 
+ref: graph_nodes.graph_state_id > graph_states.id
+
 ref: graph_states.user_id - users.id
 
 ref: message_groups.user_id - users.id

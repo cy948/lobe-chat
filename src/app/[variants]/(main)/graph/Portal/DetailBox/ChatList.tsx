@@ -16,7 +16,7 @@ const ChatList = memo(({ mobile }: ChatListProps) => {
 
   const [isInit, data] = useGraphStore((s) => [
     s.isStateInit,
-    messageSelectors.getActiveNodeMessageIds(s)
+    messageSelectors.getActiveNodeMessageIds(s) || []
   ])
 
   // useFetchThreads();

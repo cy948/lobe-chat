@@ -23,7 +23,7 @@ const Desktop = memo(() => {
           send();
         }}
         sendButtonProps={{
-          disabled,
+          disabled: !disabled,
           generating,
           onStop: stop,
           shape: 'round',

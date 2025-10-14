@@ -8,6 +8,7 @@ export interface GraphPortalAction {
     setPortal: (show: boolean) => void;
     openNodePortal: (nodeId: string) => void;
     updateInputSummary: (summary: string) => void;
+    updateInputMessage: (message: string) => void;
 }
 
 export const graphPortal: StateCreator<
@@ -21,6 +22,9 @@ export const graphPortal: StateCreator<
     },
     updateInputSummary: (summary) => {
         set({ inputSummary: summary });
+    },
+    updateInputMessage: (message) => {
+        set({ inputMessage: message });
     },
     openNodePortal: (nodeId) => {
         const { stateMap, activeStateId, nodeMetaMap, internal_updateCanvasState } = get()

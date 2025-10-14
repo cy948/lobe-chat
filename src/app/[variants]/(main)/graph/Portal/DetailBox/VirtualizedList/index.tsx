@@ -78,7 +78,7 @@ const VirtualizedList = memo<VirtualizedListProps>(({ mobile, dataSource, itemCo
   const overscan = typeof window !== 'undefined' ? window.innerHeight * 3 : 0;
 
   // first time loading or not loaded
-  if (isFirstLoading) return <SkeletonList mobile={mobile} />;
+  if (!isFirstLoading) return <SkeletonList mobile={mobile} />;
 
   return (
     <VirtuosoContext value={virtuosoRef}>

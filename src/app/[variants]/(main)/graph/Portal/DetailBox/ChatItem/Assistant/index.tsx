@@ -59,7 +59,7 @@ const AssistantMessage = memo<AssistantMessageProps>((props) => {
     primary: false,
     showTitle,
     time: createdAt,
-    title: avatar.title,
+    title: avatar?.title,
     variant,
   });
   const errorContent = useErrorContent(error);
@@ -89,8 +89,8 @@ const AssistantMessage = memo<AssistantMessageProps>((props) => {
       gap={mobile ? 6 : 12}
     >
       <Avatar
-        alt={avatar.title || 'avatar'}
-        avatar={avatar}
+        alt={avatar?.title || 'avatar'}
+        avatar={avatar || {}}
         loading={loading}
         placement={placement}
         size={mobile ? MOBILE_AVATAR_SIZE : undefined}

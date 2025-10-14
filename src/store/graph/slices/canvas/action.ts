@@ -14,7 +14,7 @@ import { StateCreator } from 'zustand/vanilla';
 
 import { useClientDataSWR } from '@/libs/swr';
 import { graphService } from '@/services/graph';
-import { GraphStore } from '@/store/graph';
+import { GraphStore } from '@/store/graph/store';
 import { messageMapKey, nodeMapKey } from '@/store/graph/utils';
 import { CanvasState, GraphNode, GraphNodeMeta, GraphState } from '@/types/graph';
 

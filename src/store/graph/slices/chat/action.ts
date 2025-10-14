@@ -6,7 +6,8 @@ import { chatService } from '@/services/chat';
 import { messageService } from '@/services/message';
 import { getAgentStoreState } from '@/store/agent';
 import { agentChatConfigSelectors, agentSelectors } from '@/store/agent/selectors';
-import { GraphStore, messageSelectors } from '@/store/graph';
+import { messageSelectors } from '@/store/graph/selectors';
+import { GraphStore } from '@/store/graph/store';
 import { ChatMessage, CreateMessageParams, SendMessageParams } from '@/types/message';
 import { Action, setNamespace } from '@/utils/storeDebug';
 

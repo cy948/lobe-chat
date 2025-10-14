@@ -13,7 +13,8 @@ import { StateCreator } from 'zustand/vanilla';
 import { messageService } from '@/services/message';
 import { MessageDispatch, messagesReducer } from '@/store/chat/slices/message/reducer';
 import { preventLeavingFn, toggleBooleanList } from '@/store/chat/utils';
-import { GraphStore, messageSelectors } from '@/store/graph';
+import { messageSelectors } from '@/store/graph/selectors';
+import { GraphStore } from '@/store/graph/store';
 import { nanoid } from '@/utils/index';
 import { Action } from '@/utils/storeDebug';
 

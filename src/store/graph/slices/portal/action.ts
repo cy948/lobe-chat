@@ -1,7 +1,7 @@
 import { type Edge } from '@xyflow/react';
 import { StateCreator } from 'zustand/vanilla';
 
-import { GraphStore } from '@/store/graph';
+import { GraphStore } from '@/store/graph/store';
 
 import { searchChildNodesWithBFS } from '../../utils';
 

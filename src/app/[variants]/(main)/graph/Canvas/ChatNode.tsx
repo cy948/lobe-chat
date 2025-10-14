@@ -1,12 +1,11 @@
+import { canvasSelectors, messageSelectors, useGraphStore } from '@/store/graph';
 import { ActionIcon, type DropdownProps, Icon, Input, Markdown } from '@lobehub/ui';
 import { Handle, Position } from '@xyflow/react';
 import { Card, Dropdown, Typography } from 'antd';
 import { createStyles } from 'antd-style';
 import { DeleteIcon, MoreVerticalIcon, TimerIcon, TimerOffIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Flexbox } from 'react-layout-kit';
-
-import { useFlowStore } from '@/store/flow';
 
 interface CanvasNodeProps {
   data: { content: string; label: string };
@@ -41,23 +40,48 @@ const useStyles = createStyles(() => {
 
 export default function CanvasNode({ id }: CanvasNodeProps) {
   const { styles } = useStyles();
-  const [delNode, openInDetailBox, updateSummaryTitle, setNodeMeta] = useFlowStore((s) => [
-    s.delNode,
-    s.openInDetailBox,
-    s.updateSummaryTitle,
-    s.setNodeMeta,
-  ]);
+  // const [delNode, openInDetailBox, updateSummaryTitle, setNodeMeta] = useFlowStore((s) => [
+  //   s.delNode,
+  //   s.openInDetailBox,
+  //   s.updateSummaryTitle,
+  //   s.setNodeMeta,
+  // ]);
 
   const [editTitle, setEditTitle] = useState(false);
 
-  const nodeMeta = useFlowStore((s) => s.getNodeMeta(id));
+  // const nodeMeta = useFlowStore((s) => s.getNodeMeta(id));
+  const [
+    nodeMeta, 
+    messages,
+    openNodePortal,
+    delNode,
+    updateNodeMeta,
+  ] = useGraphStore((s) => [
+    canvasSelectors.getActiveCanvasNodeMeta(s)(id),
+    messageSelectors.getNodeMessages(s)(id),
+    s.openNodePortal,
+    s.delNode,
+    s.updateNodeMeta
+  ]);
 
   const body = nodeMeta?.useSummary
     ? nodeMeta.summary
-    : nodeMeta?.messages?.[nodeMeta.messages.length - 1]?.content ||
+    : messages?.[messages.length - 1]?.content ||
       'no content yet, try talk to me!';
 
   const [value, setValue] = useState(nodeMeta?.title || 'Untitled');
+
+  const handleDelNode = useCallback(async ()=>{
+    await delNode(id);
+  }, [delNode])
+
+  const handleChangeTitle = useCallback(async ()=>{
+    await updateNodeMeta(id, { title: value });
+  }, [value, updateNodeMeta])
+
+  const handleUseSummary = useCallback(async (useSummary: boolean)=>{
+    await updateNodeMeta(id, { useSummary });
+  }, [updateNodeMeta])
 
   const menu: DropdownProps['menu'] = {
     items: [
@@ -71,18 +95,18 @@ export default function CanvasNode({ id }: CanvasNodeProps) {
       domEvent.stopPropagation();
       if (key === 'del') {
         // Handle delete action
-        delNode(id);
+        handleDelNode();
       }
     },
   };
 
   const handleClick = () => {
-    openInDetailBox(id);
+    openNodePortal(id);
   };
 
   const handleSubmit = () => {
     setEditTitle(false);
-    updateSummaryTitle(value);
+    handleChangeTitle();
   };
 
   return (
@@ -118,7 +142,7 @@ export default function CanvasNode({ id }: CanvasNodeProps) {
             /> */}
             <ActionIcon
               icon={nodeMeta?.useSummary ? TimerIcon : TimerOffIcon}
-              onClick={() => setNodeMeta(id, { useSummary: !nodeMeta?.useSummary })}
+              onClick={() => handleUseSummary(!nodeMeta?.useSummary)}
               title={nodeMeta?.useSummary ? 'Using summary as context' : 'Using messages context'}
             />
           </Flexbox>

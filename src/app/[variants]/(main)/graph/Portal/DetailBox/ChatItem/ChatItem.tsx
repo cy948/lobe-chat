@@ -11,10 +11,10 @@ import {
   upsertVirtuosoVisibleItem,
 } from '@/features/Conversation/components/VirtualizedList/VirtuosoContext';
 import { InPortalThreadContext } from '@/features/Conversation/context/InPortalThreadContext';
-import { canvasSelectors, flowMessageSelectors, useFlowStore } from '@/store/flow';
 
 import AssistantMessage from './Assistant';
 import UserMessage from './User';
+import { useGraphStore, messageSelectors, canvasSelectors } from '@/store/graph';
 
 const useStyles = createStyles(({ css, prefixCls }) => ({
   loading: css`
@@ -45,10 +45,12 @@ const Item = memo<ChatListItemProps>(
     const containerRef = useRef<HTMLDivElement | null>(null);
 
     // const item = useChatStore(chatSelectors.getMessageById(id), isEqual);
-    const item = useFlowStore(canvasSelectors.getMessageById(id), isEqual);
+    // const item = useFlowStore(canvasSelectors.getMessageById(id), isEqual);
+    const item = useGraphStore((s) => messageSelectors.getActiveNodeMessageById(s)(id), isEqual);
 
     // const [isMessageLoading] = useChatStore((s) => [chatSelectors.isMessageLoading(id)(s)]);
-    const [isMessageLoading] = useFlowStore((s) => [flowMessageSelectors.isMessageLoading(id)(s)]);
+    // const [isMessageLoading] = useFlowStore((s) => [flowMessageSelectors.isMessageLoading(id)(s)]);
+    const [isMessageLoading] = useGraphStore((s) => [messageSelectors.isMessageLoading(s)(id)]);
 
     // ======================= Performance Optimization ======================= //
     // these useMemo/useCallback are all for the performance optimization

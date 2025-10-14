@@ -58,6 +58,7 @@ export class GraphStateModel {
                 ...prevState.state,
                 ...state,
             },
+            updatedAt: new Date(),
         }).where(and(eq(graphState.id, id), eq(graphState.userId, this.userId))).returning();
         return newState;
     }
@@ -75,6 +76,15 @@ export class GraphNodeModel {
     findById = async (id: string) => {
         return await this.db.query.graphNodes.findFirst({
             where: and(eq(graphNodes.id, id), eq(graphNodes.userId, this.userId)),
+            with: {
+                messages: true,
+            }
+        });
+    }
+
+    findByStateId = async (stateId: string) => {
+        return await this.db.query.graphNodes.findMany({
+            where: and(eq(graphNodes.stateId, stateId), eq(graphNodes.userId, this.userId)),
             with: {
                 messages: true,
             }
@@ -105,6 +115,7 @@ export class GraphNodeModel {
                 ...prevNode.meta,
                 ...meta,
             },
+            updatedAt: new Date(),
         }).where(and(eq(graphNodes.id, id), eq(graphNodes.userId, this.userId))).returning();
         return node;
     }

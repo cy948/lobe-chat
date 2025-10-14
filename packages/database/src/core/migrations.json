@@ -683,5 +683,18 @@
     "bps": true,
     "folderMillis": 1760357797260,
     "hash": "f1f66b078431d55c3b7a61e6e7f22800ebdf2238f114c54a9834160cb878a13d"
+  },
+  {
+    "sql": [
+      "ALTER TABLE \"graph_nodes\" ADD COLUMN \"accessed_at\" timestamp with time zone DEFAULT now() NOT NULL;",
+      "\nALTER TABLE \"graph_nodes\" ADD COLUMN \"created_at\" timestamp with time zone DEFAULT now() NOT NULL;",
+      "\nALTER TABLE \"graph_nodes\" ADD COLUMN \"updated_at\" timestamp with time zone DEFAULT now() NOT NULL;",
+      "\nALTER TABLE \"graph_states\" ADD COLUMN \"accessed_at\" timestamp with time zone DEFAULT now() NOT NULL;",
+      "\nALTER TABLE \"graph_states\" ADD COLUMN \"created_at\" timestamp with time zone DEFAULT now() NOT NULL;",
+      "\nALTER TABLE \"graph_states\" ADD COLUMN \"updated_at\" timestamp with time zone DEFAULT now() NOT NULL;"
+    ],
+    "bps": true,
+    "folderMillis": 1760414227606,
+    "hash": "349424be32caea9d70dee94ce5e447b39c6eb3259e4ce6597d3e5fc8b6daf699"
   }
 ]

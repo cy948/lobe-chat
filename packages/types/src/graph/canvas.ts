@@ -10,6 +10,7 @@ export type GraphNodeMeta = {
     type: 'text' | 'chat';
     summary?: string;
     useSummary?: boolean;
+    isLatestSummary?: boolean;
     title?: string;
 }
 

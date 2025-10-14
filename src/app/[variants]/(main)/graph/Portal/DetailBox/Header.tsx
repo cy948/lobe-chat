@@ -5,17 +5,17 @@ import { memo } from 'react';
 import { Flexbox } from 'react-layout-kit';
 
 import SidebarHeader from '@/components/SidebarHeader';
-import { useFlowStore } from '@/store/flow';
+import { useGraphStore } from '@/store/graph';
 
 const Header = memo(({ title }: { title: string }) => {
     const theme = useTheme();
-    const [setDetailBoxVisible] = useFlowStore(s => [s.setDetailBoxVisible]);
+    const [setPortal] = useGraphStore(s => [s.setPortal]);
 
     return (
         <SidebarHeader
             actions={
                 <Flexbox gap={4} horizontal>
-                    <ActionIcon icon={XIcon} onClick={() => setDetailBoxVisible(false)} size={'small'} />
+                    <ActionIcon icon={XIcon} onClick={() => setPortal(false)} size={'small'} />
                 </Flexbox>
             }
             paddingBlock={6}

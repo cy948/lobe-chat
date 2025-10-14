@@ -34,6 +34,7 @@ export default function Canvas() {
         addEdge,
         setNodes,
         setEdges,
+        onDelNodes,
     ] = useGraphStore((s) => [
         s.isStateInit,
         canvasSelectors.getActiveCanvasState(s),
@@ -41,11 +42,13 @@ export default function Canvas() {
         s.addEdge,
         s.setNodes,
         s.setEdges,
+        s.onDelNodes,
     ])
 
-    const onNodesChange = useCallback(async (changes: NodeChange[]) => await setNodes(changes), []);
+    const onNodesChange = useCallback(async (changes: NodeChange[]) =>  await setNodes(changes), []);
     const onEdgesChange = useCallback(async (changes: EdgeChange[]) => await setEdges(changes), []);
     const onConnect = useCallback(async (params: any) => await addEdge(params), []);
+    const onNodesDelete = useCallback(async (nodes: any) => await onDelNodes(nodes), []);
 
     // 3. 定义 onPaneDoubleClick 回调函数
     const { screenToFlowPosition } = useReactFlow();
@@ -64,8 +67,6 @@ export default function Canvas() {
         }
     }, [screenToFlowPosition]);
 
-    // console.log('Canvas render', { isInit, state });
-
     return (
         isInit && state &&
         <ReactFlow
@@ -78,6 +79,7 @@ export default function Canvas() {
             onEdgesChange={onEdgesChange}
             onNodesChange={onNodesChange}
             onPaneClick={onPaneClick}
+            onNodesDelete={onNodesDelete}
         >
             <Controls />
             <MiniMap />

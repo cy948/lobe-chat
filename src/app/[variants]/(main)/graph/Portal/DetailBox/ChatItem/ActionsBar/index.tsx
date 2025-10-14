@@ -5,9 +5,9 @@ import { memo, use, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { VirtuosoContext } from '@/features/Conversation/components/VirtualizedList/VirtuosoContext';
-import { useFlowStore } from '@/store/flow';
 
 import { useChatListActionsBar } from './useChatListActionsBar';
+import { useGraphStore } from '@/store/graph';
 
 export type ActionsBarProps = ActionIconGroupProps;
 
@@ -43,7 +43,7 @@ const Actions = memo<ActionsProps>(({ id, index, data }) => {
     toggleMessageEditing,
     regenerateMessage,
     delAndRegenerateMessage,
-  ] = useFlowStore((s) => [
+  ] = useGraphStore((s) => [
     s.deleteMessage,
     s.copyMessage,
     s.updateInputSummary,

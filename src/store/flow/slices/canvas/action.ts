@@ -7,7 +7,7 @@ import {
   applyNodeChanges,
   addEdge as valAddEdge,
 } from '@xyflow/react';
-import { debounce } from 'lodash';
+import { debounce } from 'lodash-es';
 import { SWRResponse } from 'swr';
 import { StateCreator } from 'zustand/vanilla';
 

@@ -3,17 +3,21 @@ import { Flexbox } from 'react-layout-kit';
 
 import { SkeletonList } from '@/features/Conversation';
 import VirtualizedList from './VirtualizedList'
-// import { useFetchThreads } from '@/hooks/useFetchThreads';
 
 import ThreadChatItem from './ChatItem';
-import { useFlowStore, canvasSelectors } from '@/store/flow';
+import { useGraphStore, messageSelectors } from '@/store/graph';
 
 interface ChatListProps {
   mobile?: boolean;
 }
 
 const ChatList = memo(({ mobile }: ChatListProps) => {
-  const [isInit, data] = useFlowStore((s) => [s.isDetailBoxInitialized, canvasSelectors.getActiveNodeMessageIds(s)]);
+  // const [isInit, data] = useFlowStore((s) => [s.isDetailBoxInitialized, canvasSelectors.getActiveNodeMessageIds(s)]);
+
+  const [isInit, data] = useGraphStore((s) => [
+    s.isStateInit,
+    messageSelectors.getActiveNodeMessageIds(s)
+  ])
 
   // useFetchThreads();
 
@@ -41,7 +45,7 @@ const ChatList = memo(({ mobile }: ChatListProps) => {
       }}
       width={'100%'}
     >
-      <VirtualizedList dataSource={data} itemContent={itemContent} mobile={mobile} />
+      {data && <VirtualizedList dataSource={data} itemContent={itemContent} mobile={mobile} />}
     </Flexbox>
   );
 });

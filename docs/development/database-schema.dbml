@@ -985,12 +985,18 @@ table graph_nodes {
   graph_state_id uuid [not null]
   user_id text [not null]
   meta jsonb [not null]
+  accessed_at "timestamp with time zone" [not null, default: `now()`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  updated_at "timestamp with time zone" [not null, default: `now()`]
 }
 
 table graph_states {
   id uuid [pk, not null, default: `gen_random_uuid()`]
   user_id text [not null]
   state jsonb [not null]
+  accessed_at "timestamp with time zone" [not null, default: `now()`]
+  created_at "timestamp with time zone" [not null, default: `now()`]
+  updated_at "timestamp with time zone" [not null, default: `now()`]
 }
 
 ref: agents_files.file_id > files.id
@@ -1076,6 +1082,8 @@ ref: messages.topic_id - topics.id
 ref: threads.source_message_id - messages.id
 
 ref: messages.message_group_id > message_groups.id
+
+ref: messages.graph_node_id > graph_nodes.id
 
 ref: sessions.group_id - session_groups.id
 

@@ -75,6 +75,15 @@ export class ClientService extends BaseClientService implements IGraphService {
     return await this.graphStateModel.update(stateId, state);
   }
 
+  fetchNodes = async (stateId: string) => {
+    const results = await this.graphNodeModel.findByStateId(stateId);
+    return results.map((node) => ({
+      id: node.id,
+      meta: node.meta,
+      messages: node.messages || undefined,
+    } as GraphNode));
+  }
+
   createNode = async (stateId: string, meta: Partial<GraphNodeMeta>) => {
     return await this.graphNodeModel.create(stateId, meta);
   }

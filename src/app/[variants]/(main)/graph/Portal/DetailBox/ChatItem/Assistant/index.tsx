@@ -17,9 +17,9 @@ import { AssistantMessageExtra } from '@/features/Conversation/Messages/Assistan
 import { AssistantMessageContent } from '@/features/Conversation/Messages/Assistant/MessageContent';
 import { useAgentStore } from '@/store/agent';
 import { agentChatConfigSelectors } from '@/store/agent/slices/chat';
-import { flowAIChatSelectors, flowMessageSelectors, useFlowStore } from '@/store/flow';
 
 import AssistantActionsBar from '../ActionsBar';
+import { chatSelectors, messageSelectors, useGraphStore } from '@/store/graph';
 
 const MOBILE_AVATAR_SIZE = 32;
 
@@ -48,9 +48,9 @@ const AssistantMessage = memo<AssistantMessageProps>((props) => {
   const type = useAgentStore(agentChatConfigSelectors.displayMode);
   const variant = type === 'chat' ? 'bubble' : 'docs';
 
-  const [editing, generating] = useFlowStore((s) => [
-    flowMessageSelectors.isMessageEditing(id)(s),
-    flowAIChatSelectors.isMessageGenerating(id)(s),
+  const [editing, generating] = useGraphStore((s) => [
+    messageSelectors.isMessageEditing(s)(id),
+    chatSelectors.isMessageGenerating(s)(id),
   ]);
 
   const { styles } = useStyles({

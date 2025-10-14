@@ -3,29 +3,34 @@ import { Switch } from 'antd';
 import { RotateCcwIcon, SettingsIcon } from 'lucide-react';
 import { Flexbox } from 'react-layout-kit';
 
-import { canvasSelectors, useFlowStore } from '@/store/flow';
+import { portalSelectors, useGraphStore } from '@/store/graph';
 
 import SummaryDetail from './SummaryDetail';
+import { useCallback } from 'react';
 
-export default function NodeSummary() {
+export default function NodeSummary({ id }: { id?: string }) {
   const [
     isGeneratingSummary,
     generateHistorySummary,
-    useSummary,
-    setActiveNodeUseSummary,
     nodeMeta,
-  ] = useFlowStore((s) => [
+    updateNodeMeta,
+  ] = useGraphStore((s) => [
     s.isGeneratingSummary,
     s.generateHistorySummary,
-    canvasSelectors.getActiveNodeMeta(s)?.useSummary,
-    canvasSelectors.setActiveNodeUseSummary(s),
-    canvasSelectors.getActiveNodeMeta(s),
+    portalSelectors.getActiveNodeMeta(s),
+    s.updateNodeMeta,
   ]);
 
-  const generateSummary = async () => {
+
+  const generateSummary = useCallback(async () => {
     if (isGeneratingSummary) return;
     await generateHistorySummary();
-  };
+  }, []);
+
+  const handleUseSummary = useCallback(async (checked: boolean) => {
+    if (!id) return
+    await updateNodeMeta(id, { useSummary: checked });
+  }, [id, updateNodeMeta])
 
   const items: CollapseProps['items'] = [
     {
@@ -36,7 +41,7 @@ export default function NodeSummary() {
           <Flexbox align="center" gap={8} horizontal>
             {!nodeMeta?.isLatestSummary && <Tag color="warning">Summary Outdated</Tag>}
             Use Summary
-            <Switch onChange={(checked) => setActiveNodeUseSummary(checked)} value={useSummary} />
+            <Switch onChange={(checked) => handleUseSummary(checked)} value={nodeMeta?.useSummary} />
           </Flexbox>
           <Flexbox>
             <Button

@@ -7,13 +7,13 @@ import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import AutoScroll from '@/features/Conversation/components/AutoScroll';
 import SkeletonList from '@/features/Conversation/components/SkeletonList';
 import WideScreenContainer from '@/features/Conversation/components/WideScreenContainer';
-import { canvasSelectors, useFlowStore } from '@/store/flow';
 
 import {
   VirtuosoContext,
   resetVirtuosoVisibleItems,
   setVirtuosoGlobalRef,
 } from './VirtuosoContext';
+import { useGraphStore } from '@/store/graph';
 
 interface VirtualizedListProps {
   dataSource: string[];
@@ -35,20 +35,10 @@ const VirtualizedList = memo<VirtualizedListProps>(({ mobile, dataSource, itemCo
   const [atBottom, setAtBottom] = useState(true);
   const [isScrolling, setIsScrolling] = useState(false);
 
-  // const [
-  // id,
-  // isFirstLoading,
-  // isCurrentChatLoaded
-  // ] = useChatStore((s) => [
-  // chatSelectors.currentChatKey(s),
-  // chatSelectors.currentChatLoadingState(s),
-  // chatSelectors.isCurrentChatLoaded(s),
-  // ]);
-
-  const [id, isFirstLoading] = useFlowStore((s) => [
+  const [id, isFirstLoading] = useGraphStore((s) => [
     // TODO: should have a unique ID
-    `${s.activeSessionId}${s.activeTopicId}`,
-    canvasSelectors.currentChatLoadingState(s),
+    `${s.activeSessionId}${s.activeStateId}`,
+    s.messageInit,
   ]);
 
   const getFollowOutput = useCallback(() => {

@@ -10,18 +10,22 @@ import {
 } from '@xyflow/react';
 import { StateCreator } from 'zustand/vanilla';
 import { GraphStore } from '@/store/graph';
-import { GraphState, CanvasState, GraphNodeMeta } from '@/types/graph';
+import { GraphState, CanvasState, GraphNodeMeta, GraphNode } from '@/types/graph';
 import { SWRResponse } from 'swr';
 import { useClientDataSWR } from '@/libs/swr';
 import { graphService } from '@/services/graph';
-import { messageMapKey } from '@/store/graph/utils';
+import { messageMapKey, nodeMapKey } from '@/store/graph/utils';
+import { debounce } from 'lodash-es';
 
-const SWR_USE_FETCH_GRAPH_CANVAS = 'graph-canvas-state';
+export const SWR_USE_FETCH_GRAPH_CANVAS = 'graph-canvas-state';
+export const SWR_USE_FETCH_GRAPH_NODES = 'graph-node-metas';
 
 export interface GraphCanvasAction {
 
   addEdge: (edge: EdgeType) => Promise<void>;
   addNode: (node: Partial<NodeType>, meta: Partial<GraphNodeMeta>) => Promise<void>;
+  delNode: (id: string) => Promise<void>;
+  onDelNodes: (ids: string[]) => Promise<void>;
 
   setEdges: (edges: EdgeChange[]) => Promise<void>;
   setNodes: (nodes: NodeChange[]) => Promise<void>;
@@ -31,9 +35,27 @@ export interface GraphCanvasAction {
     stateId?: string | null,
   ) => SWRResponse<GraphState | undefined>;
 
+  useFetchNodeMeta: (
+    isDBInited: boolean,
+    stateId?: string | null,
+  ) => SWRResponse<GraphNode[] | undefined>;
 
-  // db 方法
+
+  /**
+   * 
+   *  db 方法
+   */
+
   updateCanvasState: (stateId: string, state: Partial<CanvasState>) => Promise<void>;
+  updateNodeMeta: (nodeId: string, meta: Partial<GraphNodeMeta>) => Promise<void>;
+
+  // 节流 db
+  getDebouncedUpdate: (stateId: string) => ReturnType<typeof debounce>;
+  debouncedUpdateCanvasState: (stateId: string, state: Partial<CanvasState>) => void;
+  // 取消待执行的更新
+  cancelPendingUpdates: (stateId?: string) => void;
+  // 立即执行待更新
+  flushPendingUpdates: (stateId?: string) => void;
 
   /**
    * 内部方法：更新画布状态
@@ -46,6 +68,7 @@ export interface GraphCanvasAction {
    * @returns 
    */
   internal_updateCanvasState: (stateId: string, state: Partial<CanvasState>) => void;
+  internal_updateNodeMeta: (nodeId: string, meta: Partial<GraphNodeMeta>) => void;
 }
 
 export const graphCanvas: StateCreator<
@@ -71,7 +94,7 @@ export const graphCanvas: StateCreator<
     if (!activeStateId) return;
     const currentState = get().stateMap[activeStateId];
     if (!currentState) return;
-  
+
     const newNodeMeta = await graphService.createNode(activeStateId, meta);
 
     const newNode: NodeType = {
@@ -83,8 +106,29 @@ export const graphCanvas: StateCreator<
 
     // Trigger UI update
     get().internal_updateCanvasState(activeStateId, { nodes: [...currentState.nodes, newNode] });
-    // Trigger DB update
+    // TODO: should optimize DB update
     await get().updateCanvasState(activeStateId, { nodes: [...currentState.nodes, newNode] });
+  },
+
+  delNode: async (nodeId) => {
+    const { activeStateId, stateMap } = get();
+    if (!activeStateId) return;
+    const currentState = stateMap[activeStateId];
+    if (!currentState) return;
+    const newState = {
+      nodes: currentState.nodes.filter((n) => n.id !== nodeId),
+      edges: currentState.edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
+    };
+    get().internal_updateCanvasState(activeStateId, newState);
+    await get().updateCanvasState(activeStateId, newState);
+    // TODO: Soft delete in db schema
+  },
+
+  onDelNodes: async (ids) => {
+    // TODO: Soft delete in db schema
+    // Notice: this hooks should not update nodes cause it already 
+    // updated by setNodes
+    console.log('del nodes', ids);
   },
 
   setEdges: async (edges) => {
@@ -100,6 +144,7 @@ export const graphCanvas: StateCreator<
   },
 
   setNodes: async (nodes) => {
+    // console.log('set nodes', nodes);
     const { activeStateId, stateMap } = get();
     if (!activeStateId) return;
     const currentState = stateMap[activeStateId];
@@ -107,8 +152,9 @@ export const graphCanvas: StateCreator<
     const nextNodes = applyNodeChanges(nodes, currentState.nodes);
     // Trigger UI update
     get().internal_updateCanvasState(activeStateId, { nodes: nextNodes });
-    // Trigger DB update
-    await get().updateCanvasState(activeStateId, { nodes: nextNodes });
+
+    // Should use debounced update to reduce db writes
+    get().debouncedUpdateCanvasState(activeStateId, { nodes: nextNodes });
   },
 
   updateCanvasState: async (stateId, state) => {
@@ -116,6 +162,73 @@ export const graphCanvas: StateCreator<
       await graphService.updateState(stateId, state);
     } catch (e) {
       console.error('Failed to update graph state', e);
+    }
+  },
+
+  updateNodeMeta: async (nodeId, meta) => {
+    try {
+      await graphService.updateNode(nodeId, meta);
+      // Trigger UI update
+      get().internal_updateNodeMeta(nodeId, meta);
+    } catch (e) {
+      console.error('Failed to update graph node meta', e);
+    }
+  },
+
+  getDebouncedUpdate: (stateId: string) => {
+    if (!get().debouncedUpdateMap.has(stateId)) {
+      const debouncedFn = debounce(
+        async (state: Partial<CanvasState>) => {
+          try {
+            await graphService.updateState(stateId, state);
+            console.log('Debounced update completed for', stateId);
+          } catch (e) {
+            console.error('Failed to update graph state', e);
+          }
+        },
+        500, // 防抖延迟时间
+        {
+          maxWait: 2000, // 最大等待时间，防止长时间不更新
+        }
+      );
+      get().debouncedUpdateMap.set(stateId, debouncedFn);
+    }
+    return get().debouncedUpdateMap.get(stateId)!;
+  },
+
+  // 防抖更新（会合并多次调用）
+  debouncedUpdateCanvasState: (stateId, state) => {
+    // 合并状态更新
+    const currentPending = get().pendingUpdates.get(stateId) || {};
+    const mergedState = {
+      ...currentPending,
+      ...state,
+      // 特殊处理 nodes 和 edges，使用最新值
+      nodes: state.nodes ?? currentPending.nodes,
+      edges: state.edges ?? currentPending.edges,
+    };
+    get().pendingUpdates.set(stateId, mergedState);
+
+    // 触发防抖更新
+    const debouncedFn = get().getDebouncedUpdate(stateId);
+    debouncedFn();
+  },
+
+  cancelPendingUpdates: (stateId) => {
+    if (stateId) {
+      get().debouncedUpdateMap.get(stateId)?.cancel();
+      get().pendingUpdates.delete(stateId);
+    } else {
+      get().debouncedUpdateMap.forEach(fn => fn.cancel());
+      get().pendingUpdates.clear();
+    }
+  },
+
+  flushPendingUpdates: (stateId) => {
+    if (stateId) {
+      get().debouncedUpdateMap.get(stateId)?.flush();
+    } else {
+      get().debouncedUpdateMap.forEach(fn => fn.flush());
     }
   },
 
@@ -134,9 +247,24 @@ export const graphCanvas: StateCreator<
     set({ stateMap: nextStateMap });
   },
 
+  internal_updateNodeMeta(nodeId, meta) {
+    const { nodeMetaMap } = get()
+    const currentMeta = nodeMetaMap[nodeId]
+    if (!currentMeta) return
+    const nextNodeMetaMap = {
+      ...nodeMetaMap,
+      [nodeId]: {
+        ...currentMeta,
+        ...meta,
+      },
+    };
+    if (isEqual(nextNodeMetaMap, nodeMetaMap)) return
+    set({ nodeMetaMap: nextNodeMetaMap });
+  },
+
   useFetchCanvasState: (isDBInited, stateId) =>
     useClientDataSWR<GraphState | undefined>(
-      isDBInited? [SWR_USE_FETCH_GRAPH_CANVAS, stateId] : null,
+      isDBInited ? [SWR_USE_FETCH_GRAPH_CANVAS, stateId] : null,
       async ([, stateId]: [string, string | undefined]) => graphService.fetchState(stateId),
       {
         onSuccess: (state) => {
@@ -155,18 +283,62 @@ export const graphCanvas: StateCreator<
               stateMap: nextStateMap,
             });
           }
+
           const nextMessageMap = state.nodes.reduce((mp, node) => {
             if (node.messages)
               mp[messageMapKey(state.id, node.id)] = node.messages;
             return mp;
           }, { ...get().messagesMap });
-          if (!isEqual(nextMessageMap, get().messagesMap)) {
+          if (!get().messageInit || !isEqual(nextMessageMap, get().messagesMap)) {
             set({
               // TODO: should we add message init ?
               messagesMap: nextMessageMap,
+              messageInit: true,
+            });
+          }
+
+          const nextNodeMetaMap = state.nodes.reduce((mp, node) => {
+            mp[nodeMapKey(state.id, node.id)] = node.meta;
+            return mp;
+          }, { ...get().nodeMetaMap });
+          if (!isEqual(nextNodeMetaMap, get().nodeMetaMap)) {
+            set({
+              nodeMetaMap: nextNodeMetaMap,
             });
           }
         }
-      })
-});
+      }),
 
+  useFetchNodeMeta: (isDBInited, stateId) =>
+    useClientDataSWR<GraphNode[] | undefined>(
+      isDBInited && !!stateId ? [SWR_USE_FETCH_GRAPH_NODES, stateId] : null,
+      async ([, stateId]: [string, string]) => graphService.fetchNodes(stateId),
+      {
+        onSuccess: (nodes) => {
+          if (!nodes || !stateId) return;
+          const nextMessageMap = nodes.reduce((mp, node) => {
+            if (node.messages)
+              mp[messageMapKey(stateId, node.id)] = node.messages;
+            return mp;
+          }, { ...get().messagesMap });
+          if (!get().messageInit || !isEqual(nextMessageMap, get().messagesMap)) {
+            set({
+              // TODO: should we add message init ?
+              messagesMap: nextMessageMap,
+              messageInit: true,
+            });
+          }
+
+          const nextNodeMetaMap = nodes.reduce((mp, node) => {
+            mp[nodeMapKey(stateId, node.id)] = node.meta;
+            return mp;
+          }, { ...get().nodeMetaMap });
+          if (!isEqual(nextNodeMetaMap, get().nodeMetaMap)) {
+            set({
+              nodeMetaMap: nextNodeMetaMap,
+            });
+          }
+        }
+      }
+    ),
+})

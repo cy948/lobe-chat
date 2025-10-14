@@ -140,6 +140,7 @@ export interface CreateMessageParams
   targetId?: string | null;
   topicId?: string;
   traceId?: string;
+  graphNodeId?: string;
 }
 
 export interface SendMessageParams {

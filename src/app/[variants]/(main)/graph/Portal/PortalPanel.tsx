@@ -7,9 +7,9 @@ import { PropsWithChildren, memo, useState } from 'react';
 import { Flexbox } from 'react-layout-kit';
 
 import { CHAT_PORTAL_MAX_WIDTH, CHAT_PORTAL_WIDTH } from '@/const/layoutTokens';
-import { useFlowStore } from '@/store/flow';
 import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors';
+import { useGraphStore } from '@/store/graph';
 
 const useStyles = createStyles(({ css, token }) => ({
   content: css`
@@ -33,11 +33,7 @@ const PortalPanel = memo(({ children }: PropsWithChildren) => {
   const { styles } = useStyles();
   const { md = true } = useResponsive();
 
-  // const [showPortal ] = useChatStore((s) => [
-  //   chatPortalSelectors.showPortal(s),
-  // ]);
-
-  const [showPortal] = useFlowStore((s) => [s.detailBoxVisible]);
+  const [showPortal] = useGraphStore((s) => [s.showPortal]);
 
   const [portalWidth, updateSystemStatus] = useGlobalStore((s) => [
     systemStatusSelectors.portalWidth(s),

@@ -11,10 +11,10 @@ import {
   upsertVirtuosoVisibleItem,
 } from '@/features/Conversation/components/VirtualizedList/VirtuosoContext';
 import { InPortalThreadContext } from '@/features/Conversation/context/InPortalThreadContext';
+import { messageSelectors, useGraphStore } from '@/store/graph';
 
 import AssistantMessage from './Assistant';
 import UserMessage from './User';
-import { useGraphStore, messageSelectors, canvasSelectors } from '@/store/graph';
 
 const useStyles = createStyles(({ css, prefixCls }) => ({
   loading: css`

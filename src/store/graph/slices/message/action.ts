@@ -1,7 +1,3 @@
-import { StateCreator } from 'zustand/vanilla';
-import isEqual from 'fast-deep-equal';
-import { GraphStore, messageSelectors } from '@/store/graph';
-import { Action } from '@/utils/storeDebug';
 import {
   ChatErrorType,
   ChatMessage,
@@ -9,31 +5,38 @@ import {
   MessageMetadata,
   ModelReasoning,
 } from '@lobechat/types';
-
-import { messageMapKey, searchChildNodesWithBFS } from '../../utils'
-import { MessageDispatch, messagesReducer } from '@/store/chat/slices/message/reducer';
 import { copyToClipboard } from '@lobehub/ui';
-import { messageService } from '@/services/message';
-import { nanoid } from '@/utils/index';
-import { preventLeavingFn, toggleBooleanList } from '@/store/chat/utils';
-import { SWR_USE_FETCH_GRAPH_CANVAS } from '../canvas/action';
+import isEqual from 'fast-deep-equal';
 import { mutate } from 'swr';
+import { StateCreator } from 'zustand/vanilla';
+
+import { messageService } from '@/services/message';
+import { MessageDispatch, messagesReducer } from '@/store/chat/slices/message/reducer';
+import { preventLeavingFn, toggleBooleanList } from '@/store/chat/utils';
+import { GraphStore, messageSelectors } from '@/store/graph';
+import { nanoid } from '@/utils/index';
+import { Action } from '@/utils/storeDebug';
+
+import { messageMapKey, searchChildNodesWithBFS } from '../../utils';
+import { SWR_USE_FETCH_GRAPH_CANVAS } from '../canvas/action';
 
 export interface GraphMessageAction {
-
   copyMessage: (id: string, content: string) => Promise<void>;
   deleteMessage: (id: string) => Promise<void>;
 
-  refreshMessages: () => Promise<void>;
+  /**
+   * Build graph context
+   */
+  internal_buildGraphContext: (nodeId: string) => ChatMessage[];
 
   internal_createMessage: (
     params: CreateMessageParams,
     context?: { skipRefresh?: boolean; tempMessageId?: string },
   ) => Promise<string | undefined>;
   /**
-    * create a temp message for optimistic update
-    * otherwise the message will be too slow to show
-    */
+   * create a temp message for optimistic update
+   * otherwise the message will be too slow to show
+   */
   internal_createTmpMessage: (params: CreateMessageParams) => string;
   /**
    * update message at the frontend
@@ -41,7 +44,7 @@ export interface GraphMessageAction {
    */
   internal_dispatchMessage: (
     payload: MessageDispatch,
-    context?: { sessionId: string; nodeId?: string | null },
+    context?: { nodeId?: string | null; sessionId: string },
   ) => void;
 
   /**
@@ -75,13 +78,9 @@ export interface GraphMessageAction {
     },
   ) => Promise<void>;
 
+  refreshMessages: () => Promise<void>;
+
   toggleMessageEditing: (id: string, editing: boolean) => void;
-
-  /**
- * Build graph context
- */
-  internal_buildGraphContext: (nodeId: string) => ChatMessage[];
-
 }
 
 export const graphMessage: StateCreator<
@@ -112,13 +111,16 @@ export const graphMessage: StateCreator<
     const state = stateMap[activeStateId];
     if (!state) return [];
 
-    const { children } = searchChildNodesWithBFS(state.edges, nodeMetaMap, activeStateId, nodeId)
+    const { children } = searchChildNodesWithBFS(state.edges, nodeMetaMap, activeStateId, nodeId);
 
-    return children.sort((a, b) => a.distance - b.distance).flatMap((child) => {
-      const message = messagesMap[messageMapKey(activeStateId, child.id)];
-      if (!message) return [];
-      return message;
-    }).filter(Boolean);
+    return children
+      .sort((a, b) => a.distance - b.distance)
+      .flatMap((child) => {
+        const message = messagesMap[messageMapKey(activeStateId, child.id)];
+        if (!message) return [];
+        return message;
+      })
+      .filter(Boolean);
   },
 
   internal_createMessage: async (params, context) => {
@@ -176,9 +178,10 @@ export const graphMessage: StateCreator<
     // const activeSessionId = typeof context !== 'undefined' ? context.sessionId : get().activeSessionId;
     // const topicId = typeof context !== 'undefined' ? context.topicId : get().activeTopicId;
 
-    const nodeId = typeof context !== 'undefined' && context.nodeId ? context.nodeId : get().activeNodeId;
+    const nodeId =
+      typeof context !== 'undefined' && context.nodeId ? context.nodeId : get().activeNodeId;
 
-    const { activeStateId } = get()
+    const { activeStateId } = get();
 
     if (!activeStateId || !nodeId) return;
 
@@ -191,12 +194,12 @@ export const graphMessage: StateCreator<
 
     const nextMap = {
       ...get().messagesMap,
-      [messageMapKey(activeStateId, nodeId)]: messages
+      [messageMapKey(activeStateId, nodeId)]: messages,
     };
 
     if (isEqual(nextMap, get().messagesMap)) return;
 
-    set({ messagesMap: nextMap })
+    set({ messagesMap: nextMap });
   },
 
   internal_toggleLoadingArrays: (key, loading, id, action) => {
@@ -231,13 +234,6 @@ export const graphMessage: StateCreator<
       window.removeEventListener('beforeunload', preventLeavingFn);
     }
   },
-  toggleMessageEditing: (id, editing) => {
-    set(
-      { messageEditingIds: toggleBooleanList(get().messageEditingIds, id, editing) },
-      false,
-      'toggleMessageEditing',
-    );
-  },
   internal_toggleMessageLoading: (loading, id) => {
     set(
       {
@@ -265,9 +261,15 @@ export const graphMessage: StateCreator<
     });
     await refreshMessages();
   },
-
   refreshMessages: async () => {
     await mutate([SWR_USE_FETCH_GRAPH_CANVAS, get().activeStateId]);
-  }
-});
+  },
 
+  toggleMessageEditing: (id, editing) => {
+    set(
+      { messageEditingIds: toggleBooleanList(get().messageEditingIds, id, editing) },
+      false,
+      'toggleMessageEditing',
+    );
+  },
+});

@@ -1,14 +1,12 @@
-import { ChatMessage } from '@/types/message';
-
 export interface GraphPortalState {
-    showPortal: boolean;
-    activeNodeId?: string;
-    inputSummary: string;
-    inputMessage: string;
+  activeNodeId?: string;
+  inputMessage: string;
+  inputSummary: string;
+  showPortal: boolean;
 }
 
 export const initialGraphPortalState: GraphPortalState = {
-    showPortal: false,
-    inputSummary: '',
-    inputMessage: '',
+  inputMessage: '',
+  inputSummary: '',
+  showPortal: false,
 };

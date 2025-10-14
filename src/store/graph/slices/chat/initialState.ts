@@ -1,7 +1,5 @@
-import { ChatMessage } from '@/types/message';
-
 export interface GraphChatState {
-      /**
+  /**
    * @title 正在加载的聊天ID列表
    */
   chatLoadingIds: string[];

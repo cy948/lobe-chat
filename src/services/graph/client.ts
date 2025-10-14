@@ -1,13 +1,11 @@
 import { clientDB } from '@/database/client/db';
+import { GraphNodeModel, GraphStateModel } from '@/database/models/graph';
 import { BaseClientService } from '@/services/baseClientService';
-
-import { GraphNode, GraphState, CanvasState, GraphNodeMeta } from '@/types/graph';
+import { CanvasState, GraphNode, GraphNodeMeta, GraphState } from '@/types/graph';
 
 import { IGraphService } from './type';
-import { GraphStateModel, GraphNodeModel } from '@/database/models/graph';
 
 export class ClientService extends BaseClientService implements IGraphService {
-
   private get graphStateModel(): GraphStateModel {
     return new GraphStateModel(clientDB as any, this.userId);
   }
@@ -15,7 +13,6 @@ export class ClientService extends BaseClientService implements IGraphService {
   private get graphNodeModel(): GraphNodeModel {
     return new GraphNodeModel(clientDB as any, this.userId);
   }
-
 
   fetchState = async (stateId?: string): Promise<GraphState | undefined> => {
     try {
@@ -26,13 +23,16 @@ export class ClientService extends BaseClientService implements IGraphService {
         if (state) {
           retState = {
             id: state.id,
+            nodes: state.nodes.map(
+              (node) =>
+                ({
+                  id: node.id,
+                  messages: node.messages || undefined,
+                  meta: node.meta,
+                }) as GraphNode,
+            ),
             state: state.state,
-            nodes: state.nodes.map((node) => ({
-              id: node.id,
-              meta: node.meta,
-              messages: node.messages || undefined,
-            } as GraphNode)),
-          }
+          };
         }
       }
 
@@ -44,51 +44,57 @@ export class ClientService extends BaseClientService implements IGraphService {
         if (!latest) {
           // No state found, try create one
           const newState = await this.graphStateModel.create({
-            nodes: [],
             edges: [],
+            nodes: [],
           });
           retState = {
             id: newState.id,
+            nodes: [],
             state: newState.state,
-            nodes: []
-          }
+          };
         } else {
           retState = {
             id: latest.id,
+            nodes: latest.nodes.map(
+              (node) =>
+                ({
+                  id: node.id,
+                  messages: node.messages || undefined,
+                  meta: node.meta,
+                }) as GraphNode,
+            ),
             state: latest.state,
-            nodes: latest.nodes.map((node) => ({
-              id: node.id,
-              meta: node.meta,
-              messages: node.messages || undefined,
-            } as GraphNode)),
-          }
+          };
         }
       }
 
       return retState;
     } catch (e) {
-      console.log(e)
+      console.log(e);
     }
-  }
+  };
 
   updateState = async (stateId: string, state: Partial<CanvasState>) => {
     return await this.graphStateModel.update(stateId, state);
-  }
+  };
 
   fetchNodes = async (stateId: string) => {
     const results = await this.graphNodeModel.findByStateId(stateId);
-    return results.map((node) => ({
-      id: node.id,
-      meta: node.meta,
-      messages: node.messages || undefined,
-    } as GraphNode));
-  }
+    return results.map(
+      (node) =>
+        ({
+          id: node.id,
+          messages: node.messages || undefined,
+          meta: node.meta,
+        }) as GraphNode,
+    );
+  };
 
   createNode = async (stateId: string, meta: Partial<GraphNodeMeta>) => {
     return await this.graphNodeModel.create(stateId, meta);
-  }
+  };
 
   updateNode = async (nodeId: string, meta: Partial<GraphNodeMeta>) => {
     return await this.graphNodeModel.update(nodeId, meta);
-  }
+  };
 }

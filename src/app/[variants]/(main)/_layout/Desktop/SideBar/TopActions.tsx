@@ -35,7 +35,7 @@ const TopActions = memo<TopActionProps>(({ tab, isPinned }) => {
   const isFilesActive = tab === SidebarTabKey.Files;
   const isDiscoverActive = tab === SidebarTabKey.Discover;
   const isImageActive = tab === SidebarTabKey.Image;
-  const isFlowActive = tab === SidebarTabKey.Flow;
+  const isGraphActive = tab === SidebarTabKey.Graph;
 
   return (
     <Flexbox gap={8}>
@@ -99,12 +99,12 @@ const TopActions = memo<TopActionProps>(({ tab, isPinned }) => {
           />
         </Link>
       )}
-      <Link href={'/flow'}>
+      <Link href={'/graph'}>
         <ActionIcon
-          active={isFlowActive}
+          active={isGraphActive}
           icon={WaypointsIcon}
           size={ICON_SIZE}
-          title={'Flow'}
+          title={'Graph'}
           tooltipProps={{ placement: 'right' }}
         />
       </Link>

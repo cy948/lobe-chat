@@ -45,6 +45,7 @@ export default function Canvas() {
     onDelNodes,
     internal_updateCanvasState,
     activeStateId,
+    activeNodeId,
   ] = useGraphStore((s) => [
     s.isStateInit,
     canvasSelectors.getActiveCanvasState(s),
@@ -55,6 +56,7 @@ export default function Canvas() {
     s.onDelNodes,
     s.internal_updateCanvasState,
     s.activeStateId,
+    s.activeNodeId,
   ]);
 
   const onNodesChange = useCallback(async (changes: NodeChange[]) => await setNodes(changes), []);
@@ -136,6 +138,14 @@ export default function Canvas() {
             state.nodes,
           );
           internal_updateCanvasState(activeStateId, { edges: layoutedEdges, nodes: layoutedNodes });
+          if (activeNodeId) {
+            const node = layoutedNodes.find((n) => n.id === activeNodeId);
+            if (node) {
+              // Center the view on the node
+              fitView({ duration: 500, nodes: [node] });
+              break;
+            }
+          }
           fitView({ duration: 500 });
           break;
         }

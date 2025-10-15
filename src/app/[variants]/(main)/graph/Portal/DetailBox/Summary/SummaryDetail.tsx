@@ -1,12 +1,13 @@
 import { ActionIcon, ScrollShadow } from '@lobehub/ui';
 import { EditableMessage } from '@lobehub/ui/chat';
+import { Skeleton } from 'antd';
 import { createStyles } from 'antd-style';
 import { Edit } from 'lucide-react';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import SidebarHeader from '@/components/SidebarHeader';
-import { canvasSelectors, useFlowStore } from '@/store/flow';
+import { canvasSelectors, useGraphStore } from '@/store/graph';
 
 const useStyles = createStyles(({ css, token }) => ({
   animatedContainer: css`
@@ -34,27 +35,41 @@ export default function SummaryDetail() {
   // const [expanded, setExpanded] = useState(false);
   const { t } = useTranslation('common');
 
-  const [
-    setInputSummary, 
-    isGeneratingSummary, 
-    summary
-  ] = useFlowStore((s) => [
-    s.updateInputSummary,
-    s.isGeneratingSummary,
-    canvasSelectors.getActiveNodeMeta(s)?.summary,
-  ]);
-
+  const [setInputSummary, inputSummary, isGeneratingSummary, updateNodeMeta, activeNodeId] =
+    useGraphStore((s) => [
+      s.updateInputSummary,
+      s.inputSummary,
+      s.isGeneratingSummary,
+      s.updateNodeMeta,
+      s.activeNodeId,
+    ]);
 
   const expanded = true;
 
-  const nodeMeta = useFlowStore((s) => canvasSelectors.getActiveNodeMeta(s));
+  const nodeMeta = useGraphStore((s) =>
+    canvasSelectors.getActiveCanvasNodeMeta(s)(s.activeNodeId!),
+  );
 
   const toggleExpanded = () => {
     if (editing) return;
     // setExpanded(!expanded);
   };
 
-  return (
+  const onEditChange = useCallback(
+    async (editing: boolean) => {
+      setEditing(editing);
+      if (!editing && activeNodeId) {
+        await updateNodeMeta(activeNodeId, {
+          isLatestSummary: true,
+          summary: inputSummary,
+          useSummary: true,
+        });
+      }
+    },
+    [inputSummary, updateNodeMeta],
+  );
+
+  return nodeMeta ? (
     <>
       <SidebarHeader
         actions={
@@ -92,7 +107,7 @@ export default function SummaryDetail() {
           onChange={(e) => {
             setInputSummary(e);
           }}
-          onEditingChange={setEditing}
+          onEditingChange={onEditChange}
           placeholder={`编写当前结点的总结`}
           styles={{ markdown: { opacity: 0.5, overflow: 'visible' } }}
           text={{
@@ -101,9 +116,11 @@ export default function SummaryDetail() {
             edit: t('edit'),
             title: 'Edit Summary',
           }}
-          value={summary!}
+          value={nodeMeta?.summary || ''}
         />
       </ScrollShadow>
     </>
+  ) : (
+    <Skeleton active />
   );
 }

@@ -125,7 +125,7 @@ export const graphMessage: StateCreator<
     console.log('Found context children:', children);
 
     const retMsgs = children
-      .sort((a, b) => a.distance - b.distance)
+      .sort((a, b) => b.distance - a.distance)
       .flatMap((child) => {
         if (child.meta?.useSummary) {
           return [

@@ -38,7 +38,7 @@ const useStyles = createStyles(() => {
   };
 });
 
-export default function CanvasNode({ id }: CanvasNodeProps) {
+export default function ChatNode({ id }: CanvasNodeProps) {
   const { styles } = useStyles();
 
   const [nodeMeta, messages, openNodePortal, delNode, updateNodeMeta] = useGraphStore((s) => [

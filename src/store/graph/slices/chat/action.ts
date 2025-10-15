@@ -412,15 +412,7 @@ export const graphChat: StateCreator<
     // const nodeMeta = canvasSelectors.getNodeMeta(get())(activeStateId, nodeId);
     const nodeMeta = get().nodeMetaMap[nodeMapKey(activeStateId, nodeId)];
     if (!nodeMeta) {
-      console.warn('Node meta not found, abort sending.');
-      set({ isCreatingMessage: false });
-      return;
-    }
-
-    const messages = messageSelectors.getNodeMessages(get())(nodeId);
-
-    if (!messages) {
-      console.warn('Messages not found for node, abort sending.');
+      console.warn(`Node meta not found for ${nodeId}, abort sending.`);
       set({ isCreatingMessage: false });
       return;
     }
@@ -451,13 +443,7 @@ export const graphChat: StateCreator<
     // console.log('Graph messages:', graphMessages);
 
     // Get the messages from current node
-    const currentMessages = messageSelectors.getNodeMessages(get())(nodeId);
-
-    if (!currentMessages) {
-      console.error('Messages not found for node, abort sending.');
-      set({ isCreatingMessage: false });
-      return;
-    }
+    const currentMessages = messageSelectors.getNodeMessages(get())(nodeId) || [];
 
     const allMessages = [...graphMessages, ...currentMessages];
 

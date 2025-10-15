@@ -18,7 +18,7 @@ import { GraphStore } from '@/store/graph/store';
 import { nanoid } from '@/utils/index';
 import { Action } from '@/utils/storeDebug';
 
-import { messageMapKey, searchChildNodesWithBFS } from '../../utils';
+import { messageMapKey, nodeMapKey, searchChildNodesWithBFS } from '../../utils';
 import { SWR_USE_FETCH_GRAPH_CANVAS } from '../canvas/action';
 
 export interface GraphMessageAction {
@@ -110,18 +110,71 @@ export const graphMessage: StateCreator<
 
     if (!activeStateId) return [];
     const state = stateMap[activeStateId];
+
+    console.log('Building graph context for node:', nodeId, state);
+
     if (!state) return [];
 
-    const { children } = searchChildNodesWithBFS(state.edges, nodeMetaMap, activeStateId, nodeId);
+    const { children, edges } = searchChildNodesWithBFS(
+      state.edges,
+      nodeMetaMap,
+      activeStateId,
+      nodeId,
+    );
 
-    return children
+    console.log('Found context children:', children);
+
+    const retMsgs = children
       .sort((a, b) => a.distance - b.distance)
       .flatMap((child) => {
+        if (child.meta?.useSummary) {
+          return [
+            {
+              content: `<summary><title>${child.meta?.title}</title>${child.meta.summary}</summary>`,
+              createdAt: Date.now(),
+              id: `summary_${nodeId}`,
+              meta: {},
+              role: 'user',
+              updatedAt: Date.now(),
+            } as ChatMessage,
+          ];
+        }
         const message = messagesMap[messageMapKey(activeStateId, child.id)];
         if (!message) return [];
         return message;
       })
       .filter(Boolean);
+
+    // TODO(Improvement): Better graph description
+    // Necessary: A graph description can let model know what user sees
+    // Unnecessarily: The graph description can be poorly generated or understood
+
+    const graphDesc = edges
+      .reduce((desc, edge) => {
+        const sourceNode = nodeMetaMap[nodeMapKey(activeStateId, edge.source)];
+        const targetNode = nodeMetaMap[nodeMapKey(activeStateId, edge.target)];
+        const sourceName = sourceNode?.title || edge.source;
+        const targetName = targetNode?.title || edge.target;
+        if (sourceNode && targetNode) {
+          desc.push(`(${sourceName} -> ${targetName})`);
+        }
+        return desc;
+      }, [] as string[])
+      .join(', ');
+
+    // Add graph description at the end of the context
+    // Only add when there are more than SOME edges
+    if (edges.length > 3)
+      retMsgs.push({
+        content: `The above conversation messages are from a knowledge graph. And the edges are ${graphDesc}`,
+        createdAt: Date.now(),
+        id: `graph_description_${nodeId}`,
+        meta: {},
+        role: 'user',
+        updatedAt: Date.now(),
+      });
+
+    return retMsgs;
   },
 
   internal_createMessage: async (params, context) => {

@@ -30,7 +30,7 @@ export default function Canvas() {
 
   const { screenToFlowPosition } = useReactFlow();
 
-  const [menu, setMenu] = useState<{ nodeId?: string, x: number; y: number; } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
   const closeMenu = () => setMenu(null);
 
@@ -97,9 +97,27 @@ export default function Canvas() {
   );
 
   const onHandleMenuClick = useCallback(
-    (key: string) => {
-      console.log('Menu click:', key);
+    async (ev: any, key: string) => {
       closeMenu();
+      switch (key) {
+        case 'CreateText': {
+          const position = screenToFlowPosition({
+            x: ev.clientX,
+            y: ev.clientY,
+          });
+          await addNode({ position, type: 'text' }, { type: 'text', useSummary: true });
+          break;
+        }
+        case 'CreateChat': {
+          const pos = screenToFlowPosition({
+            x: ev.clientX,
+            y: ev.clientY,
+          });
+          await addNode({ position: pos, type: 'chat' }, { type: 'chat' });
+          break;
+        }
+      }
+      console.log('Menu click:', key);
     },
     [closeMenu],
   );
@@ -122,7 +140,10 @@ export default function Canvas() {
       >
         {menu && (
           <Dropdown
-            menu={{ items: menuItems.items, onClick: ({ key }) => onHandleMenuClick(key) }}
+            menu={{
+              items: menuItems.items,
+              onClick: ({ domEvent, key }) => onHandleMenuClick(domEvent, key),
+            }}
             open
             trigger={[]}
           >

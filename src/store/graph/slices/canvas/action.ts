@@ -103,6 +103,8 @@ export const graphCanvas: StateCreator<
 
     // Trigger UI update
     get().internal_updateCanvasState(activeStateId, { nodes: [...currentState.nodes, newNode] });
+    // Trigger Node meta without db meta update cause it already created in db
+    get().internal_updateNodeMeta(newNode.id, meta);
     // TODO: should optimize DB update
     await get().updateCanvasState(activeStateId, { nodes: [...currentState.nodes, newNode] });
   },
@@ -195,15 +197,19 @@ export const graphCanvas: StateCreator<
   },
 
   internal_updateNodeMeta(nodeId, meta) {
-    const { nodeMetaMap } = get();
-    const currentMeta = nodeMetaMap[nodeId];
-    if (!currentMeta) return;
+    const { activeStateId, nodeMetaMap } = get();
+    if (!activeStateId) return;
+    const nodeKey = nodeMapKey(activeStateId, nodeId);
+    const currentMeta = nodeMetaMap[nodeKey];
+    const newNodeMeta: GraphNodeMeta = currentMeta
+      ? { ...currentMeta, ...meta }
+      : {
+          ...meta,
+          type: meta?.type || 'chat',
+        };
     const nextNodeMetaMap = {
       ...nodeMetaMap,
-      [nodeId]: {
-        ...currentMeta,
-        ...meta,
-      },
+      [nodeKey]: newNodeMeta,
     };
     if (isEqual(nextNodeMetaMap, nodeMetaMap)) return;
     set({ nodeMetaMap: nextNodeMetaMap });
@@ -252,6 +258,7 @@ export const graphCanvas: StateCreator<
 
   updateNodeMeta: async (nodeId, meta) => {
     try {
+      console.log('Updating node meta', nodeId, meta);
       await graphService.updateNode(nodeId, meta);
       // Trigger UI update
       get().internal_updateNodeMeta(nodeId, meta);

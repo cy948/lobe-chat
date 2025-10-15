@@ -3,6 +3,7 @@
 import type { Edge as RFEdge, Node as RFNode, XYPosition } from '@xyflow/react';
 import ELK, { ElkExtendedEdge, ElkNode } from 'elkjs/lib/elk.bundled.js';
 
+// TODO: should use lazyload in browser only environment
 const elk = new ELK();
 
 const elkOptions = {
@@ -23,14 +24,14 @@ export const getArrangedGraph = async (
   // 1) 将 RF nodes 映射为 ELK children（必须有 width/height）
   const elkChildren: NonNullable<ElkNode['children']> = nodes.map((n) => ({
     height: (n as RFNode).measured?.height ?? 50,
-    
+
     id: n.id,
-    
-// 可选：附带标签或数据，但 ELK 只关心布局
-labels: n.data?.label ? [{ text: String(n.data.label) }] : undefined,
-    
+
+    // 可选：附带标签或数据，但 ELK 只关心布局
+    labels: n.data?.label ? [{ text: String(n.data.label) }] : undefined,
+
     // 若有测量尺寸可用 n.measured?.width/height，否则给默认值
-width: (n as RFNode).measured?.width ?? 150,
+    width: (n as RFNode).measured?.width ?? 150,
   }));
 
   // 2) 将 RF edges 映射为 ELK edges（关键：sources/targets 数组）

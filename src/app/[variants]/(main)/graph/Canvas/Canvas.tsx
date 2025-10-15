@@ -29,7 +29,7 @@ const nodeTypes = {
 export default function Canvas() {
   useFetchGraphState();
 
-  const { screenToFlowPosition, fitView } = useReactFlow();
+  const { screenToFlowPosition, fitView, setCenter } = useReactFlow();
 
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
@@ -142,7 +142,8 @@ export default function Canvas() {
             const node = layoutedNodes.find((n) => n.id === activeNodeId);
             if (node) {
               // Center the view on the node
-              fitView({ duration: 500, nodes: [node] });
+              console.log('Centering on node', node);
+              setCenter(node.position.x, node.position.y, { duration: 500, zoom: 0.8 });
               break;
             }
           }
@@ -161,7 +162,7 @@ export default function Canvas() {
       <ReactFlow
         deleteKeyCode={['Delete']}
         edges={state.edges}
-        fitView
+        fitView={true}
         nodeTypes={nodeTypes}
         nodes={state.nodes}
         onConnect={onConnect}

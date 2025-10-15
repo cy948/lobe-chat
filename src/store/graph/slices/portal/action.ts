@@ -6,7 +6,7 @@ import { GraphStore } from '@/store/graph/store';
 import { searchChildNodesWithBFS } from '../../utils';
 
 export interface GraphPortalAction {
-  openNodePortal: (nodeId: string) => void;
+  openNodePortal: (nodeId: string) => Promise<void>;
   setPortal: (show: boolean) => void;
   updateInputMessage: (message: string) => void;
   updateInputSummary: (summary: string) => void;
@@ -18,7 +18,7 @@ export const graphPortal: StateCreator<
   [],
   GraphPortalAction
 > = (set, get) => ({
-  openNodePortal: (nodeId) => {
+  openNodePortal: async (nodeId) => {
     const { stateMap, activeStateId, nodeMetaMap, internal_updateCanvasState } = get();
     if (!activeStateId) return;
     const state = stateMap[activeStateId];
@@ -40,7 +40,7 @@ export const graphPortal: StateCreator<
     // Update ui
     internal_updateCanvasState(activeStateId, { edges: newEdges });
     // Persist change
-    get().debouncedUpdateCanvasState(activeStateId, { edges: newEdges });
+    await get().updateCanvasState(activeStateId, { edges: newEdges });
   },
   setPortal: (show) => {
     set({ showPortal: show });

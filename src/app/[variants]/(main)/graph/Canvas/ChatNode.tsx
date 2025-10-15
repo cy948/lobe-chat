@@ -87,9 +87,9 @@ export default function ChatNode({ id }: CanvasNodeProps) {
     },
   };
 
-  const handleClick = () => {
-    openNodePortal(id);
-  };
+  const handleClick = useCallback(async () => {
+    await openNodePortal(id);
+  }, [openNodePortal, id]);
 
   return (
     <Card
@@ -99,7 +99,6 @@ export default function ChatNode({ id }: CanvasNodeProps) {
           <ActionIcon icon={MoreVerticalIcon} size={'small'} />
         </Dropdown>
       }
-      // onClick={handleClick}
       title={
         <Flexbox align="center" horizontal>
           <EditableText onChange={setValue} onChangeEnd={handleChangeTitle} value={value} />

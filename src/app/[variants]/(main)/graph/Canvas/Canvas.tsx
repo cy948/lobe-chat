@@ -161,7 +161,7 @@ export default function Canvas() {
       }
       console.log('Menu click:', key);
     },
-    [closeMenu],
+    [closeMenu, state, activeStateId, activeNodeId],
   );
 
   return (

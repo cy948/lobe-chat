@@ -11,6 +11,7 @@ import {
   ReactFlow,
   useReactFlow,
 } from '@xyflow/react';
+import { useTheme } from 'antd-style';
 import { BoxSelectIcon, LucideMapPinPlusInside } from 'lucide-react';
 import { useCallback, useState } from 'react';
 
@@ -28,6 +29,8 @@ const nodeTypes = {
 
 export default function Canvas() {
   useFetchGraphState();
+
+  const theme = useTheme();
 
   const { screenToFlowPosition, fitView, setCenter } = useReactFlow();
 
@@ -168,6 +171,7 @@ export default function Canvas() {
     isInit &&
     state && (
       <ReactFlow
+        colorMode={theme.isDarkMode ? 'dark' : 'light'}
         deleteKeyCode={['Delete']}
         edges={state.edges}
         fitView={true}

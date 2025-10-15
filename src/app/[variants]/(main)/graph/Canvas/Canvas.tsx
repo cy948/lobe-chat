@@ -46,6 +46,7 @@ export default function Canvas() {
     internal_updateCanvasState,
     activeStateId,
     activeNodeId,
+    debouncedUpdateCanvasState,
   ] = useGraphStore((s) => [
     s.isStateInit,
     canvasSelectors.getActiveCanvasState(s),
@@ -57,6 +58,7 @@ export default function Canvas() {
     s.internal_updateCanvasState,
     s.activeStateId,
     s.activeNodeId,
+    s.debouncedUpdateCanvasState,
   ]);
 
   const onNodesChange = useCallback(async (changes: NodeChange[]) => await setNodes(changes), []);
@@ -137,7 +139,13 @@ export default function Canvas() {
             state.edges,
             state.nodes,
           );
+          // TODO: should we move to store action?
           internal_updateCanvasState(activeStateId, { edges: layoutedEdges, nodes: layoutedNodes });
+          debouncedUpdateCanvasState(activeStateId, {
+            edges: layoutedEdges,
+            nodes: layoutedNodes,
+          });
+          // Center on active node if any
           if (activeNodeId) {
             const node = layoutedNodes.find((n) => n.id === activeNodeId);
             if (node) {

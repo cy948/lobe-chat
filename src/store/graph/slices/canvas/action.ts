@@ -259,9 +259,9 @@ export const graphCanvas: StateCreator<
   updateNodeMeta: async (nodeId, meta) => {
     try {
       console.log('Updating node meta', nodeId, meta);
-      await graphService.updateNode(nodeId, meta);
-      // Trigger UI update
+      // Optimistic update
       get().internal_updateNodeMeta(nodeId, meta);
+      await graphService.updateNode(nodeId, meta);
     } catch (e) {
       console.error('Failed to update graph node meta', e);
     }

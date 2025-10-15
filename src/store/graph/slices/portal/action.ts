@@ -37,8 +37,10 @@ export const graphPortal: StateCreator<
       }
       return { ...edge, animated: false } as Edge;
     });
-    // Only trigger internal update
+    // Update ui
     internal_updateCanvasState(activeStateId, { edges: newEdges });
+    // Persist change
+    get().debouncedUpdateCanvasState(activeStateId, { edges: newEdges });
   },
   setPortal: (show) => {
     set({ showPortal: show });

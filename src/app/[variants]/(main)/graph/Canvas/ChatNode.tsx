@@ -91,10 +91,6 @@ export default function ChatNode({ id }: CanvasNodeProps) {
     openNodePortal(id);
   };
 
-  const handleSubmit = () => {
-    handleChangeTitle();
-  };
-
   return (
     <Card
       className={styles.flowNode}
@@ -106,7 +102,7 @@ export default function ChatNode({ id }: CanvasNodeProps) {
       // onClick={handleClick}
       title={
         <Flexbox align="center" horizontal>
-          <EditableText onChange={setValue} onChangeEnd={handleSubmit} value={value} />
+          <EditableText onChange={setValue} onChangeEnd={handleChangeTitle} value={value} />
           <Flexbox align="center" horizontal style={{ marginLeft: 'auto' }}>
             <ActionIcon
               icon={nodeMeta?.useSummary ? TimerIcon : TimerOffIcon}

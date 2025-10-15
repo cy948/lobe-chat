@@ -4,9 +4,9 @@ import { useGeminiChineseWarning } from '@/hooks/useGeminiChineseWarning';
 import { getAgentStoreState } from '@/store/agent';
 import { agentSelectors } from '@/store/agent/slices/chat';
 import { useChatStore } from '@/store/chat';
-import { SendMessageParams } from '@/types/message';
 import { flowAIChatSelectors, useFlowStore } from '@/store/flow';
 import { chatSelectors, useGraphStore } from '@/store/graph';
+import { SendMessageParams } from '@/types/message';
 
 export type UseSendMessageParams = Pick<
   SendMessageParams,
@@ -15,21 +15,15 @@ export type UseSendMessageParams = Pick<
 
 export const useSendThreadMessage = () => {
   const [loading, setLoading] = useState(false);
-  const [
-    canNotSend,
-    generating,
-    sendMessage,
-    updateInputMessage,
-    activeNodeId,
-    stop,
-  ] = useGraphStore((s) => [
-    chatSelectors.isEditorButtonDisabled(s),
-    chatSelectors.isNodeMessageGenerating(s),
-    s.sendMessage,
-    s.updateInputMessage,
-    s.activeNodeId,
-    s.stopGenerateMessage,
-  ]);
+  const [canNotSend, generating, sendMessage, updateInputMessage, activeNodeId, stop] =
+    useGraphStore((s) => [
+      chatSelectors.isEditorButtonDisabled(s),
+      chatSelectors.isNodeMessageGenerating(s),
+      s.sendMessage,
+      s.updateInputMessage,
+      s.activeNodeId,
+      s.stopGenerateMessage,
+    ]);
   const checkGeminiChineseWarning = useGeminiChineseWarning();
 
   const handleSend = async (params: UseSendMessageParams = {}) => {
@@ -68,7 +62,7 @@ export const useSendThreadMessage = () => {
 
     if (!activeNodeId) return;
 
-    await sendMessage(activeNodeId, { message: inputMessage, ...params });
+    sendMessage(activeNodeId, { message: inputMessage, ...params });
 
     updateInputMessage('');
     messageInputEditor.clearContent();

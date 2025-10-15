@@ -5,9 +5,9 @@ import { memo, use, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { VirtuosoContext } from '@/features/Conversation/components/VirtualizedList/VirtuosoContext';
+import { useGraphStore } from '@/store/graph';
 
 import { useChatListActionsBar } from './useChatListActionsBar';
-import { useGraphStore } from '@/store/graph';
 
 export type ActionsBarProps = ActionIconGroupProps;
 
@@ -37,16 +37,18 @@ const Actions = memo<ActionsProps>(({ id, index, data }) => {
   const { t } = useTranslation('common');
 
   const [
+    activeNodeId,
     deleteMessage,
     copyMessage,
-    updateInputSummary,
+    updateNodeMeta,
     toggleMessageEditing,
     regenerateMessage,
     delAndRegenerateMessage,
   ] = useGraphStore((s) => [
+    s.activeNodeId,
     s.deleteMessage,
     s.copyMessage,
-    s.updateInputSummary,
+    s.updateNodeMeta,
     s.toggleMessageEditing,
     s.regenerateMessage,
     s.delAndRegenerateMessage,
@@ -76,7 +78,11 @@ const Actions = memo<ActionsProps>(({ id, index, data }) => {
         }
 
         case 'setAsSummary': {
-          updateInputSummary(data.content);
+          if (!activeNodeId) {
+            message.error(t('noNodeSelected', { defaultValue: 'No node selected' }));
+            return;
+          }
+          await updateNodeMeta(activeNodeId, { summary: data.content, useSummary: true });
           message.success('已设为总结');
           break;
         }

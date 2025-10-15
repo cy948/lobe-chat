@@ -19,6 +19,7 @@ import { canvasSelectors, useGraphStore } from '@/store/graph';
 
 import ChatNode from './ChatNode';
 import TextNode from './TextNode';
+import { getArrangedGraph } from './utils';
 
 const nodeTypes = {
   chat: ChatNode,
@@ -28,13 +29,23 @@ const nodeTypes = {
 export default function Canvas() {
   useFetchGraphState();
 
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
 
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
   const closeMenu = () => setMenu(null);
 
-  const [isInit, state, addNode, addEdge, setNodes, setEdges, onDelNodes] = useGraphStore((s) => [
+  const [
+    isInit,
+    state,
+    addNode,
+    addEdge,
+    setNodes,
+    setEdges,
+    onDelNodes,
+    internal_updateCanvasState,
+    activeStateId,
+  ] = useGraphStore((s) => [
     s.isStateInit,
     canvasSelectors.getActiveCanvasState(s),
     s.addNode,
@@ -42,6 +53,8 @@ export default function Canvas() {
     s.setNodes,
     s.setEdges,
     s.onDelNodes,
+    s.internal_updateCanvasState,
+    s.activeStateId,
   ]);
 
   const onNodesChange = useCallback(async (changes: NodeChange[]) => await setNodes(changes), []);
@@ -114,6 +127,16 @@ export default function Canvas() {
             y: ev.clientY,
           });
           await addNode({ position: pos, type: 'chat' }, { type: 'chat' });
+          break;
+        }
+        case 'arrange': {
+          if (!state || !activeStateId) return;
+          const { nodes: layoutedNodes, edges: layoutedEdges } = await getArrangedGraph(
+            state.edges,
+            state.nodes,
+          );
+          internal_updateCanvasState(activeStateId, { edges: layoutedEdges, nodes: layoutedNodes });
+          fitView({ duration: 500 });
           break;
         }
       }

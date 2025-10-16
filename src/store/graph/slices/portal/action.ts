@@ -8,6 +8,7 @@ import { searchChildNodesWithBFS } from '../../utils';
 export interface GraphPortalAction {
   openNodePortal: (nodeId: string) => Promise<void>;
   setPortal: (show: boolean) => void;
+  setSideBar: (show: boolean) => void;
   updateInputMessage: (message: string) => void;
   updateInputSummary: (summary: string) => void;
 }
@@ -44,6 +45,10 @@ export const graphPortal: StateCreator<
   },
   setPortal: (show) => {
     set({ showPortal: show });
+  },
+  setSideBar: (show) => {
+    console.log('setSideBar', show);
+    set({ showSideBar: show });
   },
   updateInputMessage: (message) => {
     set({ inputMessage: message });

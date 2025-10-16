@@ -1,27 +1,34 @@
 import type { Edge, Node } from '@xyflow/react';
+
 import { ChatMessage } from '../message';
 
 export type CanvasState = {
-    edges: Edge[]
-    nodes: Node[]
-}
+  edges: Edge[];
+  nodes: Node[];
+};
 
 export type GraphNodeMeta = {
-    type: 'text' | 'chat';
-    summary?: string;
-    useSummary?: boolean;
-    isLatestSummary?: boolean;
-    title?: string;
-}
+  isLatestSummary?: boolean;
+  summary?: string;
+  title?: string;
+  type: 'text' | 'chat';
+  useSummary?: boolean;
+};
 
 export type GraphNode = {
-    id: string,
-    meta: GraphNodeMeta,
-    messages?: ChatMessage[],
-}
+  id: string;
+  messages?: ChatMessage[];
+  meta: GraphNodeMeta;
+};
 
 export type GraphState = {
-    id: string,
-    state: CanvasState,
-    nodes: GraphNode[],
-}
+  id: string;
+  nodes: GraphNode[];
+  state: CanvasState;
+};
+
+export type GraphTopic = {
+  id: string;
+  title: string;
+  // favorite: boolean,
+};

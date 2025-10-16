@@ -1,7 +1,7 @@
 import { clientDB } from '@/database/client/db';
 import { GraphNodeModel, GraphStateModel } from '@/database/models/graph';
 import { BaseClientService } from '@/services/baseClientService';
-import { CanvasState, GraphNode, GraphNodeMeta, GraphState } from '@/types/graph';
+import { CanvasState, GraphNode, GraphNodeMeta, GraphState, GraphTopic } from '@/types/graph';
 
 import { IGraphService } from './type';
 
@@ -74,8 +74,30 @@ export class ClientService extends BaseClientService implements IGraphService {
     }
   };
 
+  fetchTopics = async () => {
+    const topics = await this.graphStateModel.findAll();
+    return topics.map(
+      (topic) =>
+        ({
+          id: topic.id,
+          title: topic.id.slice(0, 5) || 'Untitled',
+        }) as GraphTopic,
+    );
+  };
+
+  createState = async () => {
+    return await this.graphStateModel.create({
+      edges: [],
+      nodes: [],
+    });
+  };
+
   updateState = async (stateId: string, state: Partial<CanvasState>) => {
     return await this.graphStateModel.update(stateId, state);
+  };
+
+  removeState = async (stateId: string) => {
+    return await this.graphStateModel.delete(stateId);
   };
 
   fetchNodes = async (stateId: string) => {

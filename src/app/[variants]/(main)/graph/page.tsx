@@ -4,7 +4,9 @@ import { createStyles } from 'antd-style';
 import { Flexbox } from 'react-layout-kit';
 
 import FlowCanvas from './Canvas';
+import GraphChatHeader from './Header';
 import Portal from './Portal';
+import SideBar from './SideBar';
 
 const useStyles = createStyles(({ token, isDarkMode }) => {
   return {
@@ -23,9 +25,11 @@ const FlowPage = () => {
   const { styles } = useStyles();
   return (
     <div className={styles.canvasContainer}>
+      <GraphChatHeader />
       <Flexbox className={styles.canvasBox} horizontal>
         <FlowCanvas />
         <Portal />
+        <SideBar />
       </Flexbox>
     </div>
   );

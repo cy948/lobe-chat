@@ -9,13 +9,15 @@ import { GraphCanvasAction, graphCanvas } from './slices/canvas/action';
 import { GraphChatAction, graphChat } from './slices/chat/action';
 import { GraphMessageAction, graphMessage } from './slices/message/action';
 import { GraphPortalAction, graphPortal } from './slices/portal/action';
+import { GraphTopicAction, graphTopic } from './slices/topic/action';
 
 //  ===============  聚合 createStoreFn ============ //
 export interface GraphStoreAction
   extends GraphCanvasAction,
     GraphMessageAction,
     GraphPortalAction,
-    GraphChatAction {}
+    GraphChatAction,
+    GraphTopicAction {}
 
 export type GraphStore = GraphStoreAction & GraphStoreState;
 
@@ -25,6 +27,7 @@ const createStore: StateCreator<GraphStore, [['zustand/devtools', never]]> = (..
   ...graphMessage(...parameters),
   ...graphPortal(...parameters),
   ...graphChat(...parameters),
+  ...graphTopic(...parameters),
 });
 
 //  ===============  实装 useStore ============ //

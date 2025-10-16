@@ -183,8 +183,8 @@ export const graphCanvas: StateCreator<
 
   internal_updateCanvasState(stateId, state) {
     const { stateMap } = get();
-    const currentState = stateMap[stateId];
-    if (!currentState) return;
+    let currentState = stateMap[stateId];
+    if (!currentState) currentState = { edges: [], nodes: [] };
     const nextStateMap = {
       ...stateMap,
       [stateId]: {

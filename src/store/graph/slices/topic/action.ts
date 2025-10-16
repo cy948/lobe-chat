@@ -41,11 +41,20 @@ export const graphTopic: StateCreator<
     await graphService.removeState(stateId);
   },
   switchState: (stateId) => {
+    console.log('switchState', stateId);
     if (!stateId) return;
     set({ activeNodeId: undefined, activeStateId: stateId });
   },
   updateState: async (stateId, data) => {
     await graphService.updateState(stateId, data);
+    // update topic list
+    const nextTopiList = (get().stateTopicList || []).map((topic) =>
+      topic.id === stateId ? { ...topic, ...data } : topic,
+    );
+    if (isEqual(get().stateTopicList, nextTopiList)) return;
+    set({
+      stateTopicList: nextTopiList,
+    });
   },
   useFetchGraphTopics: (isDBInited) =>
     useClientDataSWR<GraphTopic[]>(

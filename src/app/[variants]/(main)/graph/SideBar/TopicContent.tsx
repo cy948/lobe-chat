@@ -1,7 +1,8 @@
-import { ActionIcon, EditableText, Text } from '@lobehub/ui';
+import { ActionIcon, Dropdown, EditableText, Icon, MenuProps, Text } from '@lobehub/ui';
 import { createStyles, useTheme } from 'antd-style';
-import { Star } from 'lucide-react';
-import { memo } from 'react';
+import { MoreVertical, PencilLine, Star } from 'lucide-react';
+import { memo, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Flexbox } from 'react-layout-kit';
 
 import { useGraphStore } from '@/store/graph';
@@ -27,7 +28,8 @@ interface TopicContentProps {
   title: string;
 }
 
-const TopicContent = memo<TopicContentProps>(({ id, title, fav }) => {
+const TopicContent = memo<TopicContentProps>(({ id, title, fav, showMore }) => {
+  const { t } = useTranslation(['topic', 'common']);
   const { styles } = useStyles();
   const theme = useTheme();
 
@@ -36,6 +38,20 @@ const TopicContent = memo<TopicContentProps>(({ id, title, fav }) => {
   const toggleEditing = (visible?: boolean) => {
     useGraphStore.setState({ topicRenamingId: visible ? id : '' });
   };
+
+  const items = useMemo<MenuProps['items']>(
+    () => [
+      {
+        icon: <Icon icon={PencilLine} />,
+        key: 'rename',
+        label: t('rename', { ns: 'common' }),
+        onClick: () => {
+          toggleEditing(true);
+        },
+      },
+    ],
+    [id],
+  );
 
   return (
     <Flexbox align={'center'} gap={8} horizontal justify={'space-between'}>
@@ -63,10 +79,10 @@ const TopicContent = memo<TopicContentProps>(({ id, title, fav }) => {
       ) : (
         <EditableText
           editing={editing}
-          onChangeEnd={async (v) => {
+          onChangeEnd={(v) => {
             if (title !== v) {
               // updateTopicTitle(id, v);
-              await updateState(id, { title: v });
+              updateState(id, { title: v });
             }
             toggleEditing(false);
           }}
@@ -75,6 +91,27 @@ const TopicContent = memo<TopicContentProps>(({ id, title, fav }) => {
           style={{ height: 28 }}
           value={title}
         />
+      )}
+      {showMore && !editing && (
+        <Dropdown
+          arrow={false}
+          menu={{
+            items: items,
+            onClick: ({ domEvent }) => {
+              domEvent.stopPropagation();
+            },
+          }}
+          trigger={['click']}
+        >
+          <ActionIcon
+            className="topic-more"
+            icon={MoreVertical}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+            size={'small'}
+          />
+        </Dropdown>
       )}
     </Flexbox>
   );

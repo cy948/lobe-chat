@@ -80,7 +80,7 @@ export class ClientService extends BaseClientService implements IGraphService {
       (topic) =>
         ({
           id: topic.id,
-          title: topic.id.slice(0, 5) || 'Untitled',
+          title: topic.title,
         }) as GraphTopic,
     );
   };

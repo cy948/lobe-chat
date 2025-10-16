@@ -982,18 +982,20 @@ table flow_states {
 
 table graph_nodes {
   id uuid [pk, not null, default: `gen_random_uuid()`]
+  meta jsonb [not null]
   graph_state_id uuid [not null]
   user_id text [not null]
-  meta jsonb [not null]
   accessed_at "timestamp with time zone" [not null, default: `now()`]
   created_at "timestamp with time zone" [not null, default: `now()`]
   updated_at "timestamp with time zone" [not null, default: `now()`]
 }
 
 table graph_states {
+  favorite boolean [default: false]
   id uuid [pk, not null, default: `gen_random_uuid()`]
-  user_id text [not null]
   state jsonb [not null]
+  title text [default: 'New Graph']
+  user_id text [not null]
   accessed_at "timestamp with time zone" [not null, default: `now()`]
   created_at "timestamp with time zone" [not null, default: `now()`]
   updated_at "timestamp with time zone" [not null, default: `now()`]

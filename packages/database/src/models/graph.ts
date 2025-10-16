@@ -1,6 +1,6 @@
 import { and, desc, eq } from 'drizzle-orm';
 
-import { CanvasState, GraphNodeMeta } from '@/types/graph';
+import { CanvasState, GraphNodeMeta, GraphTopic } from '@/types/graph';
 
 import { graphNodes, graphState } from '../schemas';
 import { LobeChatDatabase } from '../type';
@@ -59,7 +59,7 @@ export class GraphStateModel {
     return newState;
   };
 
-  update = async (id: string, state: Partial<CanvasState>) => {
+  updateState = async (id: string, state: Partial<CanvasState>) => {
     const prevState = await this.findById(id);
     if (!prevState) {
       return;
@@ -71,6 +71,22 @@ export class GraphStateModel {
           ...prevState.state,
           ...state,
         },
+        updatedAt: new Date(),
+      })
+      .where(and(eq(graphState.id, id), eq(graphState.userId, this.userId)))
+      .returning();
+    return newState;
+  };
+
+  update = async (id: string, data: Partial<Exclude<GraphTopic, 'id'>>) => {
+    const prevState = await this.findById(id);
+    if (!prevState) {
+      return;
+    }
+    const [newState] = await this.db
+      .update(graphState)
+      .set({
+        ...data,
         updatedAt: new Date(),
       })
       .where(and(eq(graphState.id, id), eq(graphState.userId, this.userId)))

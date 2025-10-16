@@ -165,7 +165,7 @@ export const graphCanvas: StateCreator<
       const debouncedFn = debounce(
         async (state: Partial<CanvasState>) => {
           try {
-            await graphService.updateState(stateId, state);
+            await graphService.updateCanvasState(stateId, state);
             console.log('Debounced update completed for', stateId);
           } catch (e) {
             console.error('Failed to update graph state', e);
@@ -250,7 +250,7 @@ export const graphCanvas: StateCreator<
 
   updateCanvasState: async (stateId, state) => {
     try {
-      await graphService.updateState(stateId, state);
+      await graphService.updateCanvasState(stateId, state);
     } catch (e) {
       console.error('Failed to update graph state', e);
     }

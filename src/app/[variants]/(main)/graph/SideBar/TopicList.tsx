@@ -25,11 +25,11 @@ const TopicList = memo(() => {
   );
 
   const itemContent = useCallback(
-    (index: number, { id, title }: GraphTopic) =>
+    (index: number, { id, title, favorite }: GraphTopic) =>
       index === 0 ? (
-        <TopicItem active={!activeStateId} title={title} />
+        <TopicItem active={!activeStateId} fav={favorite} title={title} />
       ) : (
-        <TopicItem active={activeStateId === id} id={id} key={id} title={title} />
+        <TopicItem active={activeStateId === id} fav={favorite} id={id} key={id} title={title} />
       ),
     [activeStateId],
   );

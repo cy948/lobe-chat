@@ -28,7 +28,7 @@ export type GraphState = {
 };
 
 export type GraphTopic = {
+  favorite: boolean;
   id: string;
   title: string;
-  // favorite: boolean,
 };

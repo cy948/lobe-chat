@@ -11,6 +11,7 @@ export interface GraphTopicAction {
   createState: (title?: string) => Promise<void>;
   removeState: (stateId: string) => Promise<void>;
   switchState: (stateId?: string) => void;
+  updateState: (stateId: string, data: Partial<GraphTopic>) => Promise<void>;
   useFetchGraphTopics: (isDBInited: boolean) => SWRResponse<GraphTopic[]>;
 }
 
@@ -33,7 +34,6 @@ export const graphTopic: StateCreator<
         { id: newState.id, title: 'New State' } as GraphTopic,
       ],
     });
-
     // switch to the new state
     get().switchState(newState.id);
   },
@@ -43,6 +43,9 @@ export const graphTopic: StateCreator<
   switchState: (stateId) => {
     if (!stateId) return;
     set({ activeNodeId: undefined, activeStateId: stateId });
+  },
+  updateState: async (stateId, data) => {
+    await graphService.updateState(stateId, data);
   },
   useFetchGraphTopics: (isDBInited) =>
     useClientDataSWR<GraphTopic[]>(

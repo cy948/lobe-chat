@@ -1,7 +1,10 @@
-import { Text } from '@lobehub/ui';
-import { createStyles } from 'antd-style';
+import { ActionIcon, EditableText, Text } from '@lobehub/ui';
+import { createStyles, useTheme } from 'antd-style';
+import { Star } from 'lucide-react';
 import { memo } from 'react';
 import { Flexbox } from 'react-layout-kit';
+
+import { useGraphStore } from '@/store/graph';
 
 const useStyles = createStyles(({ css }) => ({
   content: css`
@@ -24,18 +27,55 @@ interface TopicContentProps {
   title: string;
 }
 
-const TopicContent = memo<TopicContentProps>(({ title }) => {
+const TopicContent = memo<TopicContentProps>(({ id, title, fav }) => {
   const { styles } = useStyles();
+  const theme = useTheme();
+
+  const [editing, updateState] = useGraphStore((s) => [s.topicRenamingId === id, s.updateState]);
+
+  const toggleEditing = (visible?: boolean) => {
+    useGraphStore.setState({ topicRenamingId: visible ? id : '' });
+  };
 
   return (
     <Flexbox align={'center'} gap={8} horizontal justify={'space-between'}>
-      <Text
-        className={styles.title}
-        ellipsis={{ rows: 1, tooltip: { placement: 'left', title } }}
-        style={{ margin: 0 }}
-      >
-        {title}
-      </Text>
+      <ActionIcon
+        color={fav ? theme.colorWarning : undefined}
+        fill={fav ? theme.colorWarning : 'transparent'}
+        icon={Star}
+        onClick={async (e) => {
+          e.stopPropagation();
+          if (!id) return;
+          // favoriteTopic(id, !fav);
+          updateState(id, { favorite: !fav });
+        }}
+        size={'small'}
+        // spin={isLoading}
+      />
+      {!editing ? (
+        <Text
+          className={styles.title}
+          ellipsis={{ rows: 1, tooltip: { placement: 'left', title } }}
+          style={{ margin: 0 }}
+        >
+          {title}
+        </Text>
+      ) : (
+        <EditableText
+          editing={editing}
+          onChangeEnd={async (v) => {
+            if (title !== v) {
+              // updateTopicTitle(id, v);
+              await updateState(id, { title: v });
+            }
+            toggleEditing(false);
+          }}
+          onEditingChange={toggleEditing}
+          showEditIcon={false}
+          style={{ height: 28 }}
+          value={title}
+        />
+      )}
     </Flexbox>
   );
 });

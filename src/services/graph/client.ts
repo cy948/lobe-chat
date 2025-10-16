@@ -92,8 +92,12 @@ export class ClientService extends BaseClientService implements IGraphService {
     });
   };
 
-  updateState = async (stateId: string, state: Partial<CanvasState>) => {
-    return await this.graphStateModel.update(stateId, state);
+  updateCanvasState = async (stateId: string, state: Partial<CanvasState>) => {
+    return await this.graphStateModel.updateState(stateId, state);
+  };
+
+  updateState = async (stateId: string, data: Partial<GraphTopic>) => {
+    return await this.graphStateModel.update(stateId, data);
   };
 
   removeState = async (stateId: string) => {

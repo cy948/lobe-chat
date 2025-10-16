@@ -11,7 +11,7 @@ import SideBar from './SideBar';
 const useStyles = createStyles(({ token, isDarkMode }) => {
   return {
     canvasBox: {
-      height: '100vh',
+      height: '95vh',
     },
     canvasContainer: {
       background: isDarkMode ? token.colorBgContainer : '#f0f2f5',

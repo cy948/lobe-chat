@@ -27,43 +27,19 @@ const elk = new ELK();
 
 const elkOptions = {
   'elk.algorithm': 'layered',
-  
   // 层内节点对齐
-'elk.layered.nodePlacement.strategy': 'SIMPLE',
-  
-  
-
-
-// 边的间距：最小化
-'elk.layered.spacing.edgeEdgeBetweenLayers': '20',
-  
-  
-
-
-
-
-
-'elk.layered.spacing.edgeNodeBetweenLayers': '40',
-  
-  
-
-
-
-
-// 层间距：节点宽度(360)的 0.5 倍，紧凑布局
-'elk.layered.spacing.nodeNodeBetweenLayers': '180',
-  
-  
-
-
-// 边距：减少留白
-'elk.padding': '[top=40,left=40,bottom=40,right=40]',
-  
-  
-// 不连通分量间距：节点高度(240)的 0.5 倍
-'elk.spacing.componentComponent': '120',
+  'elk.layered.nodePlacement.strategy': 'SIMPLE',
+  // 边的间距：最小化
+  'elk.layered.spacing.edgeEdgeBetweenLayers': '20',
+  'elk.layered.spacing.edgeNodeBetweenLayers': '40',
+  // 层间距：节点宽度(360)的 0.5 倍，紧凑布局
+  'elk.layered.spacing.nodeNodeBetweenLayers': '180',
+  // 边距：减少留白
+  'elk.padding': '[top=40,left=40,bottom=40,right=40]',
+  // 不连通分量间距：节点高度(240)的 0.5 倍
+  'elk.spacing.componentComponent': '120',
   // 同层节点间距：节点高度(240)的 0.3 倍
-'elk.spacing.nodeNode': '72',
+  'elk.spacing.nodeNode': '72',
 } as const;
 
 type Direction = 'RIGHT' | 'DOWN';
@@ -88,12 +64,23 @@ export const getArrangedGraph = async (
     width: (n as RFNode).measured?.width ?? 150,
   }));
 
+  const exixtedNodes = nodes.reduce(
+    (acc, node) => {
+      acc[node.id] = true;
+      return acc;
+    },
+    {} as Record<string, boolean>,
+  );
+
   // 2) 将 RF edges 映射为 ELK edges（关键：sources/targets 数组）
-  const elkEdges: ElkExtendedEdge[] = edges.map((e: RFEdge) => ({
-    id: e.id,
-    sources: [e.source],
-    targets: [e.target],
-  }));
+  const elkEdges: ElkExtendedEdge[] = edges
+    // 过滤掉源/目标节点不存在的边
+    .filter((e) => exixtedNodes[e.source] && exixtedNodes[e.target])
+    .map((e: RFEdge) => ({
+      id: e.id,
+      sources: [e.source],
+      targets: [e.target],
+    }));
 
   // 3) 组织 ELK graph
   const graph: ElkNode = {

@@ -4,7 +4,6 @@ import { useGeminiChineseWarning } from '@/hooks/useGeminiChineseWarning';
 import { getAgentStoreState } from '@/store/agent';
 import { agentSelectors } from '@/store/agent/slices/chat';
 import { useChatStore } from '@/store/chat';
-import { flowAIChatSelectors, useFlowStore } from '@/store/flow';
 import { chatSelectors, useGraphStore } from '@/store/graph';
 import { SendMessageParams } from '@/types/message';
 
@@ -27,11 +26,11 @@ export const useSendThreadMessage = () => {
   const checkGeminiChineseWarning = useGeminiChineseWarning();
 
   const handleSend = async (params: UseSendMessageParams = {}) => {
-    const store = useFlowStore.getState();
+    const store = useGraphStore.getState();
     const chatStore = useChatStore.getState();
 
-    if (flowAIChatSelectors.isFlowAIGenerating(store)) return;
-    const canNotSend = flowAIChatSelectors.isEditorButtonDisabled(store);
+    if (chatSelectors.isNodeMessageGenerating(store)) return;
+    const canNotSend = chatSelectors.isEditorButtonDisabled(store);
 
     if (canNotSend) return;
 

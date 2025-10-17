@@ -11,7 +11,7 @@ import { useStyles } from '@/features/ChatItem/style';
 import { useUserAvatar } from '@/hooks/useUserAvatar';
 import { useAgentStore } from '@/store/agent';
 import { agentChatConfigSelectors } from '@/store/agent/selectors';
-import { flowAIChatSelectors, flowMessageSelectors, useFlowStore } from '@/store/flow';
+import { messageSelectors, useGraphStore } from '@/store/graph';
 import { useUserStore } from '@/store/user';
 import { userProfileSelectors } from '@/store/user/selectors';
 
@@ -31,9 +31,9 @@ const UserMessage = memo<UserMessageProps>((props) => {
 
   const displayMode = useAgentStore(agentChatConfigSelectors.displayMode);
 
-  const [editing, generating] = useFlowStore((s) => [
-    flowMessageSelectors.isMessageEditing(id)(s),
-    flowAIChatSelectors.isMessageGenerating(id)(s),
+  const [editing, generating] = useGraphStore((s) => [
+    messageSelectors.isMessageEditing(s)(id),
+    messageSelectors.isMessageLoading(s)(id),
   ]);
 
   const loading = generating;

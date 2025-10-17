@@ -57,8 +57,6 @@ const Actions = memo<ActionsProps>(({ id, index, data }) => {
   const { message } = App.useApp();
   const virtuosoRef = use(VirtuosoContext);
 
-  // const [showShareModal, setShareModal] = useState(false);
-
   const handleActionClick = useCallback(
     async (action: ActionIconGroupEvent) => {
       switch (action.key) {
@@ -66,11 +64,8 @@ const Actions = memo<ActionsProps>(({ id, index, data }) => {
           toggleMessageEditing(id, true);
 
           virtuosoRef?.current?.scrollIntoView({ align: 'start', behavior: 'auto', index });
+          break;
         }
-      }
-      // if (!item) return;
-
-      switch (action.key) {
         case 'copy': {
           await copyMessage(id, data.content);
           message.success(t('copySuccess', { defaultValue: 'Copy Success' }));

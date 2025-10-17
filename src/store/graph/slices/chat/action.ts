@@ -344,7 +344,14 @@ export const graphChat: StateCreator<
   },
   internal_resendMessage: async (messageId, { messages: outChats } = {}) => {
     // 1. 构造所有相关的历史记录
-    const chats = outChats ?? messageSelectors.getActiveNodeMessages(get()) ?? [];
+    const { activeNodeId, internal_buildGraphContext } = get();
+    if (!activeNodeId) return;
+    const graphMessages = internal_buildGraphContext(activeNodeId);
+
+    const chats = [
+      ...graphMessages,
+      ...(outChats ?? messageSelectors.getActiveNodeMessages(get()) ?? []),
+    ];
 
     const currentIndex = chats.findIndex((c) => c.id === messageId);
     if (currentIndex < 0) return;

@@ -6,13 +6,64 @@ import ELK, { ElkExtendedEdge, ElkNode } from 'elkjs/lib/elk.bundled.js';
 // TODO: should use lazyload in browser only environment
 const elk = new ELK();
 
+// 宽松
+
+// const elkOptions = {
+//   'elk.algorithm': 'layered',
+//   // 层间距：基于节点宽度(360)的 0.8-1.2 倍较合适
+//   'elk.layered.spacing.nodeNodeBetweenLayers': '320',
+//   // 不连通分量间距：给予更大空间区分不同子图
+//   'elk.spacing.componentComponent': '240',
+//   // 同层节点间距：基于节点高度(240)的 0.6-0.8 倍
+//   'elk.spacing.nodeNode': '160',
+//   // 边距：给画布留白
+//   'elk.padding': '[top=80,left=80,bottom=80,right=80]',
+//   // 层内节点对齐
+//   'elk.layered.nodePlacement.strategy': 'SIMPLE',
+//   // 边的间距，避免边重叠
+//   'elk.layered.spacing.edgeEdgeBetweenLayers': '40',
+//   'elk.layered.spacing.edgeNodeBetweenLayers': '80',
+// } as const;
+
 const elkOptions = {
   'elk.algorithm': 'layered',
-  'elk.layered.spacing.nodeNodeBetweenLayers': '250',
-  // 不连通分量间距
-'elk.spacing.componentComponent': '200',
   
-  'elk.spacing.nodeNode': '150',
+  // 层内节点对齐
+'elk.layered.nodePlacement.strategy': 'SIMPLE',
+  
+  
+
+
+// 边的间距：最小化
+'elk.layered.spacing.edgeEdgeBetweenLayers': '20',
+  
+  
+
+
+
+
+
+'elk.layered.spacing.edgeNodeBetweenLayers': '40',
+  
+  
+
+
+
+
+// 层间距：节点宽度(360)的 0.5 倍，紧凑布局
+'elk.layered.spacing.nodeNodeBetweenLayers': '180',
+  
+  
+
+
+// 边距：减少留白
+'elk.padding': '[top=40,left=40,bottom=40,right=40]',
+  
+  
+// 不连通分量间距：节点高度(240)的 0.5 倍
+'elk.spacing.componentComponent': '120',
+  // 同层节点间距：节点高度(240)的 0.3 倍
+'elk.spacing.nodeNode': '72',
 } as const;
 
 type Direction = 'RIGHT' | 'DOWN';

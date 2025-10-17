@@ -8,8 +8,11 @@ const elk = new ELK();
 
 const elkOptions = {
   'elk.algorithm': 'layered',
-  'elk.layered.spacing.nodeNodeBetweenLayers': '100',
-  'elk.spacing.nodeNode': '80',
+  'elk.layered.spacing.nodeNodeBetweenLayers': '250',
+  // 不连通分量间距
+'elk.spacing.componentComponent': '200',
+  
+  'elk.spacing.nodeNode': '150',
 } as const;
 
 type Direction = 'RIGHT' | 'DOWN';

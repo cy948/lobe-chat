@@ -10,7 +10,7 @@ import { Handle, Position } from '@xyflow/react';
 import { Card, Dropdown } from 'antd';
 import { createStyles } from 'antd-style';
 import { DeleteIcon, MoreVerticalIcon, TimerIcon, TimerOffIcon } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { Flexbox } from 'react-layout-kit';
 
 import { canvasSelectors, messageSelectors, useGraphStore } from '@/store/graph';
@@ -53,15 +53,18 @@ export default function ChatNode({ id }: CanvasNodeProps) {
     ? nodeMeta.summary
     : messages?.[messages.length - 1]?.content || 'no content yet, try talk to me!';
 
-  const [value, setValue] = useState(nodeMeta?.title || 'Untitled');
+  // const [value, setValue] = useState(nodeMeta?.title || 'Untitled');
 
   const handleDelNode = useCallback(async () => {
     await delNode(id);
   }, [delNode]);
 
-  const handleChangeTitle = useCallback(async () => {
-    await updateNodeMeta(id, { title: value });
-  }, [value, updateNodeMeta]);
+  const handleChangeTitle = useCallback(
+    async (v: string) => {
+      if (v !== nodeMeta?.title) await updateNodeMeta(id, { title: v });
+    },
+    [updateNodeMeta],
+  );
 
   const handleUseSummary = useCallback(
     async (useSummary: boolean) => {
@@ -101,7 +104,11 @@ export default function ChatNode({ id }: CanvasNodeProps) {
       }
       title={
         <Flexbox align="center" horizontal>
-          <EditableText onChange={setValue} onChangeEnd={handleChangeTitle} value={value} />
+          <EditableText
+            // onChange={setValue}
+            onChangeEnd={handleChangeTitle}
+            value={nodeMeta?.title || 'Untitled'}
+          />
           <Flexbox align="center" horizontal style={{ marginLeft: 'auto' }}>
             <ActionIcon
               icon={nodeMeta?.useSummary ? TimerIcon : TimerOffIcon}

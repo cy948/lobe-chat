@@ -96,6 +96,11 @@ export interface SystemStatus {
    */
   themeMode?: ThemeMode;
   zenMode?: boolean;
+
+  /**
+   * graph view
+   */
+  graphView?: boolean;
 }
 
 export interface GlobalState {

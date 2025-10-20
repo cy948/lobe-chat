@@ -2,6 +2,8 @@
 
 import { ActionIcon } from '@lobehub/ui';
 import {
+  GitGraphIcon,
+  ListIcon,
   PanelLeftRightDashedIcon,
   PanelRightClose,
   PanelRightOpen,
@@ -25,17 +27,24 @@ import ShareButton from '../../../features/ShareButton';
 const HeaderAction = memo<{ className?: string }>(({ className }) => {
   const { t } = useTranslation('chat');
   const hotkey = useUserStore(settingsSelectors.getHotkeyById(HotkeyEnum.ToggleRightPanel));
-  const [showAgentSettings, wideScreen, toggleConfig, toggleWideScreen] = useGlobalStore((s) => [
+  const [showAgentSettings, wideScreen, toggleConfig, toggleWideScreen, graphView, toggleGraphView] = useGlobalStore((s) => [
     systemStatusSelectors.showChatSideBar(s),
     systemStatusSelectors.wideScreen(s),
     s.toggleChatSideBar,
     s.toggleWideScreen,
+    systemStatusSelectors.graphView(s),
+    s.toggleGraphView,
   ]);
 
   const { isAgentEditable } = useServerConfigStore(featureFlagsSelectors);
 
   return (
     <Flexbox className={className} gap={4} horizontal>
+      <ActionIcon
+        icon={graphView ? ListIcon : GitGraphIcon}
+        onClick={() => toggleGraphView()}
+        size={DESKTOP_HEADER_ICON_SIZE}
+      />
       <ActionIcon
         icon={wideScreen ? SquareChartGanttIcon : PanelLeftRightDashedIcon}
         onClick={() => toggleWideScreen()}

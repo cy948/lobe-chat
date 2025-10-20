@@ -29,6 +29,7 @@ const filePanelWidth = (s: GlobalState) => s.status.filePanelWidth;
 const imagePanelWidth = (s: GlobalState) => s.status.imagePanelWidth;
 const imageTopicPanelWidth = (s: GlobalState) => s.status.imageTopicPanelWidth;
 const wideScreen = (s: GlobalState) => !s.status.noWideScreen;
+const graphView = (s: GlobalState) => !s.status.graphView;
 const chatInputHeight = (s: GlobalState) => s.status.chatInputHeight || 64;
 const expandInputActionbar = (s: GlobalState) => s.status.expandInputActionbar;
 const isStatusInit = (s: GlobalState) => !!s.isStatusInit;
@@ -94,4 +95,5 @@ export const systemStatusSelectors = {
   systemStatus,
   themeMode,
   wideScreen,
+  graphView,
 };

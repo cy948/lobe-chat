@@ -18,6 +18,7 @@ export interface GlobalWorkspacePaneAction {
   toggleMobileTopic: (visible?: boolean) => void;
   toggleSystemRole: (visible?: boolean) => void;
   toggleWideScreen: (enable?: boolean) => void;
+  toggleGraphView: (enable?: boolean) => void;
   toggleZenMode: () => void;
 }
 
@@ -92,6 +93,11 @@ export const globalWorkspaceSlice: StateCreator<
     const wideScreen = typeof newValue === 'boolean' ? newValue : !get().status.noWideScreen;
 
     get().updateSystemStatus({ noWideScreen: wideScreen }, n('toggleWideScreen', newValue));
+  },
+  toggleGraphView(enable) {
+    const graphView = typeof enable === 'boolean' ? enable : !get().status.graphView;
+    
+    get().updateSystemStatus({ graphView }, n('toggleGraphView', enable));
   },
   toggleZenMode: () => {
     const { status } = get();

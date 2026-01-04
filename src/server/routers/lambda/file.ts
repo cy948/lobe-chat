@@ -235,6 +235,7 @@ export const fileRouter = router({
 
     // Process files (add chunk info and async task status)
     const fileItems = filteredItems.filter((item) => item.sourceType === 'file');
+    // Should resolve to files table IDs, ref: https://github.com/lobehub/lobe-chat/pull/11180
     const fileIds = fileItems.map((item) => resolveFileId(item));
     const chunks = await ctx.chunkModel.countByFileIds(fileIds);
 
@@ -259,6 +260,8 @@ export const fileRouter = router({
         const embeddingTask = item.embeddingTaskId
           ? embeddingTasks.find((task) => task.id === item.embeddingTaskId)
           : null;
+
+        // Should resolve to files table IDs, ref: https://github.com/lobehub/lobe-chat/pull/11180
         const fileId = resolveFileId(item);
 
         resultItems.push({

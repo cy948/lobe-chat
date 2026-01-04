@@ -114,6 +114,7 @@ const FileListItem = memo<FileListItemProps>(
     url,
     name,
     fileType,
+    fileId,
     id,
     createdAt,
     selected,
@@ -324,6 +325,7 @@ const FileListItem = memo<FileListItemProps>(
     }, [pendingRenameItemId, id, isFolder, resourceManagerState]);
 
     const { menuItems } = useFileItemDropdown({
+      fileId,
       fileType,
       filename: name,
       id,

@@ -24,6 +24,7 @@ import MoveToFolderModal from '../MoveToFolderModal';
 interface UseFileItemDropdownParams {
   enabled?: boolean;
   fileType: string;
+  fileId?: string;
   filename: string;
   id: string;
   knowledgeBaseId?: string;
@@ -42,6 +43,7 @@ export const useFileItemDropdown = ({
   url,
   filename,
   fileType,
+  fileId,
   sourceType,
   onRenameStart,
 }: UseFileItemDropdownParams): UseFileItemDropdownReturn => {
@@ -252,7 +254,7 @@ export const useFileItemDropdown = ({
                   await documentService.deleteDocument(id);
                   await refreshFileList();
                 } else {
-                  await removeFile(id);
+                  await removeFile(fileId || id);
                 }
               },
             });

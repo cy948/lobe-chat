@@ -23,8 +23,8 @@ import MoveToFolderModal from '../MoveToFolderModal';
 
 interface UseFileItemDropdownParams {
   enabled?: boolean;
+  fileId?: string | null;
   fileType: string;
-  fileId?: string;
   filename: string;
   id: string;
   knowledgeBaseId?: string;

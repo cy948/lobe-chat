@@ -21,6 +21,9 @@ import { type FileListItem, QueryFileListSchema, UploadFileSchema } from '@/type
  */
 const getFileProxyUrl = (fileId: string): string => `${appEnv.APP_URL}/f/${fileId}`;
 
+const resolveFileId = (item: { fileId?: string | null; id: string }): string =>
+  item.fileId ?? item.id;
+
 const fileProcedure = authedProcedure.use(serverDatabase).use(async (opts) => {
   const { ctx } = opts;
 
@@ -153,6 +156,7 @@ export const fileRouter = router({
         createdAt: item.createdAt,
         embeddingError: embeddingTask?.error,
         embeddingStatus: embeddingTask?.status as AsyncTaskStatus,
+        fileId: item.id,
         fileType: item.fileType,
         finishEmbedding: embeddingTask?.status === AsyncTaskStatus.Success,
         id: item.id,
@@ -197,6 +201,7 @@ export const fileRouter = router({
         chunkingStatus: chunkTask?.status as AsyncTaskStatus,
         embeddingError: embeddingTask?.error ?? null,
         embeddingStatus: embeddingTask?.status as AsyncTaskStatus,
+        fileId: item.id,
         finishEmbedding: embeddingTask?.status === AsyncTaskStatus.Success,
         sourceType: 'file' as const,
         url: getFileProxyUrl(item.id),
@@ -224,13 +229,13 @@ export const fileRouter = router({
     // Filter out folders from Documents category when in Inbox (no knowledgeBaseId)
     const filteredItems = !input.knowledgeBaseId
       ? itemsToProcess.filter(
-          (item) => !(item.sourceType === 'document' && item.fileType === 'custom/folder'),
-        )
+        (item) => !(item.sourceType === 'document' && item.fileType === 'custom/folder'),
+      )
       : itemsToProcess;
 
     // Process files (add chunk info and async task status)
     const fileItems = filteredItems.filter((item) => item.sourceType === 'file');
-    const fileIds = fileItems.map((item) => item.id);
+    const fileIds = fileItems.map((item) => resolveFileId(item));
     const chunks = await ctx.chunkModel.countByFileIds(fileIds);
 
     const chunkTaskIds = fileItems.map((item) => item.chunkTaskId).filter(Boolean) as string[];
@@ -254,17 +259,19 @@ export const fileRouter = router({
         const embeddingTask = item.embeddingTaskId
           ? embeddingTasks.find((task) => task.id === item.embeddingTaskId)
           : null;
+        const fileId = resolveFileId(item);
 
         resultItems.push({
           ...item,
-          chunkCount: chunks.find((chunk) => chunk.id === item.id)?.count ?? null,
+          chunkCount: chunks.find((chunk) => chunk.id === fileId)?.count ?? null,
           chunkingError: chunkTask?.error ?? null,
           chunkingStatus: chunkTask?.status as AsyncTaskStatus,
           editorData: null,
           embeddingError: embeddingTask?.error ?? null,
           embeddingStatus: embeddingTask?.status as AsyncTaskStatus,
+          fileId,
           finishEmbedding: embeddingTask?.status === AsyncTaskStatus.Success,
-          url: getFileProxyUrl(item.id),
+          url: getFileProxyUrl(fileId),
         } as FileListItem);
       } else {
         // Document item - no chunk processing needed, includes editorData
@@ -275,6 +282,7 @@ export const fileRouter = router({
           chunkingStatus: null,
           embeddingError: null,
           embeddingStatus: null,
+          fileId: item.fileId ?? null,
           finishEmbedding: false,
         } as FileListItem;
         resultItems.push(documentItem);
@@ -300,7 +308,7 @@ export const fileRouter = router({
       if (fileItems.length === 0) return [];
 
       // Get file IDs for batch processing
-      const fileIds = fileItems.map((item) => item.id);
+      const fileIds = fileItems.map((item) => resolveFileId(item));
       const chunksArray = await ctx.chunkModel.countByFileIds(fileIds);
       const chunks: Record<string, number> = {};
       for (const item of chunksArray) {
@@ -330,17 +338,19 @@ export const fileRouter = router({
         const embeddingTask = item.embeddingTaskId
           ? embeddingTasks.find((task) => task.id === item.embeddingTaskId)
           : null;
+        const fileId = resolveFileId(item);
 
         resultFiles.push({
           ...item,
-          chunkCount: chunks[item.id] ?? 0,
+          chunkCount: chunks[fileId] ?? 0,
           chunkingError: chunkTask?.error ?? null,
           chunkingStatus: chunkTask?.status as AsyncTaskStatus,
           embeddingError: embeddingTask?.error ?? null,
           embeddingStatus: embeddingTask?.status as AsyncTaskStatus,
+          fileId,
           finishEmbedding: embeddingTask?.status === AsyncTaskStatus.Success,
           sourceType: 'file' as const,
-          url: getFileProxyUrl(item.id),
+          url: getFileProxyUrl(fileId),
         } as FileListItem);
       }
 

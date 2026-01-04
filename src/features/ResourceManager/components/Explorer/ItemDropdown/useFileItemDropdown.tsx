@@ -153,7 +153,7 @@ export const useFileItemDropdown = ({
             domEvent.stopPropagation();
 
             createRawModal(MoveToFolderModal, {
-              fileId: id,
+              fileId: fileId || id,
               fileType,
               knowledgeBaseId,
             });

@@ -220,6 +220,16 @@ show_message() {
                 ;;
             esac
         ;;
+        tips_regen_jwks)
+            case $LANGUAGE in
+                zh_CN)
+                    echo "在完成部署测试后，请前往 https://lobehub.com/zh/docs/self-hosting/environment-variables/auth#jwks_key 生成新的 JWKS_KEY 并替换 .env 中的值，以确保安全性。"
+                ;;
+                *)
+                    echo "After completing the deployment test, please go to https://lobehub.com/docs/self-hosting/environment-variables/auth#jwks_key to generate a new JWKS_KEY and replace the value in .env to ensure security."
+                ;;
+            esac
+        ;;
         tips_show_documentation)
             case $LANGUAGE in
                 zh_CN)
@@ -767,6 +777,7 @@ section_display_configurated_report() {
     printf "\n%s\n\n" "$(show_message "tips_run_command")"
     print_centered "docker compose up --no-attach searxng" "green"
     printf "\n%s\n" "$(show_message "tips_if_run_normally")"
+    printf "\n%s\n\n" "$(show_message "tips_regen_jwks")"
     print_centered "docker compose up -d --no-attach searxng" "green"
     printf "\n%s\n" "$(show_message "tips_if_want_searxng_logs")"
     print_centered "docker compose logs -f searxng" "white"

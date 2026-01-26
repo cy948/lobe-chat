@@ -389,7 +389,7 @@ show_message() {
 
 # Function to download files
 download_file() {
-    wget --show-progress "$1" -O "$2"
+    wget "$1" -O "$2"
     # If run failed, exit
     if [ $? -ne 0 ]; then
         show_message "tips_download_failed" "$2"

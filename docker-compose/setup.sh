@@ -453,7 +453,7 @@ ENV_EXAMPLES=(
 # Default values
 CASDOOR_PASSWORD="pswd123"
 CASDOOR_SECRET="CASDOOR_SECRET"
-RUSTFS_ROOT_PASSWORD="YOUR_RUSTFS_PASSWORD"
+RUSTFS_SECRET_KEY="YOUR_RUSTFS_PASSWORD"
 CASDOOR_HOST="localhost:8000"
 RUSTFS_HOST="localhost:9000"
 PROTOCOL="http"
@@ -666,15 +666,15 @@ section_regenerate_secrets() {
         fi
     fi
     # Generate RUSTFS S3 User Password
-    RUSTFS_ROOT_PASSWORD=$(generate_key 8)
+    RUSTFS_SECRET_KEY=$(generate_key 8)
     if [ $? -ne 0 ]; then
-        echo $(show_message "security_secrect_regenerate_failed") "RUSTFS_ROOT_PASSWORD"
-        RUSTFS_ROOT_PASSWORD="YOUR_RUSTFS_PASSWORD"
+        echo $(show_message "security_secrect_regenerate_failed") "RUSTFS_SECRET_KEY"
+        RUSTFS_SECRET_KEY="YOUR_RUSTFS_PASSWORD"
     else
         # Search and replace the value of S3_SECRET_ACCESS_KEY in .env
-        sed "${SED_INPLACE_ARGS[@]}" "s#^RUSTFS_ROOT_PASSWORD=.*#RUSTFS_ROOT_PASSWORD=${RUSTFS_ROOT_PASSWORD}#" .env
+        sed "${SED_INPLACE_ARGS[@]}" "s#^RUSTFS_SECRET_KEY=.*#RUSTFS_SECRET_KEY=${RUSTFS_SECRET_KEY}#" .env
         if [ $? -ne 0 ]; then
-            echo $(show_message "security_secrect_regenerate_failed") "RUSTFS_ROOT_PASSWORD in \`.env\`"
+            echo $(show_message "security_secrect_regenerate_failed") "RUSTFS_SECRET_KEY in \`.env\`"
         fi
     fi
 }
@@ -732,7 +732,7 @@ section_display_configurated_report() {
     
     echo -e "LobeChat: \n  - URL: $PROTOCOL://$LOBE_HOST \n  - Username: user \n  - Password: ${CASDOOR_PASSWORD} "
     echo -e "Casdoor: \n  - URL: $PROTOCOL://$CASDOOR_HOST \n  - Username: admin \n  - Password: ${CASDOOR_PASSWORD}\n"
-    echo -e "RustFS: \n  - URL: $PROTOCOL://$RUSTFS_HOST \n  - Username: admin\n  - Password: ${RUSTFS_ROOT_PASSWORD}\n"
+    echo -e "RustFS: \n  - URL: $PROTOCOL://$RUSTFS_HOST \n  - Username: admin\n  - Password: ${RUSTFS_SECRET_KEY}\n"
     
     # if user run in domain mode, diplay reverse proxy configuration
     if [[ "$DEPLOY_MODE" == "domain" ]]; then

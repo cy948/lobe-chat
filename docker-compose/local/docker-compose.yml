@@ -5,8 +5,8 @@ services:
     container_name: lobe-network
     restart: always
     ports:
-      - '${MINIO_PORT}:${MINIO_PORT}' # MinIO API
-      - '9001:9001' # MinIO Console
+      - '${RUSTFS_PORT}:${RUSTFS_PORT}' # RustFS API
+      - '9001:9001' # RustFS Console
       - '${CASDOOR_PORT}:${CASDOOR_PORT}' # Casdoor
       - '${LOBE_PORT}:3210' # LobeChat
       - '3000:3000' # Grafana
@@ -61,8 +61,39 @@ services:
       - '9001:9001'
     environment:
       - RUSTFS_CONSOLE_ENABLE=true
+      - RUSTFS_ACCESS_KEY=${RUSTFS_ROOT_USER}
+      - RUSTFS_SECRET_KEY=${RUSTFS_ROOT_PASSWORD}
     volumes:
       - rustfs-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9000/health >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      - lobe-network
+
+  rustfs-init:
+    image: minio/mc:latest
+    container_name: lobe-rustfs-init
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    environment:
+      - S3_ENDPOINT=http://rustfs:9000
+      - S3_ACCESS_KEY=${RUSTFS_ROOT_USER}
+      - S3_SECRET_KEY=${RUSTFS_ROOT_PASSWORD}
+    volumes:
+      - ./policies:/policies:ro
+    entrypoint: /bin/sh
+    command: -c '
+        mc alias set rustfs "$S3_ENDPOINT" "$S3_ACCESS_KEY" "$S3_SECRET_KEY" &&
+        mc mb "rustfs/lobe" --ignore-existing &&
+        mc anonymous set-json "/bucket.config.json" "rustfs/lobe"
+      '
+    restart: "no"
+    networks:
+      - lobe-network
 
   # version lock ref: https://github.com/lobehub/lobe-chat/pull/7331
   casdoor:
@@ -106,8 +137,10 @@ services:
         condition: service_healthy
       network-service:
         condition: service_started
-      minio:
-        condition: service_started
+      rustfs:
+        condition: service_healthy
+      rustfs-init:
+        condition: service_completed_successfully
       casdoor:
         condition: service_started
       redis:
@@ -118,11 +151,11 @@ services:
       - 'KEY_VAULTS_SECRET=Kix2wcUONd4CX51E/ZPAd36BqM4wzJgKjPtz2sGztqQ='
       - 'AUTH_SECRET=NX2kaPE923dt6BL2U8e9oSre5RfoT7hg'
       - 'DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgresql:5432/${LOBE_DB_NAME}'
-      - 'S3_BUCKET=${MINIO_LOBE_BUCKET}'
+      - 'S3_BUCKET=${RUSTFS_LOBE_BUCKET}'
       - 'S3_ENABLE_PATH_STYLE=1'
-      - 'S3_ACCESS_KEY=${MINIO_ROOT_USER}'
-      - 'S3_ACCESS_KEY_ID=${MINIO_ROOT_USER}'
-      - 'S3_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}'
+      - 'S3_ACCESS_KEY=${RUSTFS_ROOT_USER}'
+      - 'S3_ACCESS_KEY_ID=${RUSTFS_ROOT_USER}'
+      - 'S3_SECRET_ACCESS_KEY=${RUSTFS_ROOT_PASSWORD}'
       - 'LLM_VISION_IMAGE_USE_BASE64=1'
       - 'S3_SET_ACL=0'
       - 'SEARXNG_URL=http://searxng:8080'

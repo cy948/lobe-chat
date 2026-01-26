@@ -183,20 +183,40 @@ show_message() {
         tips_already_installed)
             case $LANGUAGE in
                 zh_CN)
-                    echo "检测到您已经运行过 LobeChat Database，本安装程序只能完成初始化配置，并不能重复安装。如果你需要重新安装，请删除 data 和 s3_data 文件夹。"
+                    echo "检测到您已经运行过 LobeHub，本安装程序只能完成初始化配置，并不能重复安装。如果你需要重新安装，请删除 data 和 s3_data 文件夹。"
                 ;;
                 *)
-                    echo "It is detected that you have run LobeChat Database. This installation program can only complete the initialization configuration and cannot be reinstalled. If you need to reinstall, please delete the data and s3_data folders."
+                    echo "It is detected that you have run LobeHub. This installation program can only complete the initialization configuration and cannot be reinstalled. If you need to reinstall, please delete the data and s3_data folders."
                 ;;
             esac
         ;;
         tips_run_command)
             case $LANGUAGE in
                 zh_CN)
-                    echo "您已经完成了所有配置。请运行以下命令启动LobeChat："
+                    echo "您已经完成了所有配置。请运行以下命令启动 LobeHub 尝试启动："
                 ;;
                 *)
-                    echo "You have completed all configurations. Please run this command to start LobeChat:"
+                    echo "You have completed all configurations. Please run this command to start LobeHub:"
+                ;;
+            esac
+        ;;
+        tips_if_want_searxng_logs)
+            case $LANGUAGE in
+                zh_CN)
+                    echo "在上述命令中已屏蔽 SearXNG 的日志。如果你想查看 SearXNG 的日志，可以去除选项： --no-attach searxng 或运行以下命令：\ndocker logs lobe-searxng"
+                ;;
+                *)
+                    echo "In the above command, the logs of SearXNG are blocked by default. If you want to view the logs of SearXNG, you can remove the option: --no-attach searxng or run the following command:\ndocker logs lobe-searxng"
+                ;;
+            esac
+        ;;
+        tips_if_run_normally)
+            case $LANGUAGE in
+                zh_CN)
+                    echo "如果一切运行正常，你可以使用以下指令在 daemon 模式下启动 LobeHub:"
+                ;;
+                *)
+                    echo "If everything runs normally, you can use the following command to start LobeHub in daemon mode:"
                 ;;
             esac
         ;;
@@ -308,7 +328,7 @@ show_message() {
             case $LANGUAGE in
                 zh_CN)
                     echo "请选择部署模式："
-                    echo "(0) 域名模式（访问时无需指明端口），需要使用反向代理服务 LobeChat, RustFS, Casdoor ，并分别分配一个域名；"
+                    echo "(0) 域名模式（访问时无需指明端口），需要使用反向代理服务 LobeHub, RustFS, Casdoor ，并分别分配一个域名；"
                     echo "(1) 端口模式（访问时需要指明端口，如使用IP访问，或域名+端口访问），需要放开指定端口；"
                     echo "(2) 本地模式（仅供本地测试使用）"
                     echo "如果你对这些内容疑惑，可以先选择使用本地模式进行部署，稍后根据文档指引再进行修改。"
@@ -316,7 +336,7 @@ show_message() {
                 ;;
                 *)
                     echo "Please select the deployment mode:"
-                    echo "(0) Domain mode (no need to specify the port when accessing), you need to use the reverse proxy service LobeChat, RustFS, Casdoor, and assign a domain name respectively;"
+                    echo "(0) Domain mode (no need to specify the port when accessing), you need to use the reverse proxy service LobeHub, RustFS, Casdoor, and assign a domain name respectively;"
                     echo "(1) Port mode (need to specify the port when accessing, such as using IP access, or domain name + port access), you need to open the specified port;"
                     echo "(2) Local mode (for local testing only)"
                     echo "If you are confused about these contents, you can choose to deploy in local mode first, and then modify according to the document guide later."
@@ -543,7 +563,7 @@ section_configurate_host() {
     case $DEPLOY_MODE in
         0)
             DEPLOY_MODE="domain"
-            echo "LobeChat" $(show_message "ask_domain" "example.com")
+            echo "LobeHub" $(show_message "ask_domain" "example.com")
             ask "(example.com)"
             LOBE_HOST="$ask_result"
             # If user use domain mode, ask for the domain of RustFS and Casdoor
@@ -558,7 +578,7 @@ section_configurate_host() {
         ;;
         1)
             DEPLOY_MODE="ip"
-            ask $(printf "%s%s" "LobeChat" $(show_message "ask_host")) "$HOST" $(printf "%s" $(show_message "tips_auto_detected"))
+            ask $(printf "%s%s" "LobeHub" $(show_message "ask_host")) "$HOST" $(printf "%s" $(show_message "tips_auto_detected"))
             LOBE_HOST="$ask_result"
             # If user use ip mode, use ask_result as the host
             HOST="$ask_result"
@@ -730,7 +750,7 @@ section_display_configurated_report() {
     # Display configuration reports
     echo $(show_message "security_secrect_regenerate_report")
     
-    echo -e "LobeChat: \n  - URL: $PROTOCOL://$LOBE_HOST \n  - Username: user \n  - Password: ${CASDOOR_PASSWORD} "
+    echo -e "LobeHub: \n  - URL: $PROTOCOL://$LOBE_HOST \n  - Username: user \n  - Password: ${CASDOOR_PASSWORD} "
     echo -e "Casdoor: \n  - URL: $PROTOCOL://$CASDOOR_HOST \n  - Username: admin \n  - Password: ${CASDOOR_PASSWORD}\n"
     echo -e "RustFS: \n  - URL: $PROTOCOL://$RUSTFS_HOST \n  - Username: admin\n  - Password: ${RUSTFS_SECRET_KEY}\n"
     
@@ -745,7 +765,10 @@ section_display_configurated_report() {
     # Display final message
 
     printf "\n%s\n\n" "$(show_message "tips_run_command")"
-    print_centered "docker compose up -d" "green"
+    print_centered "docker compose up --no-attach searxng" "green"
+    printf "\n%s\n" "$(show_message "tips_if_run_normally")"
+    print_centered "docker compose up -d --no-attach searxng" "green"
+    printf "\n%s\n" "$(show_message "tips_if_want_searxng_logs")"
     printf "\n%s\n" "$(show_message "tips_allow_ports")"
     printf "\n%s" "$(show_message "tips_show_documentation")"
     printf "%s\n" $(show_message "tips_show_documentation_url")

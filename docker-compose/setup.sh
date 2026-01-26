@@ -577,7 +577,6 @@ section_configurate_host() {
     # lobe host
     sed "${SED_INPLACE_ARGS[@]}" "s#^APP_URL=.*#APP_URL=$PROTOCOL://$LOBE_HOST#" .env
     # auth related
-    sed "${SED_INPLACE_ARGS[@]}" "s#^AUTH_URL=.*#AUTH_URL=$PROTOCOL://$LOBE_HOST/api/auth#" .env
     sed "${SED_INPLACE_ARGS[@]}" "s#^AUTH_CASDOOR_ISSUER=.*#AUTH_CASDOOR_ISSUER=$PROTOCOL://$CASDOOR_HOST#" .env
     sed "${SED_INPLACE_ARGS[@]}" "s#^origin=.*#origin=$PROTOCOL://$CASDOOR_HOST#" .env
     # s3 related

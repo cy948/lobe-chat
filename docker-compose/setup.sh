@@ -444,6 +444,7 @@ FILES=(
     "$SUB_DIR/docker-compose.yml"
     "$SUB_DIR/init_data.json"
     "$SUB_DIR/searxng-settings.yml"
+    "$SUB_DIR/bucket.config.json"
 )
 ENV_EXAMPLES=(
     "$SUB_DIR/.env.zh-CN.example"
@@ -485,7 +486,7 @@ section_download_files(){
     download_file "$SOURCE_URL/${FILES[0]}" "docker-compose.yml"
     download_file "$SOURCE_URL/${FILES[1]}" "init_data.json"
     download_file "$SOURCE_URL/${FILES[2]}" "searxng-settings.yml"
-    
+    download_file "$SOURCE_URL/${FILES[3]}" "bucket.config.json"
     # Download .env.example with the specified language
     if [ "$LANGUAGE" = "zh_CN" ]; then
         download_file "$SOURCE_URL/${ENV_EXAMPLES[0]}" ".env"

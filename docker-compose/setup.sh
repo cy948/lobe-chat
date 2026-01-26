@@ -203,10 +203,10 @@ show_message() {
         tips_if_want_searxng_logs)
             case $LANGUAGE in
                 zh_CN)
-                    echo "在上述命令中已屏蔽 SearXNG 的日志。如果你想查看 SearXNG 的日志，可以去除选项： --no-attach searxng 或运行以下命令：\ndocker logs lobe-searxng"
+                    echo "在上述命令中已屏蔽 SearXNG 的日志。如果你想查看 SearXNG 的日志，可以去除选项： --no-attach searxng 或运行以下命令："
                 ;;
                 *)
-                    echo "In the above command, the logs of SearXNG are blocked by default. If you want to view the logs of SearXNG, you can remove the option: --no-attach searxng or run the following command:\ndocker logs lobe-searxng"
+                    echo "In the above command, the logs of SearXNG are blocked by default. If you want to view the logs of SearXNG, you can remove the option: --no-attach searxng or run the following command:"
                 ;;
             esac
         ;;
@@ -769,6 +769,7 @@ section_display_configurated_report() {
     printf "\n%s\n" "$(show_message "tips_if_run_normally")"
     print_centered "docker compose up -d --no-attach searxng" "green"
     printf "\n%s\n" "$(show_message "tips_if_want_searxng_logs")"
+    print_centered "docker compose logs -f searxng" "white"
     printf "\n%s\n" "$(show_message "tips_allow_ports")"
     printf "\n%s" "$(show_message "tips_show_documentation")"
     printf "%s\n" $(show_message "tips_show_documentation_url")

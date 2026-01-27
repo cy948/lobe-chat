@@ -25,7 +25,7 @@ fi
 
 # Arg: --url
 # Determine the source URL to download files
-SOURCE_URL="https://raw.githubusercontent.com/lobehub/lobe-chat/main"
+SOURCE_URL="https://raw.githubusercontent.com/lobehub/lobe-chat/next"
 
 # Arg: --host
 # Determine the server host

@@ -7,7 +7,10 @@ export const UsageBarChart = ({ ...props }: BarChartProps) => (
     {...props}
     customTooltip={({ active, payload, label, valueFormatter }) => {
       if (active && payload) {
-        const sum = payload.reduce((acc: number, cur: any) => acc + cur.value, 0);
+        const sum = payload.reduce(
+          (acc: number, cur: any) => (typeof cur.value === 'number' ? acc + cur.value : acc),
+          0,
+        );
         return (
           <ChartTooltipFrame>
             <Flexbox horizontal justify={'space-between'} paddingBlock={8} paddingInline={16}>

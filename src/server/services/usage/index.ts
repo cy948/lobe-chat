@@ -28,7 +28,7 @@ export class UsageRecordService {
     // Set startAt and endAt
     let startAt: string;
     let endAt: string;
-    if (mo && dayjs(mo).isValid()) {
+    if (mo && dayjs(mo, 'YYYY-MM', true).isValid()) {
       // mo format: "YYYY-MM"
       startAt = dayjs(mo, 'YYYY-MM').startOf('month').format('YYYY-MM-DD');
       endAt = dayjs(mo, 'YYYY-MM').endOf('month').format('YYYY-MM-DD');
@@ -90,7 +90,7 @@ export class UsageRecordService {
     let startAt: string;
     let endAt: string;
     let month: string;
-    if (mo && dayjs(mo).isValid()) {
+    if (mo && dayjs(mo, 'YYYY-MM', true).isValid()) {
       // mo format: "YYYY-MM"
       startAt = dayjs(mo, 'YYYY-MM').startOf('month').format('YYYY-MM-DD');
       endAt = dayjs(mo, 'YYYY-MM').endOf('month').format('YYYY-MM-DD');

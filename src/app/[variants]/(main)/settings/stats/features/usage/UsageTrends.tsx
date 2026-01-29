@@ -4,7 +4,6 @@ import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { type UsageLog } from '@/types/usage/usageRecord';
-import { formatNumber } from '@/utils/format';
 
 import { GroupBy, type UsageChartProps } from '../../types';
 import StatsFormGroup from '../components/StatsFormGroup';
@@ -31,22 +30,24 @@ const groupByType = (
   }, new Map<string, number>());
   const categories: string[] = Array.from(cate.keys());
   formattedData = data.map((log) => {
+    const rawTotalValue =
+      type === 'spend' ? Number(log.totalSpend ?? 0) : Number(log.totalTokens ?? 0);
+    const totalValue = Number.isFinite(rawTotalValue) ? rawTotalValue : 0;
     const totalObj = {
       day: log.day,
-      total: type === 'spend' ? log.totalSpend : log.totalTokens,
+      total: type === 'spend' ? Number(totalValue.toFixed(6)) : totalValue,
     };
     let todayCate = new Map<string, number>(cate);
     for (const item of log.records) {
-      const value = type === 'spend' ? item.spend || 0 : item.totalTokens || 0;
+      const rawValue = type === 'spend' ? Number(item.spend ?? 0) : Number(item.totalTokens ?? 0);
+      const value = Number.isFinite(rawValue) ? rawValue : 0;
       const key = groupBy === GroupBy.Model ? item.model : item.provider;
-      let displayValue = (todayCate.get(key) || 0) + value;
-      if (type === 'spend') {
-        const formattedNum = formatNumber((todayCate.get(key) || 0) + value, 2);
-        if (typeof formattedNum !== 'string') {
-          displayValue = formattedNum;
-        }
-      }
-      todayCate.set(key, displayValue);
+      if (!key) continue;
+      const prevValue = Number.isFinite(todayCate.get(key)) ? Number(todayCate.get(key)) : 0;
+      const displayValue = prevValue + value;
+      const nextValue = Number.isFinite(displayValue) ? displayValue : 0;
+
+      todayCate.set(key, type === 'spend' ? Number(nextValue.toFixed(6)) : nextValue);
     }
     return {
       ...totalObj,

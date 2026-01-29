@@ -2,10 +2,16 @@ import { BarChart, type BarChartProps, ChartTooltipFrame, ChartTooltipRow } from
 import { Flexbox, Text } from '@lobehub/ui';
 import { Divider } from 'antd';
 
-export const UsageBarChart = ({ ...props }: BarChartProps) => (
+import { formatNumber, formatTokenNumber } from '@/utils/format';
+
+interface UsageBarChartProps extends BarChartProps {
+  showType: 'spend' | 'token';
+}
+
+export const UsageBarChart = ({ ...props }: UsageBarChartProps) => (
   <BarChart
     {...props}
-    customTooltip={({ active, payload, label, valueFormatter }) => {
+    customTooltip={({ active, payload, label }) => {
       if (active && payload) {
         const sum = payload.reduce(
           (acc: number, cur: any) => (typeof cur.value === 'number' ? acc + cur.value : acc),
@@ -17,7 +23,12 @@ export const UsageBarChart = ({ ...props }: BarChartProps) => (
               <Text as={'p'} ellipsis style={{ margin: 0 }}>
                 {label}
               </Text>
-              {sum !== 0 && <span style={{ fontWeight: 'bold' }}> {sum} </span>}
+              {sum !== 0 && (
+                <span style={{ fontWeight: 'bold' }}>
+                  {' '}
+                  {props.showType === 'spend' ? formatNumber(sum, 2) : formatTokenNumber(sum)}{' '}
+                </span>
+              )}
             </Flexbox>
             {sum !== 0 && (
               <>
@@ -34,7 +45,11 @@ export const UsageBarChart = ({ ...props }: BarChartProps) => (
                         color={color}
                         key={`id-${idx}`}
                         name={name}
-                        value={(valueFormatter as any)?.(value)}
+                        value={
+                          props.showType === 'spend'
+                            ? formatNumber(value, 2)
+                            : formatTokenNumber(value)
+                        }
                       />
                     ) : null,
                   )}
@@ -46,5 +61,8 @@ export const UsageBarChart = ({ ...props }: BarChartProps) => (
       }
       return null;
     }}
+    valueFormatter={(num) =>
+      props.showType === 'spend' ? formatNumber(num, 2) : formatTokenNumber(num)
+    }
   />
 );

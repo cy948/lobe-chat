@@ -4,6 +4,7 @@ import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { type UsageLog } from '@/types/usage/usageRecord';
+import { formatNumber } from '@/utils/format';
 
 import { GroupBy, type UsageChartProps } from '../../types';
 import StatsFormGroup from '../components/StatsFormGroup';
@@ -30,24 +31,22 @@ const groupByType = (
   }, new Map<string, number>());
   const categories: string[] = Array.from(cate.keys());
   formattedData = data.map((log) => {
-    const rawTotalValue =
-      type === 'spend' ? Number(log.totalSpend ?? 0) : Number(log.totalTokens ?? 0);
-    const totalValue = Number.isFinite(rawTotalValue) ? rawTotalValue : 0;
     const totalObj = {
       day: log.day,
-      total: type === 'spend' ? Number(totalValue.toFixed(6)) : totalValue,
+      total: type === 'spend' ? log.totalSpend : log.totalTokens,
     };
     let todayCate = new Map<string, number>(cate);
     for (const item of log.records) {
-      const rawValue = type === 'spend' ? Number(item.spend ?? 0) : Number(item.totalTokens ?? 0);
-      const value = Number.isFinite(rawValue) ? rawValue : 0;
+      const value = type === 'spend' ? item.spend || 0 : item.totalTokens || 0;
       const key = groupBy === GroupBy.Model ? item.model : item.provider;
-      if (!key) continue;
-      const prevValue = Number.isFinite(todayCate.get(key)) ? Number(todayCate.get(key)) : 0;
-      const displayValue = prevValue + value;
-      const nextValue = Number.isFinite(displayValue) ? displayValue : 0;
-
-      todayCate.set(key, type === 'spend' ? Number(nextValue.toFixed(6)) : nextValue);
+      let displayValue = (todayCate.get(key) || 0) + value;
+      if (type === 'spend') {
+        const formattedNum = formatNumber((todayCate.get(key) || 0) + value, 2);
+        if (typeof formattedNum !== 'string') {
+          displayValue = formattedNum;
+        }
+      }
+      todayCate.set(key, displayValue);
     }
     return {
       ...totalObj,
@@ -84,9 +83,21 @@ const UsageTrends = memo<UsageChartProps>(({ isLoading, data, groupBy }) => {
   const charts =
     data &&
     (type === ShowType.Spend ? (
-      <UsageBarChart categories={spendCate} data={spendData} index="day" stack={true} />
+      <UsageBarChart
+        categories={spendCate}
+        data={spendData}
+        index="day"
+        showType="spend"
+        stack={true}
+      />
     ) : (
-      <UsageBarChart categories={tokenCate} data={tokenData} index="day" stack={true} />
+      <UsageBarChart
+        categories={tokenCate}
+        data={tokenData}
+        index="day"
+        showType="token"
+        stack={true}
+      />
     ));
 
   return (

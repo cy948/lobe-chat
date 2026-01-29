@@ -25,8 +25,7 @@ export const UsageBarChart = ({ ...props }: UsageBarChartProps) => (
               </Text>
               {sum !== 0 && (
                 <span style={{ fontWeight: 'bold' }}>
-                  {' '}
-                  {props.showType === 'spend' ? formatNumber(sum, 2) : formatTokenNumber(sum)}{' '}
+                  {props.showType === 'spend' ? formatNumber(sum, 2) : formatTokenNumber(sum)}
                 </span>
               )}
             </Flexbox>

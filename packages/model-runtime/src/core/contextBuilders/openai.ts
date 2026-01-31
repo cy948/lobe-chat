@@ -123,6 +123,11 @@ export const convertOpenAIResponseInputs = async (
           : await Promise.all(
               (message.content || []).map(async (c) => {
                 if (c.type === 'text') {
+                  // if assistant message, set type to output_text
+                  // https://platform.openai.com/docs/guides/text
+                  if (message.role === 'assistant') {
+                    return { ...c, type: 'output_text' };
+                  }
                   return { ...c, type: 'input_text' };
                 }
                 const image = await convertMessageContent(c as OpenAI.ChatCompletionContentPart);

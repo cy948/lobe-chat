@@ -438,7 +438,7 @@ describe('convertOpenAIResponseInputs', () => {
         type: 'reasoning',
       },
       {
-        content: [{ text: '我是 Claude', type: 'input_text' }],
+        content: [{ text: '我是 Claude', type: 'output_text' }],
         role: 'assistant',
       },
     ]);

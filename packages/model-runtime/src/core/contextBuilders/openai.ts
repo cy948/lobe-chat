@@ -146,7 +146,7 @@ export const convertOpenAIResponseInputs = async (
         content:
           typeof processedContent === 'string'
             ? processedContent
-            : processedContent.filter(Boolean),
+            : processedContent.filter((m) => m !== undefined),
       } as OpenAI.Responses.ResponseInputItem;
 
       // remove reasoning field from the message item

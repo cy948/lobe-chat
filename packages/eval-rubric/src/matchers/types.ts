@@ -6,7 +6,9 @@ export interface GenerateObjectPayload {
 }
 
 export interface MatchContext {
-  generateObject?: (payload: GenerateObjectPayload) => Promise<{ reason: string; score: number }>;
+  generateObject?: (
+    payload: GenerateObjectPayload,
+  ) => Promise<{ reason: string; score?: number; correct?: boolean }>;
   judgeModel?: string;
 }
 

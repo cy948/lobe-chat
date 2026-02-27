@@ -36,6 +36,26 @@ export interface DatasetPreset {
 }
 
 export const DATASET_PRESETS: Record<string, DatasetPreset> = {
+  'browsecomp': {
+    id: 'browsecomp',
+    category: 'research',
+    name: 'BrowseComp',
+    description: 'Measuring the ability for agents to browse the web, comprises 1,266 questions.',
+    icon: Globe,
+    formatDescription: 'format: Topic (category/tags), Question (input), Answer (expected)',
+    requiredFields: ['Question', 'Answer'],
+    optionalFields: ['Topic', 'canary'],
+    fieldInference: {
+      input: ['Question', 'question'],
+      expected: ['Answer', 'answer'],
+      choices: [],
+      category: ['problem_topic'],
+    },
+    validation: {
+      requireExpected: true,
+      expectedFormat: 'string',
+    },
+  },
   // === Deep Research / QA Category ===
   'browsecomp-zh': {
     id: 'browsecomp-zh',

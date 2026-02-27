@@ -175,7 +175,10 @@ export default {
   'evalMode.equals.desc': 'Output must be exactly the same as expected',
   'evalMode.label': 'Eval Mode',
   'evalMode.llm-rubric': 'LLM Judge',
-  'evalMode.llm-rubric.desc': 'Use LLM to evaluate output quality',
+  'evalMode.llm-rubric.desc':
+    'Use LLM to evaluate output quality based on custom criteria (0.0 to 1.0)',
+  'evalMode.answer-relevance': 'LLM Relevance',
+  'evalMode.answer-relevance.desc': 'Use LLM to evaluate answer relevance (yes or no)',
   'evalMode.placeholder': 'Select eval mode',
   'evalMode.prompt.label': 'Judge Prompt',
   'evalMode.prompt.placeholder': 'Enter the evaluation criteria or prompt for LLM judge',

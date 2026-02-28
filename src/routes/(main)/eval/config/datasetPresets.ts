@@ -78,6 +78,30 @@ export const DATASET_PRESETS: Record<string, DatasetPreset> = {
     },
   },
 
+  'widesearch': {
+    id: 'widesearch',
+    category: 'research',
+    name: 'WideSearch',
+    description:
+      'Evaluating the capabilities of agents in broad information-seeking tasks, consisting of 200 questions.',
+    icon: Globe,
+    formatDescription:
+      'format: instance_id, query (input), evaluation (expected), language (metadata)',
+    requiredFields: ['query', 'evaluation'],
+    optionalFields: ['instance_id', 'language'],
+    fieldInference: {
+      input: ['query'],
+      expected: ['evaluation'],
+      choices: [],
+      category: ['language'],
+      sortOrder: ['instance_id'],
+    },
+    validation: {
+      requireExpected: true,
+      expectedFormat: 'string',
+    },
+  },
+
   'xbench': {
     id: 'xbench',
     category: 'research',

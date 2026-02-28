@@ -132,6 +132,7 @@ const DatasetEditModal = memo<DatasetEditModalProps>(({ open, onCancel, dataset,
               { label: t('evalMode.contains'), value: 'contains' },
               { label: t('evalMode.llm-rubric'), value: 'llm-rubric' },
               { label: t('evalMode.answer-relevance'), value: 'answer-relevance' },
+              { label: t('evalMode.external'), value: 'external' },
             ]}
           />
         </Form.Item>

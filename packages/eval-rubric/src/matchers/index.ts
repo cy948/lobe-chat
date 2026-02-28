@@ -4,6 +4,7 @@ import { matchAnyOf } from './anyOf';
 import { matchContains } from './contains';
 import { matchEndsWith } from './endsWith';
 import { matchEquals } from './equals';
+import { matchExternal } from './external';
 import { matchJsonSchema } from './jsonSchema';
 import { matchLevenshtein } from './levenshtein';
 import { matchLLMEq } from './llmEq';
@@ -73,6 +74,10 @@ export const match = async (
 
     case 'json-schema': {
       return matchJsonSchema(actual, config);
+    }
+
+    case 'external': {
+      return matchExternal();
     }
 
     default: {

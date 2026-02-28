@@ -85,16 +85,65 @@ export const DATASET_PRESETS: Record<string, DatasetPreset> = {
     description:
       'Evaluating the capabilities of agents in broad information-seeking tasks, consisting of 200 questions.',
     icon: Globe,
-    formatDescription:
-      'format: instance_id, query (input), evaluation (expected), language (metadata)',
-    requiredFields: ['query', 'evaluation'],
-    optionalFields: ['instance_id', 'language'],
+    formatDescription: 'format: instance_id, query (input), evaluation (expected), language',
+    requiredFields: ['instance_id', 'query', 'evaluation', 'language'],
+    optionalFields: [],
     fieldInference: {
       input: ['query'],
       expected: ['evaluation'],
       choices: [],
       category: ['language'],
-      sortOrder: ['instance_id'],
+      sortOrder: [],
+    },
+    validation: {
+      requireExpected: true,
+      expectedFormat: 'string',
+    },
+  },
+
+  'hle-text': {
+    id: 'hle-text',
+    category: 'research',
+    name: "Humanity's Last Exam, HLE (Text Only)",
+    description:
+      "Humanity's Last Exam (HLE) is a multi-modal benchmark at the frontier of human knowledge, consisting of 2150 questions.",
+    icon: Globe,
+    formatDescription:
+      'format: id, question (input), answer (expected), answer_type, rationale, raw_subject, category',
+    requiredFields: [
+      'id',
+      'question',
+      'answer',
+      'answer_type',
+      'rationale',
+      'raw_subject',
+      'category',
+    ],
+    optionalFields: ['canary'],
+    fieldInference: {
+      input: ['question'],
+      expected: ['answer'],
+      choices: [],
+      category: ['category'],
+    },
+  },
+
+  'deepsearchqa': {
+    id: 'deepsearchqa',
+    category: 'research',
+    name: 'DeepSearchQA',
+    description:
+      'A 900-prompt factuality benchmark from Google DeepMind, designed to evaluate agents on difficult multi-step information-seeking tasks across 17 different fields.',
+    icon: Globe,
+    formatDescription: 'problem, problem_category, answer, answer_type',
+    requiredFields: ['problem', 'answer', 'problem_category', 'answer_type'],
+    optionalFields: [],
+    fieldInference: {
+      input: ['problem'],
+      expected: ['answer'],
+      choices: [],
+      category: ['problem_category'],
+      sortOrder: [],
     },
     validation: {
       requireExpected: true,

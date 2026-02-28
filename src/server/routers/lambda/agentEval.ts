@@ -33,6 +33,7 @@ const rubricTypeSchema = z.enum([
   'similar',
   'levenshtein',
   'rubric',
+  'external',
 ]);
 
 const evalConfigSchema = z.object({ judgePrompt: z.string().optional() }).passthrough();

@@ -86,6 +86,11 @@ const StatusBadge = memo<{ record: any }>(({ record }) => {
   if (status === 'timeout')
     return <Badge color="orange" text={<BadgeText>{t('run.status.timeout')}</BadgeText>} />;
 
+  if (status === 'external') {
+    const badge = <Badge color="purple" text={<BadgeText>{t('run.status.external')}</BadgeText>} />;
+    return <Tooltip title={t('run.status.external.tooltip')}>{badge}</Tooltip>;
+  }
+
   return <Badge status="default" text={<BadgeText>{status}</BadgeText>} />;
 });
 
@@ -406,6 +411,7 @@ const CaseResultsTable = memo<CaseResultsTableProps>(
               { label: t('table.filter.error'), value: 'error' },
               { label: t('table.filter.running'), value: 'running' },
               { label: t('run.status.pending'), value: 'pending' },
+              { label: t('run.status.external'), value: 'external' },
             ]}
             onChange={setStatusFilter}
           />

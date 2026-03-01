@@ -183,6 +183,8 @@ export interface EvalRunTopicResult {
   completionReason?: string;
   operationId?: string;
   rubricScores?: EvalRubricScore[];
+  /** Set when evalMode is 'external' — agent finished, awaiting external scoring */
+  awaitingExternalEval?: boolean;
 }
 /*eslint-enable perfectionist/sort-interfaces */
 

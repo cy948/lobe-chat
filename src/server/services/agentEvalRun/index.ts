@@ -512,6 +512,7 @@ export class AgentEvalRunService {
     const passedCases = allTopics.filter((t) => t.status === 'passed').length;
     const failedCases = allTopics.filter((t) => t.status === 'failed').length;
     const errorCases = allTopics.filter((t) => t.status === 'error').length;
+    const externalCasesRT = allTopics.filter((t) => t.status === 'external').length;
     const timeoutCases = allTopics.filter((t) => t.status === 'timeout').length;
 
     let sumCost = 0;
@@ -556,6 +557,7 @@ export class AgentEvalRunService {
         completedCases: completedCount,
         cost: sumCost ? roundCost(sumCost) : undefined,
         errorCases,
+        externalCases: externalCasesRT || undefined,
         failedCases,
         llmCalls: sumLlmCalls || undefined,
         passedCases,
@@ -970,11 +972,15 @@ export class AgentEvalRunService {
     // Aggregate real-time metrics from all RunTopics
     const allTopics = await this.runTopicModel.findByRunId(runId);
     const completedCount = allTopics.filter(
-      (t) => (t.evalResult && 'completionReason' in t.evalResult) || t.status === 'timeout',
+      (t) =>
+        (t.evalResult && 'completionReason' in t.evalResult) ||
+        t.status === 'timeout' ||
+        t.status === 'external',
     ).length;
     const passedCases = allTopics.filter((t) => t.status === 'passed').length;
     const failedCases = allTopics.filter((t) => t.status === 'failed').length;
     const errorCases = allTopics.filter((t) => t.status === 'error').length;
+    const externalCasesTraj = allTopics.filter((t) => t.status === 'external').length;
     const timeoutCases = allTopics.filter((t) => t.status === 'timeout').length;
 
     let sumCost = 0;
@@ -1020,6 +1026,7 @@ export class AgentEvalRunService {
         completedCases: completedCount,
         cost: sumCost ? roundCost(sumCost) : undefined,
         errorCases,
+        externalCases: externalCasesTraj || undefined,
         failedCases,
         llmCalls: sumLlmCalls || undefined,
         passedCases,
@@ -1073,6 +1080,7 @@ export class AgentEvalRunService {
     let passedCases = 0;
     let failedCases = 0;
     let errorCases = 0;
+    let externalCases = 0;
     let timeoutCases = 0;
     let totalScore = 0;
     // Sum of per-case averages (for per-case display)
@@ -1113,19 +1121,27 @@ export class AgentEvalRunService {
         failedCases++;
       } else if (runTopic.status === 'error') {
         errorCases++;
+      } else if (runTopic.status === 'external') {
+        externalCases++;
       } else if (runTopic.status === 'timeout') {
         timeoutCases++;
       }
 
-      // Only accumulate scores for evaluated (non-error, non-timeout) cases
-      if (runTopic.status !== 'error' && runTopic.status !== 'timeout' && runTopic.score != null) {
-        totalScore += runTopic.score;
-      }
-
-      // Accumulate per-rubric scores from existing evalResult (exclude error/timeout cases)
+      // Only accumulate scores for evaluated (non-error, non-timeout, non-external) cases
       if (
         runTopic.status !== 'error' &&
         runTopic.status !== 'timeout' &&
+        runTopic.status !== 'external' &&
+        runTopic.score != null
+      ) {
+        totalScore += runTopic.score;
+      }
+
+      // Accumulate per-rubric scores from existing evalResult (exclude error/timeout/external cases)
+      if (
+        runTopic.status !== 'error' &&
+        runTopic.status !== 'timeout' &&
+        runTopic.status !== 'external' &&
         existingResult?.rubricScores
       ) {
         for (const rs of existingResult.rubricScores) {
@@ -1163,6 +1179,7 @@ export class AgentEvalRunService {
       cost: sumCost ? roundCost(sumCost) : undefined,
       duration: wallClockDuration || undefined,
       errorCases,
+      externalCases: externalCases || undefined,
       failedCases,
       llmCalls: sumLlmCalls || undefined,
       passRate: totalCases > 0 ? passedCases / totalCases : 0,
@@ -1358,7 +1375,13 @@ export class AgentEvalRunService {
       });
 
       const nonSuccessCases = (metrics.errorCases || 0) + (metrics.timeoutCases || 0);
-      const runStatus = nonSuccessCases >= metrics.totalCases ? 'failed' : 'completed';
+      const externalCount = metrics.externalCases || 0;
+      const runStatus =
+        externalCount > 0
+          ? 'external'
+          : nonSuccessCases >= metrics.totalCases
+            ? 'failed'
+            : 'completed';
 
       await this.runModel.update(run.id, { metrics, status: runStatus });
     } else {

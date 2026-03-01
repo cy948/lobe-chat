@@ -96,6 +96,7 @@ export interface EvalRunMetrics {
   cost?: number;
   duration?: number;
   errorCases?: number;
+  externalCases?: number;
   failedCases: number;
   llmCalls?: number;
   passAllK?: number;

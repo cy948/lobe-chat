@@ -667,6 +667,17 @@ export class AgentEvalRunService {
     const evalMode = (testCase.evalMode ?? dataset.evalMode) as RubricType | null | undefined;
     const evalConfig = testCase.evalConfig ?? dataset.evalConfig;
 
+    // ── External eval mode: agent finished, hand off to external scorer ──
+    if (evalMode === 'external') {
+      return {
+        ...baseMeta,
+        awaitingExternalEval: true,
+        passed: undefined,
+        score: undefined,
+        status: 'external',
+      };
+    }
+
     let effectiveRubrics: EvalBenchmarkRubric[];
     if (evalMode) {
       effectiveRubrics = [
@@ -743,6 +754,20 @@ export class AgentEvalRunService {
         toolCalls: meta.toolCalls as number | undefined,
       };
     });
+
+    // ── External eval mode: if all threads await external scoring, propagate that status ──
+    const allExternal = threadResults.every((t) => (t as any).status === 'external');
+    if (allExternal) {
+      await this.runTopicModel.updateByRunAndTopic(runId, topicId, {
+        evalResult: {
+          awaitingExternalEval: true,
+          completionReason: 'external',
+          threads: threadResults,
+        } satisfies EvalRunTopicResult,
+        status: 'external',
+      });
+      return;
+    }
 
     // pass@k: at least one thread passed
     const anyPassed = threadResults.some((t) => t.passed === true);
@@ -888,7 +913,7 @@ export class AgentEvalRunService {
     if (runTopic) {
       // Skip if topic is already in a terminal state (e.g. timeout marked by checkAndHandleRunTimeout).
       // The interrupted agent still fires the completion webhook, but we must not overwrite the result.
-      const terminalStates = ['passed', 'failed', 'error', 'timeout'];
+      const terminalStates = ['passed', 'failed', 'error', 'timeout', 'external'];
       if (runTopic.status && terminalStates.includes(runTopic.status)) {
         // Fall through to progress tracking below without modifying this topic
       } else {
@@ -1215,6 +1240,15 @@ export class AgentEvalRunService {
     // Resolve rubrics: TestCase evalMode > Dataset evalMode > Benchmark rubrics
     const evalMode = (testCase.evalMode ?? dataset.evalMode) as RubricType | null | undefined;
     const evalConfig = testCase.evalConfig ?? dataset.evalConfig;
+
+    // ── External eval mode: agent finished, hand off to external scorer ──
+    if (evalMode === 'external') {
+      await this.runTopicModel.updateByRunAndTopic(runTopic.runId, runTopic.topicId, {
+        evalResult: { ...existingResult, awaitingExternalEval: true },
+        status: 'external',
+      });
+      return;
+    }
 
     let effectiveRubrics: EvalBenchmarkRubric[];
     if (evalMode) {

@@ -173,6 +173,8 @@ export default {
   'evalMode.contains.desc': 'Output must contain the expected text',
   'evalMode.equals': 'Exact Match',
   'evalMode.equals.desc': 'Output must be exactly the same as expected',
+  'evalMode.external': 'External Eval',
+  'evalMode.external.desc': 'Agent runs to completion; scoring is handled by an external system',
   'evalMode.label': 'Eval Mode',
   'evalMode.llm-rubric': 'LLM Judge',
   'evalMode.llm-rubric.desc':
@@ -283,6 +285,9 @@ export default {
   'run.status.aborted': 'Aborted',
   'run.status.completed': 'Completed',
   'run.status.error': 'Run Error',
+  'run.status.external': 'Awaiting Eval',
+  'run.status.external.tooltip':
+    'The agent has finished running. Waiting for an external system to submit evaluation results.',
   'run.status.failed': 'Failed',
   'run.status.idle': 'Idle',
   'run.status.pending': 'Pending',

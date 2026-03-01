@@ -136,7 +136,7 @@ export const DATASET_PRESETS: Record<string, DatasetPreset> = {
       "A subset of Humanity's Last Exam (HLE) with verified answers, designed to evaluate the ability to produce correct answers rather than just plausible ones.",
     icon: Globe,
     formatDescription:
-      'format: id, question (input), answer (expected), answer_type, rationale, raw_subject, category',
+      'format: id, question (input), answer (expected), answer_type, rationale, raw_subject, category, Verified_Classes',
     requiredFields: [
       'id',
       'question',
@@ -145,6 +145,7 @@ export const DATASET_PRESETS: Record<string, DatasetPreset> = {
       'rationale',
       'raw_subject',
       'category',
+      'Verified_Classes',
     ],
     optionalFields: ['canary'],
     fieldInference: {

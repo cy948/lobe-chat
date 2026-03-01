@@ -128,6 +128,33 @@ export const DATASET_PRESETS: Record<string, DatasetPreset> = {
     },
   },
 
+  'hle-verified': {
+    id: 'hle-verified',
+    category: 'research',
+    name: "Humanity's Last Exam, HLE (Verified Answers)",
+    description:
+      "A subset of Humanity's Last Exam (HLE) with verified answers, designed to evaluate the ability to produce correct answers rather than just plausible ones.",
+    icon: Globe,
+    formatDescription:
+      'format: id, question (input), answer (expected), answer_type, rationale, raw_subject, category',
+    requiredFields: [
+      'id',
+      'question',
+      'answer',
+      'answer_type',
+      'rationale',
+      'raw_subject',
+      'category',
+    ],
+    optionalFields: ['canary'],
+    fieldInference: {
+      input: ['question'],
+      expected: ['answer'],
+      choices: [],
+      category: ['category'],
+    },
+  },
+
   'deepsearchqa': {
     id: 'deepsearchqa',
     category: 'research',
@@ -144,6 +171,28 @@ export const DATASET_PRESETS: Record<string, DatasetPreset> = {
       choices: [],
       category: ['problem_category'],
       sortOrder: [],
+    },
+    validation: {
+      requireExpected: true,
+      expectedFormat: 'string',
+    },
+  },
+
+  'sealqa': {
+    id: 'sealqa',
+    category: 'research',
+    name: 'SealQA',
+    description:
+      'SealQA is a new challenge benchmark for evaluating SEarch- Augmented Language models on fact-seeking questions where web search yields conflicting, noisy, or unhelpful results.',
+    icon: Globe,
+    formatDescription: 'format: question (input), answer (expected), topic (category)',
+    requiredFields: ['question', 'answer', 'topic', 'canary'],
+    optionalFields: [],
+    fieldInference: {
+      input: ['question'],
+      expected: ['answer'],
+      choices: [],
+      category: ['topic'],
     },
     validation: {
       requireExpected: true,

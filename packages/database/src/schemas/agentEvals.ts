@@ -182,7 +182,7 @@ export const agentEvalRuns = pgTable(
     name: text('name'),
 
     status: text('status', {
-      enum: ['idle', 'pending', 'running', 'completed', 'failed', 'aborted'],
+      enum: ['idle', 'pending', 'running', 'completed', 'failed', 'aborted', 'external'],
     })
       .default('idle')
       .notNull(),

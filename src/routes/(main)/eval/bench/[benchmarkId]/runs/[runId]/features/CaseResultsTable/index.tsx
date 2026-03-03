@@ -67,6 +67,8 @@ const StatusBadge = memo<{ record: any }>(({ record }) => {
   const { t } = useTranslation('eval');
   const status: string | null | undefined = record.status;
 
+  // return <div>{status}</div>;
+
   if (!status || status === 'pending')
     return <Badge status="default" text={<BadgeText>{t('run.status.pending')}</BadgeText>} />;
 
@@ -93,7 +95,7 @@ const StatusBadge = memo<{ record: any }>(({ record }) => {
 
   if (status === 'completed') {
     // 完成代表运行完成 + 评测完成，不代表结果一定通过
-    const badge = <Badge color="green" text={<BadgeText>{t('run.status.completed')}</BadgeText>} />;
+    const badge = <Badge color="blue" text={<BadgeText>{t('run.status.completed')}</BadgeText>} />;
     return <Tooltip title={t('run.status.completed.tooltip')}>{badge}</Tooltip>;
   }
 
@@ -118,15 +120,21 @@ const ThreadDots = memo<{ threads: EvalThreadResult[] }>(({ threads }) => (
         color = cssVar.colorWarning;
       }
 
+      if (thread.status === 'completed') {
+        color = cssVar.colorPrimary;
+      }
+
       const label = thread.error
         ? 'error'
         : thread.passed === true
           ? 'passed'
-          : thread.passed === false
+          : thread.passed === false && thread.status !== 'completed'
             ? 'failed'
             : thread.status === 'external'
               ? 'Awaiting for external evaluation'
-              : 'pending';
+              : thread.status === 'completed'
+                ? 'completed'
+                : 'pending';
 
       return (
         <Tooltip key={thread.threadId} title={label}>

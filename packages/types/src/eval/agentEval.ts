@@ -202,7 +202,7 @@ export interface EvalThreadResult {
   passed?: boolean;
   rubricScores?: EvalRubricScore[];
   score?: number;
-  status?: 'error' | 'external' | 'failed' | 'passed' | 'running' | 'timeout';
+  status?: 'error' | 'external' | 'failed' | 'passed' | 'running' | 'timeout' | 'completed';
   steps?: number;
   threadId: string;
   tokens?: number;

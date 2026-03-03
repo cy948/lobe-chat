@@ -209,6 +209,8 @@ export default {
   'run.idle.hint': 'Click Start to begin evaluation',
   'run.pending.hint': 'Evaluation is queued, waiting to start...',
   'run.running.hint': 'Evaluation is running, results will appear shortly...',
+  'run.external.hint':
+    'Running completed. Waiting for external system to submit evaluation results ...',
 
   'run.filter.active': 'Active',
   'run.filter.empty': 'No runs match the current filter.',

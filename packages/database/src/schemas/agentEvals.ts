@@ -229,7 +229,7 @@ export const agentEvalRunTopics = pgTable(
       .notNull(),
 
     status: text('status', {
-      enum: ['pending', 'running', 'passed', 'failed', 'error', 'timeout', 'external'],
+      enum: ['pending', 'running', 'passed', 'failed', 'error', 'timeout', 'external', 'completed'],
     }),
 
     score: real('score'),

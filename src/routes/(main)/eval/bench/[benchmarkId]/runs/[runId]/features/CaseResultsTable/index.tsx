@@ -91,6 +91,12 @@ const StatusBadge = memo<{ record: any }>(({ record }) => {
     return <Tooltip title={t('run.status.external.tooltip')}>{badge}</Tooltip>;
   }
 
+  if (status === 'completed') {
+    // 完成代表运行完成 + 评测完成，不代表结果一定通过
+    const badge = <Badge color="green" text={<BadgeText>{t('run.status.completed')}</BadgeText>} />;
+    return <Tooltip title={t('run.status.completed.tooltip')}>{badge}</Tooltip>;
+  }
+
   return <Badge status="default" text={<BadgeText>{status}</BadgeText>} />;
 });
 
@@ -420,6 +426,7 @@ const CaseResultsTable = memo<CaseResultsTableProps>(
               { label: t('table.filter.running'), value: 'running' },
               { label: t('run.status.pending'), value: 'pending' },
               { label: t('run.status.external'), value: 'external' },
+              { label: t('run.status.completed'), value: 'completed' },
             ]}
             onChange={setStatusFilter}
           />

@@ -197,14 +197,16 @@ export interface EvalThreadResult {
   cost?: number;
   duration?: number;
   error?: string;
+  llmCalls?: number;
   operationId?: string;
   passed?: boolean;
   rubricScores?: EvalRubricScore[];
   score?: number;
-  status?: 'error' | 'failed' | 'passed' | 'running' | 'timeout';
+  status?: 'error' | 'external' | 'failed' | 'passed' | 'running' | 'timeout';
   steps?: number;
   threadId: string;
   tokens?: number;
+  toolCalls?: number;
 }
 
 /**

@@ -735,6 +735,7 @@ export class AgentEvalRunService {
       passed?: boolean;
       rubricScores?: Array<{ reason?: string; rubricId: string; score: number }>;
       score?: number;
+      status?: 'error' | 'external' | 'failed' | 'passed' | 'running' | 'timeout';
       steps?: number;
       threadId: string;
       tokens?: number;
@@ -750,6 +751,14 @@ export class AgentEvalRunService {
         passed: meta.passed as boolean | undefined,
         rubricScores: meta.rubricScores as any,
         score: meta.score as number | undefined,
+        status: meta.status as
+          | 'error'
+          | 'external'
+          | 'failed'
+          | 'passed'
+          | 'running'
+          | 'timeout'
+          | undefined,
         steps: meta.steps as number | undefined,
         threadId: t.id,
         tokens: meta.tokens as number | undefined,
@@ -758,7 +767,7 @@ export class AgentEvalRunService {
     });
 
     // ── External eval mode: if all threads await external scoring, propagate that status ──
-    const allExternal = threadResults.every((t) => (t as any).status === 'external');
+    const allExternal = threadResults.every((t) => t.status === 'external');
     if (allExternal) {
       await this.runTopicModel.updateByRunAndTopic(runId, topicId, {
         evalResult: {

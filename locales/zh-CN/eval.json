@@ -258,6 +258,7 @@
   "run.running.hint": "评测进行中，结果即将呈现...",
   "run.status.aborted": "已终止",
   "run.status.completed": "已完成",
+  "run.status.completed.tooltip": "评测已完成运行，所有结果已评估。",
   "run.status.error": "运行出错",
   "run.status.external": "待外部评测",
   "run.status.external.tooltip": "智能体已完成运行，等待外部系统提交评估结果。",

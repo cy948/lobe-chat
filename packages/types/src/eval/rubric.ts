@@ -47,7 +47,6 @@ export interface RubricConfigLLM {
   criteria: string;
   model?: string;
   provider?: string;
-  resultFormat?: 'score' | 'yes-no' | 'choice' | 'multi-choice';
   systemRole?: string;
 }
 

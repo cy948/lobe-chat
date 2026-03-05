@@ -8,27 +8,26 @@ const DEFAULT_SYSTEM_ROLE = [
   'Your judgement must be in the format and criteria specified below:',
   "extracted_final_answer: The final exact answer extracted from the [response]. Put the extracted answer as 'None' if there is no exact, final answer to extract from the response.",
   'reasoning: Explain why the extracted_final_answer is correct or incorrect based on [correct_answer], focusing only on if there are meaningful differences between [correct_answer] and the extracted_final_answer. Do not comment on any background to the problem, do not attempt to solve the problem, do not argue for any answer different than [correct_answer], focus only on whether the answers match.',
-  "correct: Answer 'yes' if extracted_final_answer matches the [correct_answer] given above, or is within a small margin of error for numerical problems. Answer 'no' otherwise, i.e. if there if there is any inconsistency, ambiguity, non-equivalency, or if the extracted answer is incorrect.",
-  'confidence: The extracted confidence score between 0|\\%| and 100|\\%| from [response]. Put 100 if there is no confidence score available.',
+  'Scoring rules:',
+  'score: Return 1 only when extracted_final_answer clearly and unambiguously matches [correct_answer], or is within a small margin of error for numerical problems.',
+  'score: Return 0 when extracted_final_answer is incorrect, missing, ambiguous, non-equivalent, or when you are uncertain.',
+  'Treat uncertainty as incorrect (score = 0).',
   'Respond with a JSON object containing ',
-  '"correct" (yes or no)',
-  '"confidence" (0.0 to 1.0)',
+  '"score" (number: 0 or 1)',
   'and "reason" (brief explanation for the judgement).',
 ].join('\n');
 
 const JUDGE_SCORE_SCHEMA: Record<string, unknown> = {
   additionalProperties: false,
   properties: {
-    correct: { description: 'Whether the extracted answer is correct', type: 'boolean' },
-    confidence: {
-      description: 'Confidence score extracted from response, from 0.0 to 1.0',
-      maximum: 1,
-      minimum: 0,
+    score: {
+      description: 'Binary score for judgement: 1=correct, 0=incorrect/uncertain',
+      enum: [0, 1],
       type: 'number',
     },
     reason: { description: 'Brief explanation for the judgement', type: 'string' },
   },
-  required: ['correct', 'confidence', 'reason'],
+  required: ['score', 'reason'],
   type: 'object',
 };
 
@@ -73,10 +72,12 @@ export const matchLLMEq = async (
       schema: JUDGE_SCORE_SCHEMA,
     });
 
+    const score = result?.score === 1 ? 1 : 0;
+
     return {
-      passed: result?.score === 1,
+      passed: score === 1,
       reason: result?.reason,
-      score: result?.score,
+      score,
     };
   } catch (error) {
     return {

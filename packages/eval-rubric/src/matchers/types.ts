@@ -6,10 +6,7 @@ export interface GenerateObjectPayload {
 }
 
 export interface MatchContext {
-  // TODO: 这里的 LLM 返回值和 Judge Prompt Template 是耦合的，未来可以考虑抽象成更通用的接口
-  generateObject?: (
-    payload: GenerateObjectPayload,
-  ) => Promise<{ reason: string; score?: number; correct?: boolean }>;
+  generateObject?: (payload: GenerateObjectPayload) => Promise<{ reason: string; score: number }>;
   judgeModel?: string;
 }
 

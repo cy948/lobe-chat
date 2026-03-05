@@ -74,9 +74,9 @@ export const matchLLMEq = async (
     });
 
     return {
-      passed: result?.correct ?? false,
+      passed: result?.score === 1,
       reason: result?.reason,
-      score: result?.correct ? 1 : 0,
+      score: result?.score,
     };
   } catch (error) {
     return {

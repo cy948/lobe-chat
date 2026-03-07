@@ -20,7 +20,6 @@ const AGENT_POLL_INTERVAL_MS = 1200;
 const AGENT_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 const MESSAGE_MAX_LENGTH = 1600;
 const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10_000, 30_000, 60_000];
-const QQ_ECHO_ONLY = process.env.QQ_ECHO_ONLY === '1';
 
 interface QQTokenResponse {
   access_token?: string;
@@ -97,14 +96,11 @@ export class QQ implements PlatformBot {
     if (!appId || !clientSecret) {
       throw new Error('QQ bot credentials are missing');
     }
-    if (!QQ_ECHO_ONLY && (!agentId || !userId)) {
+    if (!agentId || !userId) {
       throw new Error('QQ bot context is missing agentId/userId');
     }
 
     log('Starting QQBot appId=%s agentId=%s userId=%s', appId, agentId, userId);
-    if (QQ_ECHO_ONLY) {
-      log('QQBot appId=%s echo-only mode is enabled', appId);
-    }
 
     await this.getAccessToken();
     await this.connectGateway();
@@ -428,9 +424,7 @@ export class QQ implements PlatformBot {
     const platformThreadId = `qq:c2c:${openid}`;
 
     try {
-      const reply = QQ_ECHO_ONLY
-        ? this.buildEchoReply(incomingText)
-        : await this.executeAgent(platformThreadId, incomingText);
+      const reply = await this.executeAgent(platformThreadId, incomingText);
       await this.sendC2CMessage(openid, reply, event.id);
     } catch (error) {
       log('QQBot C2C message handling failed: %O', error);
@@ -457,9 +451,7 @@ export class QQ implements PlatformBot {
     const platformThreadId = `qq:group:${groupOpenid}`;
 
     try {
-      const reply = QQ_ECHO_ONLY
-        ? this.buildEchoReply(incomingText)
-        : await this.executeAgent(platformThreadId, incomingText);
+      const reply = await this.executeAgent(platformThreadId, incomingText);
       await this.sendGroupMessage(groupOpenid, reply, event.id);
     } catch (error) {
       log('QQBot group @message handling failed: %O', error);
@@ -479,10 +471,6 @@ export class QQ implements PlatformBot {
       text = text.replaceAll(/<@!?\d+>\s*/g, '').trim();
     }
     return text;
-  }
-
-  private buildEchoReply(text: string): string {
-    return `echo: ${text}`;
   }
 
   private async executeAgent(platformThreadId: string, prompt: string): Promise<string> {

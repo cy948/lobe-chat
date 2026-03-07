@@ -25,6 +25,7 @@ import { ThreadModel } from '@/database/models/thread';
 import { TopicModel } from '@/database/models/topic';
 import { UserModel } from '@/database/models/user';
 import { UserPersonaModel } from '@/database/models/userMemory/persona';
+import { isTrustedClientEnabled } from '@/libs/trusted-client';
 import {
   createServerAgentToolsEngine,
   type EvalContext,
@@ -273,10 +274,15 @@ export class AiAgentService {
 
     // 5. Fetch LobeHub Skills manifests (temporary solution until LOBE-3517 is implemented)
     let lobehubSkillManifests: LobeToolManifest[] = [];
-    try {
-      lobehubSkillManifests = await this.marketService.getLobehubSkillManifests();
-    } catch (error) {
-      log('execAgent: failed to fetch lobehub skill manifests: %O', error);
+    const hasMarketAuth = isTrustedClientEnabled() || !!process.env.MARKET_API_KEY;
+    if (hasMarketAuth) {
+      try {
+        lobehubSkillManifests = await this.marketService.getLobehubSkillManifests();
+      } catch (error) {
+        log('execAgent: failed to fetch lobehub skill manifests: %O', error);
+      }
+    } else {
+      log('execAgent: skip lobehub skill manifests (market auth not configured)');
     }
     log('execAgent: got %d lobehub skill manifests', lobehubSkillManifests.length);
 

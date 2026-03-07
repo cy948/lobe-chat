@@ -96,9 +96,6 @@ export function registerLoginCommand(program: Command) {
       const opened = await openBrowser(verifyUrl);
       if (!opened) {
         log.warn('Could not open browser automatically.');
-        log.info('Please open this URL manually:');
-        log.info(`  ${verifyUrl}`);
-        log.info(`Then enter code: ${deviceAuth.user_code}`);
       }
 
       log.info('Waiting for authorization...');
@@ -186,33 +183,10 @@ async function openBrowser(url: string): Promise<boolean> {
     const pathValue = process.env.PATH || '';
     if (!pathValue) return false;
 
-    const pathEntries = pathValue.split(path.delimiter);
-    const extensions =
-      process.platform === 'win32'
-        ? (process.env.PATHEXT || '.EXE;.CMD;.BAT;.COM').split(';')
-        : [''];
-
-    const hasFileExtension = path.extname(cmd) !== '';
-
-    for (const entry of pathEntries) {
-      if (!entry) continue;
-
-      for (const ext of extensions) {
-        const filename = process.platform === 'win32' && !hasFileExtension ? `${cmd}${ext}` : cmd;
-        const fullPath = path.join(entry, filename);
-
-        if (!fs.existsSync(fullPath)) continue;
-
-        try {
-          fs.accessSync(fullPath, fs.constants.X_OK);
-          return true;
-        } catch {
-          // Not executable, keep searching other PATH entries.
-        }
-      }
-    }
-
-    return false;
+    return pathValue
+      .split(path.delimiter)
+      .filter(Boolean)
+      .some((entry) => fs.existsSync(path.join(entry, cmd)));
   };
 
   const runCommand = (cmd: string, args: string[]) =>

@@ -320,7 +320,7 @@ const Body = memo<BodyProps>(
           )}
 
           {/* Endpoint URL - platform-specific rendering */}
-          {hasConfig && provider.webhookMode !== 'auto' && (
+          {hasConfig && provider.webhookMode === 'manual' && (
             <div className={styles.field}>
               <div className={styles.label}>
                 <div className={styles.labelLeft}>

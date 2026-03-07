@@ -179,7 +179,12 @@ export class GatewayManager {
 
   private createBot(
     platform: string,
-    provider: { applicationId: string; credentials: Record<string, string> },
+    provider: {
+      agentId?: string;
+      applicationId: string;
+      credentials: Record<string, string>;
+      userId?: string;
+    },
   ): PlatformBot | null {
     const BotClass = this.config.registry[platform];
     if (!BotClass) {
@@ -188,8 +193,10 @@ export class GatewayManager {
     }
 
     return new BotClass({
+      agentId: provider.agentId,
       ...provider.credentials,
       applicationId: provider.applicationId,
+      userId: provider.userId,
     });
   }
 }

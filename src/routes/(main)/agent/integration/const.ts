@@ -1,4 +1,4 @@
-import { SiDiscord, SiTelegram } from '@icons-pack/react-simple-icons';
+import { SiDiscord, SiQq, SiTelegram } from '@icons-pack/react-simple-icons';
 import type { LucideIcon } from 'lucide-react';
 import type { FC } from 'react';
 
@@ -37,6 +37,19 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
     icon: SiDiscord,
     id: 'discord',
     name: 'Discord',
+    webhookMode: 'manual',
+  },
+  {
+    color: '#12B7F5',
+    description: 'Connect this assistant to QQ Bot for private and group chats.',
+    docsLink: 'https://q.qq.com/qqbot/openclaw/login.html',
+    fieldTags: {
+      appId: 'AppID',
+      token: 'AppSecret',
+    },
+    icon: SiQq,
+    id: 'qq',
+    name: 'QQ',
   },
   {
     autoAppId: true,

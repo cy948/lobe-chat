@@ -91,7 +91,7 @@ const PlatformDetail = memo<PlatformDetailProps>(({ provider, agentId, currentCo
       setSaveResult(undefined);
 
       // Auto-derive applicationId from bot token for Telegram
-      let applicationId = values.applicationId;
+      let applicationId = values.applicationId.trim();
       if (provider.autoAppId && values.botToken) {
         const colonIdx = values.botToken.indexOf(':');
         if (colonIdx !== -1) {
@@ -101,27 +101,29 @@ const PlatformDetail = memo<PlatformDetailProps>(({ provider, agentId, currentCo
       }
 
       // Build platform-specific credentials
-      const credentials: Record<string, string> = { botToken: values.botToken };
+      const credentials: Record<string, string> = { botToken: values.botToken.trim() };
       if (provider.fieldTags.publicKey) {
-        credentials.publicKey = values.publicKey || 'default';
+        credentials.publicKey = values.publicKey?.trim() || 'default';
       }
       if (provider.fieldTags.secretToken && values.secretToken) {
-        credentials.secretToken = values.secretToken;
+        credentials.secretToken = values.secretToken.trim();
       }
       if (provider.webhookMode === 'auto' && values.webhookProxyUrl) {
-        credentials.webhookProxyUrl = values.webhookProxyUrl;
+        credentials.webhookProxyUrl = values.webhookProxyUrl.trim();
       }
 
       if (currentConfig) {
         await updateBotProvider(currentConfig.id, agentId, {
           applicationId,
           credentials,
+          enabled: true,
         });
       } else {
         await createBotProvider({
           agentId,
           applicationId,
           credentials,
+          enabled: true,
           platform: provider.id,
         });
       }
@@ -139,6 +141,7 @@ const PlatformDetail = memo<PlatformDetailProps>(({ provider, agentId, currentCo
     provider.id,
     provider.autoAppId,
     provider.fieldTags,
+    provider.webhookMode,
     form,
     currentConfig,
     createBotProvider,

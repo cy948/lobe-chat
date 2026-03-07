@@ -1,4 +1,5 @@
 import { TRPCError } from '@trpc/server';
+import debug from 'debug';
 import { z } from 'zod';
 
 import { AgentBotProviderModel } from '@/database/models/agentBotProvider';
@@ -6,6 +7,8 @@ import { authedProcedure, router } from '@/libs/trpc/lambda';
 import { serverDatabase } from '@/libs/trpc/lambda/middleware';
 import { KeyVaultsGateKeeper } from '@/server/modules/KeyVaultsEncrypt';
 import { GatewayService } from '@/server/services/gateway';
+
+const log = debug('lobe-server:bot-provider');
 
 const agentBotProviderProcedure = authedProcedure.use(serverDatabase).use(async (opts) => {
   const { ctx } = opts;
@@ -30,9 +33,25 @@ export const agentBotProviderRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
+      log(
+        'create provider userId=%s agentId=%s platform=%s appId=%s enabled=%s',
+        ctx.userId,
+        input.agentId,
+        input.platform,
+        input.applicationId,
+        input.enabled ?? true,
+      );
       try {
-        return await ctx.agentBotProviderModel.create(input);
+        const result = await ctx.agentBotProviderModel.create(input);
+        log(
+          'create provider success id=%s platform=%s appId=%s',
+          result.id,
+          result.platform,
+          result.applicationId,
+        );
+        return result;
       } catch (e: any) {
+        log('create provider failed: %O', e);
         if (e?.cause?.code === '23505') {
           throw new TRPCError({
             code: 'CONFLICT',
@@ -52,14 +71,29 @@ export const agentBotProviderRouter = router({
   getByAgentId: agentBotProviderProcedure
     .input(z.object({ agentId: z.string() }))
     .query(async ({ input, ctx }) => {
-      return ctx.agentBotProviderModel.findByAgentId(input.agentId);
+      const list = await ctx.agentBotProviderModel.findByAgentId(input.agentId);
+      log('getByAgentId userId=%s agentId=%s count=%d', ctx.userId, input.agentId, list.length);
+      return list;
     }),
 
   connectBot: agentBotProviderProcedure
     .input(z.object({ applicationId: z.string(), platform: z.string() }))
     .mutation(async ({ input, ctx }) => {
+      log(
+        'connectBot userId=%s platform=%s appId=%s',
+        ctx.userId,
+        input.platform,
+        input.applicationId,
+      );
       const service = new GatewayService();
       const status = await service.startBot(input.platform, input.applicationId, ctx.userId);
+      log(
+        'connectBot result userId=%s platform=%s appId=%s status=%s',
+        ctx.userId,
+        input.platform,
+        input.applicationId,
+        status,
+      );
 
       return { status };
     }),
@@ -76,6 +110,9 @@ export const agentBotProviderRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const { id, ...value } = input;
-      return ctx.agentBotProviderModel.update(id, value);
+      log('update provider userId=%s id=%s value=%O', ctx.userId, id, value);
+      const result = await ctx.agentBotProviderModel.update(id, value);
+      log('update provider success userId=%s id=%s', ctx.userId, id);
+      return result;
     }),
 });

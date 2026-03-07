@@ -34,6 +34,7 @@ export class BotSliceActionImpl {
     agentId: string;
     applicationId: string;
     credentials: Record<string, string>;
+    enabled?: boolean;
     platform: string;
   }) => {
     const result = await agentBotProviderService.create(params);

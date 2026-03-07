@@ -172,7 +172,7 @@ export class AgentBotProviderModel {
           ? JSON.parse((await gateKeeper.decrypt(r.credentials)).plaintext)
           : JSON.parse(r.credentials);
 
-        if (!credentials.botToken) continue;
+        if (!AgentBotProviderModel.hasRequiredCredentials(platform, credentials)) continue;
 
         decrypted.push({ ...r, credentials });
       } catch {
@@ -204,4 +204,15 @@ export class AgentBotProviderModel {
       return { ...row, credentials: {} };
     }
   };
+
+  private static hasRequiredCredentials(
+    platform: string,
+    credentials: Record<string, string>,
+  ): boolean {
+    if (platform === 'qq') {
+      return !!(credentials.botToken || credentials.clientSecret);
+    }
+
+    return !!credentials.botToken;
+  }
 }

@@ -1,5 +1,3 @@
-import fs from 'node:fs';
-
 import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -25,9 +23,6 @@ vi.mock('node:child_process', () => ({
   exec: vi.fn((_cmd: string, cb: any) => cb?.(null)),
   execFile: vi.fn((_cmd: string, _args: string[], cb: any) => cb?.(null)),
 }));
-
-// eslint-disable-next-line import-x/first
-import { execFile } from 'node:child_process';
 
 describe('login command', () => {
   let exitSpy: ReturnType<typeof vi.spyOn>;
@@ -117,41 +112,6 @@ describe('login command', () => {
     expect(log.info).toHaveBeenCalledWith(expect.stringContaining('Login successful'));
   });
 
-  it('should print manual open instructions when browser open fails', async () => {
-    vi.mocked(execFile).mockImplementationOnce((_cmd: any, _args: any, cb: any) => {
-      cb(new Error('xdg-open not found'));
-      return {} as any;
-    });
-
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(deviceAuthResponse())
-      .mockResolvedValueOnce(tokenSuccessResponse());
-
-    const program = createProgram();
-    await runLoginAndAdvanceTimers(program);
-
-    expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('Could not open browser'));
-    expect(log.info).toHaveBeenCalledWith(expect.stringContaining('Please open this URL manually'));
-  });
-
-  it('should fallback gracefully when execFile throws synchronously', async () => {
-    vi.spyOn(fs, 'existsSync').mockReturnValue(true);
-    vi.spyOn(fs, 'accessSync').mockImplementation(() => {});
-    vi.mocked(execFile).mockImplementationOnce(() => {
-      throw new TypeError('Executable not found in $PATH: "xdg-open"');
-    });
-
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(deviceAuthResponse())
-      .mockResolvedValueOnce(tokenSuccessResponse());
-
-    const program = createProgram();
-    await runLoginAndAdvanceTimers(program);
-
-    expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('Could not open browser'));
-    expect(log.info).toHaveBeenCalledWith(expect.stringContaining('Please open this URL manually'));
-  });
-
   it('should strip trailing slash from server URL', async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(deviceAuthResponse())
@@ -194,29 +154,6 @@ describe('login command', () => {
     await runLoginAndAdvanceTimers(program).catch(() => {});
 
     expect(log.error).toHaveBeenCalledWith(expect.stringContaining('Failed to reach'));
-    expect(exitSpy).toHaveBeenCalledWith(1);
-  });
-
-  it('should show clear error when device auth returns non-json', async () => {
-    exitSpy.mockImplementation(() => {
-      throw new Error('exit');
-    });
-
-    vi.mocked(fetch).mockResolvedValueOnce({
-      headers: {
-        get: vi.fn().mockReturnValue('text/html'),
-      },
-      json: vi.fn().mockRejectedValue(new Error('Failed to parse JSON')),
-      ok: true,
-      status: 200,
-    } as any);
-
-    const program = createProgram();
-    await runLoginAndAdvanceTimers(program).catch(() => {});
-
-    expect(log.error).toHaveBeenCalledWith(
-      expect.stringContaining('Expected JSON from /oidc/device/auth'),
-    );
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 

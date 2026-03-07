@@ -407,10 +407,10 @@ export const agentEvalExternalRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Run not found' });
       }
 
-      if (input.status !== 'completed') {
+      if (input.status !== 'completed' && input.status !== 'external') {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'External endpoint only supports setting status to completed',
+          message: 'External endpoint only supports setting status to completed or external',
         });
       }
 
@@ -448,6 +448,14 @@ export const agentEvalExternalRouter = router({
           success: true,
         };
       }
+
+      const updated = await ctx.runModel.update(input.runId, { status: 'external' });
+
+      return {
+        runId: input.runId,
+        status: updated?.status ?? 'external',
+        success: true,
+      };
     }),
 
   runTopicReportResult: agentEvalExternalProcedure

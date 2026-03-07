@@ -29,7 +29,7 @@ interface RunGetOptions extends JsonOption {
 
 interface RunSetStatusOptions extends JsonOption {
   runId: string;
-  status: 'completed';
+  status: 'completed' | 'external';
 }
 
 interface DatasetGetOptions extends JsonOption {
@@ -149,11 +149,11 @@ const parseResultJson = (value: string) => {
 };
 
 const parseRunStatus = (value: string) => {
-  if (value !== 'completed') {
-    throw new InvalidArgumentError("Only 'completed' is supported");
+  if (value !== 'completed' && value !== 'external') {
+    throw new InvalidArgumentError("Only 'completed' and 'external' are supported");
   }
 
-  return value as 'completed';
+  return value as 'completed' | 'external';
 };
 
 const executeCommand = async (
@@ -198,9 +198,9 @@ export function registerEvalCommand(program: Command) {
 
   runCmd
     .command('set-status')
-    .description('Set run status (external API only supports completed)')
+    .description('Set run status (external API supports completed or external)')
     .requiredOption('--run-id <id>', 'Run ID')
-    .requiredOption('--status <status>', 'Status (completed)', parseRunStatus)
+    .requiredOption('--status <status>', 'Status (completed | external)', parseRunStatus)
     .option('--json', 'Output JSON envelope')
     .action(async (options: RunSetStatusOptions) =>
       executeCommand(

@@ -256,6 +256,9 @@ export default {
   'run.detail.report': 'Evaluation Summary',
   'run.detail.config': 'Evaluation Config',
   'run.detail.configSnapshot': 'Configuration Snapshot',
+  'run.detail.copyRunId': 'Copy Run ID',
+  'run.detail.copyRunIdFailed': 'Failed to copy Run ID',
+  'run.detail.copyRunIdSuccess': 'Run ID copied',
   'run.detail.dataset': 'Dataset',
   'run.detail.model': 'Model',
   'run.detail.overview': 'Overview',
@@ -286,6 +289,7 @@ export default {
 
   'run.status.aborted': 'Aborted',
   'run.status.completed': 'Completed',
+  'run.status.completed.tooltip': 'The run and external scoring are completed.',
   'run.status.error': 'Run Error',
   'run.status.external': 'Awaiting Eval',
   'run.status.external.tooltip':

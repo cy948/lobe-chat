@@ -34,7 +34,7 @@ export interface EvalTestCaseMetadata {
 /**
  * Evaluation run status
  */
-export type EvalRunStatus = 'aborted' | 'completed' | 'failed' | 'pending' | 'running';
+export type EvalRunStatus = 'aborted' | 'completed' | 'external' | 'failed' | 'pending' | 'running';
 
 /**
  * Evaluation run configuration

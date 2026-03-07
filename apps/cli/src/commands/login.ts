@@ -1,4 +1,6 @@
 import { execFile } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 
 import type { Command } from 'commander';
 
@@ -33,6 +35,17 @@ interface TokenErrorResponse {
   error_description?: string;
 }
 
+async function parseJsonResponse<T>(res: Response, endpoint: string): Promise<T> {
+  try {
+    return (await res.json()) as T;
+  } catch {
+    const contentType = res.headers.get('content-type') || 'unknown';
+    throw new Error(
+      `Expected JSON from ${endpoint}, got non-JSON response (status=${res.status}, content-type=${contentType}).`,
+    );
+  }
+}
+
 export function registerLoginCommand(program: Command) {
   program
     .command('login')
@@ -62,7 +75,7 @@ export function registerLoginCommand(program: Command) {
           process.exit(1);
         }
 
-        deviceAuth = (await res.json()) as DeviceAuthResponse;
+        deviceAuth = await parseJsonResponse<DeviceAuthResponse>(res, '/oidc/device/auth');
       } catch (error: any) {
         log.error(`Failed to reach server: ${error.message}`);
         log.error(`Make sure ${serverUrl} is reachable.`);
@@ -80,7 +93,13 @@ export function registerLoginCommand(program: Command) {
       log.info('');
 
       // Try to open browser automatically
-      openBrowser(verifyUrl);
+      const opened = await openBrowser(verifyUrl);
+      if (!opened) {
+        log.warn('Could not open browser automatically.');
+        log.info('Please open this URL manually:');
+        log.info(`  ${verifyUrl}`);
+        log.info(`Then enter code: ${deviceAuth.user_code}`);
+      }
 
       log.info('Waiting for authorization...');
 
@@ -104,7 +123,10 @@ export function registerLoginCommand(program: Command) {
             method: 'POST',
           });
 
-          const body = (await res.json()) as TokenResponse & TokenErrorResponse;
+          const body = await parseJsonResponse<TokenResponse & TokenErrorResponse>(
+            res,
+            '/oidc/token',
+          );
 
           // Check body for error field — some proxies may return 200 for error responses
           if (body.error) {
@@ -159,20 +181,68 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function openBrowser(url: string) {
+async function openBrowser(url: string): Promise<boolean> {
+  const commandExists = (cmd: string): boolean => {
+    const pathValue = process.env.PATH || '';
+    if (!pathValue) return false;
+
+    const pathEntries = pathValue.split(path.delimiter);
+    const extensions =
+      process.platform === 'win32'
+        ? (process.env.PATHEXT || '.EXE;.CMD;.BAT;.COM').split(';')
+        : [''];
+
+    const hasFileExtension = path.extname(cmd) !== '';
+
+    for (const entry of pathEntries) {
+      if (!entry) continue;
+
+      for (const ext of extensions) {
+        const filename = process.platform === 'win32' && !hasFileExtension ? `${cmd}${ext}` : cmd;
+        const fullPath = path.join(entry, filename);
+
+        if (!fs.existsSync(fullPath)) continue;
+
+        try {
+          fs.accessSync(fullPath, fs.constants.X_OK);
+          return true;
+        } catch {
+          // Not executable, keep searching other PATH entries.
+        }
+      }
+    }
+
+    return false;
+  };
+
+  const runCommand = (cmd: string, args: string[]) =>
+    new Promise<boolean>((resolve) => {
+      if (!commandExists(cmd)) {
+        log.debug(`Could not open browser automatically: command not found in PATH: ${cmd}`);
+        resolve(false);
+        return;
+      }
+
+      try {
+        execFile(cmd, args, (err) => {
+          if (err) {
+            log.debug(`Could not open browser automatically: ${err.message}`);
+            resolve(false);
+            return;
+          }
+          resolve(true);
+        });
+      } catch (error: any) {
+        log.debug(`Could not open browser automatically: ${error?.message || String(error)}`);
+        resolve(false);
+      }
+    });
+
   if (process.platform === 'win32') {
     // On Windows, use rundll32 to invoke the default URL handler without a shell.
-    execFile('rundll32', ['url.dll,FileProtocolHandler', url], (err) => {
-      if (err) {
-        log.debug(`Could not open browser automatically: ${err.message}`);
-      }
-    });
-  } else {
-    const cmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
-    execFile(cmd, [url], (err) => {
-      if (err) {
-        log.debug(`Could not open browser automatically: ${err.message}`);
-      }
-    });
+    return runCommand('rundll32', ['url.dll,FileProtocolHandler', url]);
   }
+
+  const cmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
+  return runCommand(cmd, [url]);
 }

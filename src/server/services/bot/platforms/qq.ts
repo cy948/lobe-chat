@@ -19,6 +19,12 @@ const MIN_REFRESH_INTERVAL_MS = 60 * 1000;
 const AGENT_POLL_INTERVAL_MS = 1200;
 const AGENT_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 const MESSAGE_MAX_LENGTH = 1600;
+const MESSAGE_REPLY_LIMIT = 4;
+const MESSAGE_REPLY_TTL_MS = 60 * 60 * 1000;
+const MAX_REPLY_TRACKER_SIZE = 10_000;
+const INBOUND_QUEUE_MAX_SIZE = 1000;
+const INBOUND_PER_THREAD_MAX_SIZE = 20;
+const INBOUND_MAX_CONCURRENT_THREADS = 8;
 const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10_000, 30_000, 60_000];
 
 interface QQTokenResponse {
@@ -51,6 +57,16 @@ interface QQGroupAtMessageCreateEvent {
   id: string;
 }
 
+interface MessageReplyRecord {
+  count: number;
+  firstReplyAt: number;
+}
+
+interface InboundTask {
+  eventId?: string;
+  run: () => Promise<void>;
+}
+
 export interface QQBotConfig {
   [key: string]: string | undefined;
   agentId?: string;
@@ -73,8 +89,13 @@ export class QQ implements PlatformBot {
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private seq: number | null = null;
   private sessionId: string | null = null;
+  private activeThreadCount = 0;
+  private inboundQueues = new Map<string, InboundTask[]>();
+  private processingThreads = new Set<string>();
   private stopped = false;
+  private totalQueuedTasks = 0;
   private threadTopicMap = new Map<string, string>();
+  private messageReplyTracker = new Map<string, MessageReplyRecord>();
   private tokenPromise: Promise<string> | null = null;
   private ws: WebSocket | null = null;
 
@@ -88,6 +109,7 @@ export class QQ implements PlatformBot {
     this.clearReconnectTimer();
     this.clearHeartbeatTimer();
     this.clearRefreshTimer();
+    this.clearInboundQueues();
     this.closeSocket();
 
     const { appId, clientSecret } = this.resolveCredentials();
@@ -114,6 +136,7 @@ export class QQ implements PlatformBot {
     this.clearReconnectTimer();
     this.clearHeartbeatTimer();
     this.clearRefreshTimer();
+    this.clearInboundQueues();
     this.closeSocket();
   }
 
@@ -139,6 +162,8 @@ export class QQ implements PlatformBot {
   }
 
   private closeSocket() {
+    this.clearHeartbeatTimer();
+
     if (!this.ws) return;
     try {
       this.ws.removeAllListeners();
@@ -288,6 +313,7 @@ export class QQ implements PlatformBot {
     );
 
     this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
       if (this.stopped) return;
       void this.connectGateway().catch((error) => {
         log('QQBot appId=%s reconnect failed: %O', this.applicationId, error);
@@ -396,11 +422,25 @@ export class QQ implements PlatformBot {
         return;
       }
       case 'C2C_MESSAGE_CREATE': {
-        await this.handleC2CMessage(data as QQC2CMessageCreateEvent);
+        const event = data as QQC2CMessageCreateEvent;
+        const openid = event.author?.user_openid || 'unknown';
+        this.enqueueInboundTask(`qq:c2c:${openid}`, {
+          eventId: event.id,
+          run: async () => {
+            await this.handleC2CMessage(event);
+          },
+        });
         return;
       }
       case 'GROUP_AT_MESSAGE_CREATE': {
-        await this.handleGroupAtMessage(data as QQGroupAtMessageCreateEvent);
+        const event = data as QQGroupAtMessageCreateEvent;
+        const groupOpenid = event.group_openid || 'unknown';
+        this.enqueueInboundTask(`qq:group:${groupOpenid}`, {
+          eventId: event.id,
+          run: async () => {
+            await this.handleGroupAtMessage(event);
+          },
+        });
         return;
       }
       default: {
@@ -461,6 +501,107 @@ export class QQ implements PlatformBot {
         },
       );
     }
+  }
+
+  private enqueueInboundTask(threadId: string, task: InboundTask) {
+    if (this.stopped) return;
+
+    let queue = this.inboundQueues.get(threadId);
+    if (!queue) {
+      queue = [];
+      this.inboundQueues.set(threadId, queue);
+    }
+
+    if (queue.length >= INBOUND_PER_THREAD_MAX_SIZE) {
+      const dropped = queue.shift();
+      this.totalQueuedTasks = Math.max(0, this.totalQueuedTasks - 1);
+      log(
+        'QQBot queue overflow per-thread thread=%s droppedEventId=%s',
+        threadId,
+        dropped?.eventId || '(unknown)',
+      );
+    }
+
+    if (this.totalQueuedTasks >= INBOUND_QUEUE_MAX_SIZE) {
+      log(
+        'QQBot queue overflow global appId=%s thread=%s droppedIncomingEventId=%s queued=%d',
+        this.applicationId,
+        threadId,
+        task.eventId || '(unknown)',
+        this.totalQueuedTasks,
+      );
+      return;
+    }
+
+    queue.push(task);
+    this.totalQueuedTasks += 1;
+    this.drainInboundQueue(threadId);
+  }
+
+  private drainInboundQueue(threadId: string) {
+    if (this.stopped) return;
+    if (this.processingThreads.has(threadId)) return;
+    if (this.activeThreadCount >= INBOUND_MAX_CONCURRENT_THREADS) return;
+
+    const queue = this.inboundQueues.get(threadId);
+    if (!queue || queue.length === 0) {
+      this.inboundQueues.delete(threadId);
+      return;
+    }
+
+    this.processingThreads.add(threadId);
+    this.activeThreadCount += 1;
+
+    void this.processInboundQueue(threadId);
+  }
+
+  private async processInboundQueue(threadId: string) {
+    const queue = this.inboundQueues.get(threadId);
+
+    try {
+      while (!this.stopped && queue && queue.length > 0) {
+        const task = queue.shift()!;
+        this.totalQueuedTasks = Math.max(0, this.totalQueuedTasks - 1);
+
+        try {
+          await task.run();
+        } catch (error) {
+          log(
+            'QQBot inbound task failed appId=%s thread=%s eventId=%s err=%O',
+            this.applicationId,
+            threadId,
+            task.eventId || '(unknown)',
+            error,
+          );
+        }
+      }
+    } finally {
+      this.processingThreads.delete(threadId);
+      this.activeThreadCount = Math.max(0, this.activeThreadCount - 1);
+
+      if (!queue || queue.length === 0) {
+        this.inboundQueues.delete(threadId);
+      }
+
+      this.wakeInboundQueues();
+    }
+  }
+
+  private wakeInboundQueues() {
+    if (this.stopped) return;
+
+    for (const [threadId, queue] of this.inboundQueues) {
+      if (this.activeThreadCount >= INBOUND_MAX_CONCURRENT_THREADS) break;
+      if (queue.length === 0 || this.processingThreads.has(threadId)) continue;
+      this.drainInboundQueue(threadId);
+    }
+  }
+
+  private clearInboundQueues() {
+    this.inboundQueues.clear();
+    this.processingThreads.clear();
+    this.activeThreadCount = 0;
+    this.totalQueuedTasks = 0;
   }
 
   private normalizeIncomingText(content?: string, stripMention = false): string {
@@ -548,35 +689,159 @@ export class QQ implements PlatformBot {
     return JSON.stringify(error);
   }
 
-  private async sendC2CMessage(openid: string, content: string, msgId?: string) {
+  private checkPassiveReplyLimit(replyToId?: string): {
+    allowed: boolean;
+    remaining: number;
+    shouldFallbackToProactive: boolean;
+  } {
+    if (!replyToId) {
+      return { allowed: false, remaining: 0, shouldFallbackToProactive: true };
+    }
+
+    const now = Date.now();
+
+    if (this.messageReplyTracker.size > MAX_REPLY_TRACKER_SIZE) {
+      for (const [id, rec] of this.messageReplyTracker) {
+        if (now - rec.firstReplyAt > MESSAGE_REPLY_TTL_MS) {
+          this.messageReplyTracker.delete(id);
+        }
+      }
+    }
+
+    const record = this.messageReplyTracker.get(replyToId);
+    if (!record) {
+      return {
+        allowed: true,
+        remaining: MESSAGE_REPLY_LIMIT,
+        shouldFallbackToProactive: false,
+      };
+    }
+
+    if (now - record.firstReplyAt > MESSAGE_REPLY_TTL_MS) {
+      this.messageReplyTracker.delete(replyToId);
+      return {
+        allowed: true,
+        remaining: MESSAGE_REPLY_LIMIT,
+        shouldFallbackToProactive: false,
+      };
+    }
+
+    const remaining = MESSAGE_REPLY_LIMIT - record.count;
+
+    return {
+      allowed: remaining > 0,
+      remaining: Math.max(0, remaining),
+      shouldFallbackToProactive: remaining <= 0,
+    };
+  }
+
+  private recordPassiveReply(replyToId: string): void {
+    const now = Date.now();
+    const record = this.messageReplyTracker.get(replyToId);
+
+    if (!record) {
+      this.messageReplyTracker.set(replyToId, { count: 1, firstReplyAt: now });
+      return;
+    }
+
+    if (now - record.firstReplyAt > MESSAGE_REPLY_TTL_MS) {
+      this.messageReplyTracker.set(replyToId, { count: 1, firstReplyAt: now });
+      return;
+    }
+
+    record.count += 1;
+  }
+
+  private async sendC2CMessage(openid: string, content: string, replyToId?: string) {
     const chunks = this.splitMessage(content);
+    const limit = this.checkPassiveReplyLimit(replyToId);
+    const passiveChunks = limit.allowed ? Math.min(chunks.length, limit.remaining) : 0;
+    const proactiveChunks = chunks.length - passiveChunks;
+
+    if (proactiveChunks > 0) {
+      log(
+        'QQBot C2C fallback to proactive openid=%s replyToId=%s passiveChunks=%d proactiveChunks=%d',
+        openid,
+        replyToId ?? '(none)',
+        passiveChunks,
+        proactiveChunks,
+      );
+    }
 
     for (let i = 0; i < chunks.length; i++) {
-      log('QQBot C2C outgoing openid=%s msgId=%s chunk=%d/%d', openid, msgId, i + 1, chunks.length);
+      const chunk = chunks[i];
+
+      if (i < passiveChunks && replyToId) {
+        log(
+          'QQBot C2C outgoing(passive) openid=%s msgId=%s chunk=%d/%d',
+          openid,
+          replyToId,
+          i + 1,
+          chunks.length,
+        );
+        await this.apiRequest('POST', `/v2/users/${openid}/messages`, {
+          content: chunk,
+          msg_id: replyToId,
+          msg_seq: i + 1,
+          msg_type: 0,
+        });
+        this.recordPassiveReply(replyToId);
+        continue;
+      }
+
+      log('QQBot C2C outgoing(proactive) openid=%s chunk=%d/%d', openid, i + 1, chunks.length);
       await this.apiRequest('POST', `/v2/users/${openid}/messages`, {
-        content: chunks[i],
-        msg_id: msgId,
-        msg_seq: i + 1,
+        content: chunk,
         msg_type: 0,
       });
     }
   }
 
-  private async sendGroupMessage(groupOpenid: string, content: string, msgId?: string) {
+  private async sendGroupMessage(groupOpenid: string, content: string, replyToId?: string) {
     const chunks = this.splitMessage(content);
+    const limit = this.checkPassiveReplyLimit(replyToId);
+    const passiveChunks = limit.allowed ? Math.min(chunks.length, limit.remaining) : 0;
+    const proactiveChunks = chunks.length - passiveChunks;
+
+    if (proactiveChunks > 0) {
+      log(
+        'QQBot GROUP fallback to proactive groupOpenid=%s replyToId=%s passiveChunks=%d proactiveChunks=%d',
+        groupOpenid,
+        replyToId ?? '(none)',
+        passiveChunks,
+        proactiveChunks,
+      );
+    }
 
     for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+
+      if (i < passiveChunks && replyToId) {
+        log(
+          'QQBot GROUP outgoing(passive) groupOpenid=%s msgId=%s chunk=%d/%d',
+          groupOpenid,
+          replyToId,
+          i + 1,
+          chunks.length,
+        );
+        await this.apiRequest('POST', `/v2/groups/${groupOpenid}/messages`, {
+          content: chunk,
+          msg_id: replyToId,
+          msg_seq: i + 1,
+          msg_type: 0,
+        });
+        this.recordPassiveReply(replyToId);
+        continue;
+      }
+
       log(
-        'QQBot GROUP outgoing groupOpenid=%s msgId=%s chunk=%d/%d',
+        'QQBot GROUP outgoing(proactive) groupOpenid=%s chunk=%d/%d',
         groupOpenid,
-        msgId,
         i + 1,
         chunks.length,
       );
       await this.apiRequest('POST', `/v2/groups/${groupOpenid}/messages`, {
-        content: chunks[i],
-        msg_id: msgId,
-        msg_seq: i + 1,
+        content: chunk,
         msg_type: 0,
       });
     }

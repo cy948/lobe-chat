@@ -23,10 +23,13 @@ const MESSAGE_MAX_LENGTH = 1600;
 const MESSAGE_REPLY_LIMIT = 4;
 const MESSAGE_REPLY_TTL_MS = 60 * 60 * 1000;
 const MAX_REPLY_TRACKER_SIZE = 10_000;
+const MAX_MSG_SEQ_TRACKER_SIZE = 10_000;
+const MSG_SEQ_MAX = 65_535;
 const INBOUND_QUEUE_MAX_SIZE = 1000;
 const INBOUND_PER_THREAD_MAX_SIZE = 20;
 const INBOUND_MAX_CONCURRENT_THREADS = 8;
 const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10_000, 30_000, 60_000];
+const RATE_LIMIT_RECONNECT_DELAY_MS = 60_000;
 
 interface QQTokenResponse {
   access_token?: string;
@@ -97,6 +100,7 @@ export class QQ implements PlatformBot {
   private totalQueuedTasks = 0;
   private threadTopicMap = new Map<string, string>();
   private messageReplyTracker = new Map<string, MessageReplyRecord>();
+  private messageSeqTracker = new Map<string, { firstReplyAt: number; seq: number }>();
   private resolvedAgentContext: { agentId: string; userId: string } | null = null;
   private tokenPromise: Promise<string> | null = null;
   private ws: WebSocket | null = null;
@@ -136,6 +140,7 @@ export class QQ implements PlatformBot {
     this.clearHeartbeatTimer();
     this.clearRefreshTimer();
     this.clearInboundQueues();
+    this.messageSeqTracker.clear();
     this.closeSocket();
   }
 
@@ -158,6 +163,17 @@ export class QQ implements PlatformBot {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+  }
+
+  private resetTokenCache() {
+    this.cachedAccessToken = null;
+    this.accessTokenExpiresAt = 0;
+    this.tokenPromise = null;
+  }
+
+  private clearSessionState() {
+    this.sessionId = null;
+    this.seq = null;
   }
 
   private closeSocket() {
@@ -306,9 +322,35 @@ export class QQ implements PlatformBot {
       this.ws = null;
       this.clearHeartbeatTimer();
 
-      if (!this.stopped) {
-        this.scheduleReconnect();
+      if (this.stopped) return;
+
+      // 4914/4915 indicate the bot is offline or banned; reconnect loops won't recover this.
+      if (code === 4914 || code === 4915) {
+        log('QQBot appId=%s fatal close code=%d, stop reconnecting', this.applicationId, code);
+        return;
       }
+
+      // Token is invalid. Clear cache and reconnect with a fresh token.
+      if (code === 4004) {
+        this.resetTokenCache();
+        this.scheduleReconnect();
+        return;
+      }
+
+      // Rate-limited by gateway. Back off with a fixed longer delay.
+      if (code === 4008) {
+        this.scheduleReconnect(RATE_LIMIT_RECONNECT_DELAY_MS);
+        return;
+      }
+
+      // Session state is not resumable. Re-identify on next connect.
+      if (code === 4006 || code === 4007 || code === 4009 || (code >= 4900 && code <= 4913)) {
+        this.clearSessionState();
+        this.scheduleReconnect();
+        return;
+      }
+
+      this.scheduleReconnect();
     });
 
     ws.on('error', (error) => {
@@ -316,11 +358,11 @@ export class QQ implements PlatformBot {
     });
   }
 
-  private scheduleReconnect() {
+  private scheduleReconnect(customDelayMs?: number) {
     this.clearReconnectTimer();
 
     const index = Math.min(this.reconnectAttempts, RECONNECT_DELAYS_MS.length - 1);
-    const delay = RECONNECT_DELAYS_MS[index];
+    const delay = customDelayMs ?? RECONNECT_DELAYS_MS[index];
     this.reconnectAttempts += 1;
 
     log(
@@ -376,8 +418,7 @@ export class QQ implements PlatformBot {
           'QQBot appId=%s invalid session, resetting session and reconnecting',
           this.applicationId,
         );
-        this.sessionId = null;
-        this.seq = null;
+        this.clearSessionState();
         this.closeSocket();
         this.scheduleReconnect();
         return;
@@ -767,6 +808,34 @@ export class QQ implements PlatformBot {
     record.count += 1;
   }
 
+  private getNextMsgSeq(replyToId?: string): number {
+    if (!replyToId) {
+      const timePart = Date.now() % 100_000_000;
+      const random = Math.floor(Math.random() * (MSG_SEQ_MAX + 1));
+      return (timePart ^ random) % (MSG_SEQ_MAX + 1);
+    }
+
+    const now = Date.now();
+
+    if (this.messageSeqTracker.size > MAX_MSG_SEQ_TRACKER_SIZE) {
+      for (const [id, rec] of this.messageSeqTracker) {
+        if (now - rec.firstReplyAt > MESSAGE_REPLY_TTL_MS) {
+          this.messageSeqTracker.delete(id);
+        }
+      }
+    }
+
+    const rec = this.messageSeqTracker.get(replyToId);
+    if (!rec || now - rec.firstReplyAt > MESSAGE_REPLY_TTL_MS) {
+      this.messageSeqTracker.set(replyToId, { firstReplyAt: now, seq: 1 });
+      return 1;
+    }
+
+    const next = rec.seq >= MSG_SEQ_MAX ? 1 : rec.seq + 1;
+    rec.seq = next;
+    return next;
+  }
+
   private async sendC2CMessage(openid: string, content: string, replyToId?: string) {
     const chunks = this.splitMessage(content);
     const limit = this.checkPassiveReplyLimit(replyToId);
@@ -797,7 +866,7 @@ export class QQ implements PlatformBot {
         await this.apiRequest('POST', `/v2/users/${openid}/messages`, {
           content: chunk,
           msg_id: replyToId,
-          msg_seq: i + 1,
+          msg_seq: this.getNextMsgSeq(replyToId),
           msg_type: 0,
         });
         this.recordPassiveReply(replyToId);
@@ -807,6 +876,7 @@ export class QQ implements PlatformBot {
       log('QQBot C2C outgoing(proactive) openid=%s chunk=%d/%d', openid, i + 1, chunks.length);
       await this.apiRequest('POST', `/v2/users/${openid}/messages`, {
         content: chunk,
+        msg_seq: this.getNextMsgSeq(),
         msg_type: 0,
       });
     }
@@ -842,7 +912,7 @@ export class QQ implements PlatformBot {
         await this.apiRequest('POST', `/v2/groups/${groupOpenid}/messages`, {
           content: chunk,
           msg_id: replyToId,
-          msg_seq: i + 1,
+          msg_seq: this.getNextMsgSeq(replyToId),
           msg_type: 0,
         });
         this.recordPassiveReply(replyToId);
@@ -857,6 +927,7 @@ export class QQ implements PlatformBot {
       );
       await this.apiRequest('POST', `/v2/groups/${groupOpenid}/messages`, {
         content: chunk,
+        msg_seq: this.getNextMsgSeq(),
         msg_type: 0,
       });
     }

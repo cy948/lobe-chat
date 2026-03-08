@@ -296,10 +296,8 @@ export const agentEvalExternalRouter = router({
 
       return {
         benchmarkId: dataset.benchmarkId,
-        benchmark_id: dataset.benchmarkId,
         id: dataset.id,
         identifier: dataset.identifier,
-        meta: metadata,
         metadata,
         name: dataset.name,
       };
@@ -331,13 +329,10 @@ export const agentEvalExternalRouter = router({
       return rows.map((row) => ({
         content: row.content,
         createdAt: toIsoString(row.createdAt),
-        created_at: toIsoString(row.createdAt),
         id: row.id,
         role: row.role,
         threadId: row.threadId,
-        thread_id: row.threadId,
         topicId: row.topicId,
-        topic_id: row.topicId,
       }));
     }),
 
@@ -385,17 +380,13 @@ export const agentEvalExternalRouter = router({
       return {
         config,
         createdAt: run.createdAt,
-        created_at: toIsoString(run.createdAt),
         datasetId: run.datasetId,
-        dataset_id: run.datasetId,
         id: run.id,
         metrics: run.metrics ?? undefined,
         name: run.name,
         startedAt: run.startedAt,
-        started_at: toIsoString(run.startedAt),
         status: run.status,
         targetAgentId: run.targetAgentId,
-        target_agent_id: run.targetAgentId,
       };
     }),
 
@@ -485,33 +476,19 @@ export const agentEvalExternalRouter = router({
         : allRunTopics;
 
       return runTopics.map((topic) => {
-        const testCaseMeta = (topic.testCase?.metadata ?? {}) as Record<string, unknown>;
-        const testCase = topic.testCase
-          ? {
-              ...topic.testCase,
-              dataset_id: topic.testCase.datasetId,
-              meta: testCaseMeta,
-              sort_order: topic.testCase.sortOrder,
-            }
-          : undefined;
+        const testCase = topic.testCase;
 
         return {
           createdAt: topic.createdAt,
-          created_at: toIsoString(topic.createdAt),
           evalResult: topic.evalResult,
-          eval_result: topic.evalResult,
           passed: topic.passed,
           runId: topic.runId,
-          run_id: topic.runId,
           score: topic.score,
           status: topic.status,
           testCase,
           testCaseId: topic.testCaseId,
-          test_case: testCase,
-          test_case_id: topic.testCaseId,
           topic: topic.topic,
           topicId: topic.topicId,
-          topic_id: topic.topicId,
         };
       });
     }),
@@ -531,7 +508,6 @@ export const agentEvalExternalRouter = router({
       return threads.map((thread) => ({
         id: thread.id,
         topicId: thread.topicId,
-        topic_id: thread.topicId,
         type: thread.type,
       }));
     }),

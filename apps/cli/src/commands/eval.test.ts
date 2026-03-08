@@ -71,7 +71,7 @@ describe('eval command', () => {
   it('should call runGet and output json envelope', async () => {
     mockTrpcClient.agentEvalExternal.runGet.query.mockResolvedValue({
       config: { k: 1 },
-      dataset_id: 'dataset-1',
+      datasetId: 'dataset-1',
       id: 'run-1',
     });
 
@@ -84,7 +84,7 @@ describe('eval command', () => {
     expect(payload).toEqual({
       data: {
         config: { k: 1 },
-        dataset_id: 'dataset-1',
+        datasetId: 'dataset-1',
         id: 'run-1',
       },
       error: null,
@@ -96,7 +96,7 @@ describe('eval command', () => {
   it('should call datasetGet and output json envelope', async () => {
     mockTrpcClient.agentEvalExternal.datasetGet.query.mockResolvedValue({
       id: 'dataset-1',
-      meta: { preset: 'deepsearchqa' },
+      metadata: { preset: 'deepsearchqa' },
     });
 
     const program = createProgram();

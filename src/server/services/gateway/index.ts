@@ -6,7 +6,8 @@ import { createGatewayManager, getGatewayManager } from './GatewayManager';
 
 const log = debug('lobe-server:service:gateway');
 
-const isVercel = !!process.env.VERCEL_ENV;
+const isVercel = process.env.VERCEL === '1';
+const VERCEL_QUEUE_PLATFORMS = new Set(['discord']);
 
 export class GatewayService {
   async ensureRunning(): Promise<void> {
@@ -35,7 +36,7 @@ export class GatewayService {
     applicationId: string,
     userId: string,
   ): Promise<'started' | 'queued'> {
-    if (isVercel) {
+    if (isVercel && VERCEL_QUEUE_PLATFORMS.has(platform)) {
       const queue = new BotConnectQueue();
       await queue.push(platform, applicationId, userId);
       log('Queued bot connect %s:%s', platform, applicationId);

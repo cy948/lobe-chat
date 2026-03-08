@@ -4,6 +4,7 @@ import debug from 'debug';
 import WebSocket from 'ws';
 
 import { getServerDB } from '@/database/core/db-adaptor';
+import { AgentBotProviderModel } from '@/database/models/agentBotProvider';
 import { MessageModel } from '@/database/models/message';
 import { AiAgentService } from '@/server/services/aiAgent';
 
@@ -96,6 +97,7 @@ export class QQ implements PlatformBot {
   private totalQueuedTasks = 0;
   private threadTopicMap = new Map<string, string>();
   private messageReplyTracker = new Map<string, MessageReplyRecord>();
+  private resolvedAgentContext: { agentId: string; userId: string } | null = null;
   private tokenPromise: Promise<string> | null = null;
   private ws: WebSocket | null = null;
 
@@ -113,14 +115,11 @@ export class QQ implements PlatformBot {
     this.closeSocket();
 
     const { appId, clientSecret } = this.resolveCredentials();
-    const { agentId, userId } = this.resolveAgentContext();
-
     if (!appId || !clientSecret) {
       throw new Error('QQ bot credentials are missing');
     }
-    if (!agentId || !userId) {
-      throw new Error('QQ bot context is missing agentId/userId');
-    }
+    this.resolvedAgentContext = null;
+    const { agentId, userId } = await this.resolveAgentContext();
 
     log('Starting QQBot appId=%s agentId=%s userId=%s', appId, agentId, userId);
 
@@ -225,11 +224,30 @@ export class QQ implements PlatformBot {
     return { expiresInSec: data.expires_in ?? 7200, token: data.access_token };
   }
 
-  private resolveAgentContext(): { agentId?: string; userId?: string } {
-    return {
-      agentId: this.config.agentId,
-      userId: this.config.userId,
-    };
+  private async resolveAgentContext(): Promise<{ agentId: string; userId: string }> {
+    if (this.resolvedAgentContext) {
+      return this.resolvedAgentContext;
+    }
+
+    const { agentId, userId } = this.config;
+    if (agentId && userId) {
+      this.resolvedAgentContext = { agentId, userId };
+      return this.resolvedAgentContext;
+    }
+
+    const db = await getServerDB();
+    const provider = await AgentBotProviderModel.findByPlatformAndAppId(
+      db,
+      this.platform,
+      this.applicationId,
+    );
+
+    if (!provider?.agentId || !provider?.userId) {
+      throw new Error('QQ bot context is missing agentId/userId');
+    }
+
+    this.resolvedAgentContext = { agentId: provider.agentId, userId: provider.userId };
+    return this.resolvedAgentContext;
   }
 
   private resolveCredentials(): { appId: string; clientSecret: string } {
@@ -615,10 +633,7 @@ export class QQ implements PlatformBot {
   }
 
   private async executeAgent(platformThreadId: string, prompt: string): Promise<string> {
-    const { agentId, userId } = this.resolveAgentContext();
-    if (!agentId || !userId) {
-      throw new Error('QQ bot context is missing agentId/userId');
-    }
+    const { agentId, userId } = await this.resolveAgentContext();
 
     const db = await getServerDB();
     const aiAgentService = new AiAgentService(db, userId);

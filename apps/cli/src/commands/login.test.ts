@@ -4,7 +4,7 @@ import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { saveCredentials } from '../auth/credentials';
-import { saveSettings } from '../settings';
+import { loadSettings, saveSettings } from '../settings';
 import { log } from '../utils/logger';
 import { registerLoginCommand, resolveCommandExecutable } from './login';
 
@@ -12,6 +12,7 @@ vi.mock('../auth/credentials', () => ({
   saveCredentials: vi.fn(),
 }));
 vi.mock('../settings', () => ({
+  loadSettings: vi.fn().mockReturnValue(null),
   saveSettings: vi.fn(),
 }));
 
@@ -44,6 +45,7 @@ describe('login command', () => {
     vi.useFakeTimers();
     vi.stubGlobal('fetch', vi.fn());
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
+    vi.mocked(loadSettings).mockReturnValue(null);
   });
 
   afterEach(() => {
@@ -137,6 +139,39 @@ describe('login command', () => {
     await runLoginAndAdvanceTimers(program, ['--server', 'https://test.com/']);
 
     expect(saveSettings).toHaveBeenCalledWith({ serverUrl: 'https://test.com' });
+  });
+
+  it('should preserve existing gateway when logging into the same server', async () => {
+    vi.mocked(loadSettings).mockReturnValueOnce({
+      gatewayUrl: 'https://gateway.example.com',
+      serverUrl: 'https://test.com',
+    });
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(deviceAuthResponse())
+      .mockResolvedValueOnce(tokenSuccessResponse());
+
+    const program = createProgram();
+    await runLoginAndAdvanceTimers(program, ['--server', 'https://test.com/']);
+
+    expect(saveSettings).toHaveBeenCalledWith({
+      gatewayUrl: 'https://gateway.example.com',
+      serverUrl: 'https://test.com',
+    });
+  });
+
+  it('should clear existing gateway when logging into a different server', async () => {
+    vi.mocked(loadSettings).mockReturnValueOnce({
+      gatewayUrl: 'https://gateway.example.com',
+      serverUrl: 'https://old.example.com',
+    });
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(deviceAuthResponse())
+      .mockResolvedValueOnce(tokenSuccessResponse());
+
+    const program = createProgram();
+    await runLoginAndAdvanceTimers(program, ['--server', 'https://new.example.com/']);
+
+    expect(saveSettings).toHaveBeenCalledWith({ serverUrl: 'https://new.example.com' });
   });
 
   it('should strip trailing slash from server URL', async () => {

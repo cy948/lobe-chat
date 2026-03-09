@@ -6,7 +6,7 @@ import type { Command } from 'commander';
 
 import { saveCredentials } from '../auth/credentials';
 import { OFFICIAL_SERVER_URL } from '../constants/urls';
-import { saveSettings } from '../settings';
+import { loadSettings, saveSettings } from '../settings';
 import { log } from '../utils/logger';
 
 const CLIENT_ID = 'lobehub-cli';
@@ -164,7 +164,21 @@ export function registerLoginCommand(program: Command) {
                 : undefined,
               refreshToken: body.refresh_token,
             });
-            saveSettings({ serverUrl });
+            const existingSettings = loadSettings();
+            const shouldPreserveGateway = existingSettings?.serverUrl === serverUrl;
+
+            saveSettings(
+              shouldPreserveGateway
+                ? {
+                    gatewayUrl: existingSettings.gatewayUrl,
+                    serverUrl,
+                  }
+                : {
+                    // Gateway auth is tied to the login server's token issuer/JWKS.
+                    // When server changes, clear old gateway to avoid stale cross-environment config.
+                    serverUrl,
+                  },
+            );
 
             log.info('Login successful! Credentials saved.');
             return;

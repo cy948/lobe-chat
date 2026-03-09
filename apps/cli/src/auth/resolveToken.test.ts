@@ -88,7 +88,11 @@ describe('resolveToken', () => {
 
       const result = await resolveToken({});
 
-      expect(result).toEqual({ token, userId: 'stored-user' });
+      expect(result).toEqual({
+        serverUrl: 'https://app.lobehub.com',
+        token,
+        userId: 'stored-user',
+      });
     });
 
     it('should exit if stored token has no sub', async () => {

@@ -26,6 +26,9 @@ import { executeToolCall } from '../tools';
 import { cleanupAllProcesses } from '../tools/shell';
 import { log, setVerbose } from '../utils/logger';
 
+const OFFICIAL_SERVER_URL = 'https://app.lobehub.com';
+const OFFICIAL_GATEWAY_URL = 'https://device-gateway.lobehub.com';
+
 interface ConnectOptions {
   daemon?: boolean;
   daemonChild?: boolean;
@@ -40,7 +43,7 @@ export function registerConnectCommand(program: Command) {
     .command('connect')
     .description('Connect to the device gateway and listen for tool calls')
     .option('--token <jwt>', 'JWT access token')
-    .option('--gateway <url>', 'Gateway URL', 'https://device-gateway.lobehub.com')
+    .option('--gateway <url>', 'Device gateway URL')
     .option('--device-id <id>', 'Device ID (auto-generated if not provided)')
     .option('-v, --verbose', 'Enable verbose logging')
     .option('-d, --daemon', 'Run as a background daemon process')
@@ -124,7 +127,7 @@ export function registerConnectCommand(program: Command) {
     .command('restart')
     .description('Restart the background daemon process')
     .option('--token <jwt>', 'JWT access token')
-    .option('--gateway <url>', 'Gateway URL', 'https://device-gateway.lobehub.com')
+    .option('--gateway <url>', 'Device gateway URL')
     .option('--device-id <id>', 'Device ID')
     .option('-v, --verbose', 'Enable verbose logging')
     .action((options: ConnectOptions) => {
@@ -171,7 +174,7 @@ function buildDaemonArgs(options: ConnectOptions): string[] {
 
 async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
   const auth = await resolveToken(options);
-  const gatewayUrl = options.gateway || 'https://device-gateway.lobehub.com';
+  const gatewayUrl = getGatewayUrl(options.gateway, auth.serverUrl);
 
   const client = new GatewayClient({
     deviceId: options.deviceId,
@@ -314,6 +317,20 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
 
   // Connect
   await client.connect();
+}
+
+function getGatewayUrl(gateway: string | undefined, serverUrl: string | undefined): string {
+  if (gateway) return gateway.replace(/\/$/, '');
+
+  if (serverUrl && serverUrl.replace(/\/$/, '') !== OFFICIAL_SERVER_URL) {
+    log.error(
+      `Current login uses custom --server ${serverUrl}. Please also provide '--gateway <url>' for the device gateway.`,
+    );
+    process.exit(1);
+    throw new Error('process.exit');
+  }
+
+  return OFFICIAL_GATEWAY_URL;
 }
 
 function createDaemonLogger() {

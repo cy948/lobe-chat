@@ -53,11 +53,13 @@ vi.mock('../tools', () => ({
 }));
 
 let clientEventHandlers: Record<string, (...args: any[]) => any> = {};
+let clientOptions: any = {};
 let connectCalled = false;
 let lastSentToolResponse: any = null;
 let lastSentSystemInfoResponse: any = null;
 vi.mock('@lobechat/device-gateway-client', () => ({
-  GatewayClient: vi.fn().mockImplementation(() => {
+  GatewayClient: vi.fn().mockImplementation((opts: any) => {
+    clientOptions = opts;
     clientEventHandlers = {};
     connectCalled = false;
     lastSentToolResponse = null;
@@ -122,6 +124,40 @@ describe('connect command', () => {
 
     expect(connectCalled).toBe(true);
     expect(log.info).toHaveBeenCalledWith(expect.stringContaining('LobeHub CLI'));
+  });
+
+  it('should require explicit gateway for custom login server', async () => {
+    vi.mocked(resolveToken).mockResolvedValueOnce({
+      serverUrl: 'https://self-hosted.example.com',
+      token: 'test-token',
+      userId: 'test-user',
+    });
+
+    const program = createProgram();
+    await expect(program.parseAsync(['node', 'test', 'connect'])).rejects.toThrow('process.exit');
+    expect(log.error).toHaveBeenCalledWith(
+      "Current login uses custom --server https://self-hosted.example.com. Please also provide '--gateway <url>' for the device gateway.",
+    );
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('should use explicit gateway for custom login server', async () => {
+    vi.mocked(resolveToken).mockResolvedValueOnce({
+      serverUrl: 'https://self-hosted.example.com',
+      token: 'test-token',
+      userId: 'test-user',
+    });
+
+    const program = createProgram();
+    await program.parseAsync([
+      'node',
+      'test',
+      'connect',
+      '--gateway',
+      'https://gateway.example.com/',
+    ]);
+
+    expect(clientOptions.gatewayUrl).toBe('https://gateway.example.com');
   });
 
   it('should handle tool call requests', async () => {

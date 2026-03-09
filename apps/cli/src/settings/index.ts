@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { OFFICIAL_SERVER_URL } from '../constants/urls';
 import { log } from '../utils/logger';
 
 export interface StoredSettings {
@@ -11,7 +12,6 @@ export interface StoredSettings {
 
 const SETTINGS_DIR = path.join(os.homedir(), '.lobehub');
 const SETTINGS_FILE = path.join(SETTINGS_DIR, 'settings.json');
-const OFFICIAL_SERVER_URL = 'https://app.lobehub.com';
 
 function normalizeUrl(url: string | undefined): string | undefined {
   return url ? url.replace(/\/$/, '') : undefined;

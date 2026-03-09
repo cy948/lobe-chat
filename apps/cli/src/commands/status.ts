@@ -2,10 +2,9 @@ import { GatewayClient } from '@lobechat/device-gateway-client';
 import type { Command } from 'commander';
 
 import { resolveToken } from '../auth/resolveToken';
+import { OFFICIAL_GATEWAY_URL } from '../constants/urls';
 import { loadSettings, saveSettings } from '../settings';
 import { log, setVerbose } from '../utils/logger';
-
-const OFFICIAL_GATEWAY_URL = 'https://device-gateway.lobehub.com';
 
 interface StatusOptions {
   gateway?: string;

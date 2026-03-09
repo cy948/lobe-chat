@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { Command } from 'commander';
 
 import { saveCredentials } from '../auth/credentials';
+import { OFFICIAL_SERVER_URL } from '../constants/urls';
 import { saveSettings } from '../settings';
 import { log } from '../utils/logger';
 
@@ -51,7 +52,7 @@ export function registerLoginCommand(program: Command) {
   program
     .command('login')
     .description('Log in to LobeHub via browser (Device Code Flow)')
-    .option('--server <url>', 'LobeHub server URL', 'https://app.lobehub.com')
+    .option('--server <url>', 'LobeHub server URL', OFFICIAL_SERVER_URL)
     .action(async (options: LoginOptions) => {
       const serverUrl = options.server.replace(/\/$/, '');
 

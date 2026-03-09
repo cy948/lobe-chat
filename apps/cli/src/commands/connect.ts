@@ -11,6 +11,7 @@ import { GatewayClient } from '@lobechat/device-gateway-client';
 import type { Command } from 'commander';
 
 import { resolveToken } from '../auth/resolveToken';
+import { OFFICIAL_GATEWAY_URL } from '../constants/urls';
 import {
   appendLog,
   getLogPath,
@@ -26,8 +27,6 @@ import { loadSettings, saveSettings } from '../settings';
 import { executeToolCall } from '../tools';
 import { cleanupAllProcesses } from '../tools/shell';
 import { log, setVerbose } from '../utils/logger';
-
-const OFFICIAL_GATEWAY_URL = 'https://device-gateway.lobehub.com';
 
 interface ConnectOptions {
   daemon?: boolean;

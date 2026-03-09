@@ -4,13 +4,13 @@ import superjson from 'superjson';
 import type { LambdaRouter } from '@/server/routers/lambda';
 
 import { getValidToken } from '../auth/refresh';
+import { OFFICIAL_SERVER_URL } from '../constants/urls';
 import { loadSettings } from '../settings';
 import { log } from '../utils/logger';
 
 export type TrpcClient = ReturnType<typeof createTRPCClient<LambdaRouter>>;
 
 let _client: TrpcClient | undefined;
-const OFFICIAL_SERVER_URL = 'https://app.lobehub.com';
 
 export async function getTrpcClient(): Promise<TrpcClient> {
   if (_client) return _client;

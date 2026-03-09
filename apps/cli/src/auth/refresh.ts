@@ -1,8 +1,8 @@
+import { OFFICIAL_SERVER_URL } from '../constants/urls';
 import { loadSettings } from '../settings';
 import { loadCredentials, saveCredentials, type StoredCredentials } from './credentials';
 
 const CLIENT_ID = 'lobehub-cli';
-const OFFICIAL_SERVER_URL = 'https://app.lobehub.com';
 
 /**
  * Get a valid access token, refreshing if expired.

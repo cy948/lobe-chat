@@ -1,10 +1,10 @@
 import { getValidToken } from '../auth/refresh';
+import { OFFICIAL_SERVER_URL } from '../constants/urls';
 import { loadSettings } from '../settings';
 import { log } from '../utils/logger';
 
 // Must match the server's SECRET_XOR_KEY (src/envs/auth.ts)
 const SECRET_XOR_KEY = 'LobeHub · LobeHub';
-const OFFICIAL_SERVER_URL = 'https://app.lobehub.com';
 
 /**
  * XOR-obfuscate a payload and encode as Base64.

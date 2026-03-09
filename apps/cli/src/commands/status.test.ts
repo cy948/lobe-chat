@@ -5,6 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../auth/resolveToken', () => ({
   resolveToken: vi.fn().mockResolvedValue({ token: 'test-token', userId: 'test-user' }),
 }));
+vi.mock('../settings', () => ({
+  loadSettings: vi.fn().mockReturnValue(null),
+  saveSettings: vi.fn(),
+}));
 
 vi.mock('../utils/logger', () => ({
   log: {
@@ -39,7 +43,7 @@ vi.mock('@lobechat/device-gateway-client', () => ({
 }));
 
 // eslint-disable-next-line import-x/first
-import { resolveToken } from '../auth/resolveToken';
+import { loadSettings, saveSettings } from '../settings';
 // eslint-disable-next-line import-x/first
 import { log } from '../utils/logger';
 // eslint-disable-next-line import-x/first
@@ -79,11 +83,7 @@ describe('status command', () => {
   });
 
   it('should require explicit gateway for custom login server', async () => {
-    vi.mocked(resolveToken).mockResolvedValueOnce({
-      serverUrl: 'https://self-hosted.example.com',
-      token: 'test-token',
-      userId: 'test-user',
-    });
+    vi.mocked(loadSettings).mockReturnValueOnce({ serverUrl: 'https://self-hosted.example.com' });
 
     const program = createProgram();
     await expect(program.parseAsync(['node', 'test', 'status'])).rejects.toThrow('process.exit');
@@ -94,11 +94,7 @@ describe('status command', () => {
   });
 
   it('should use explicit gateway for custom login server', async () => {
-    vi.mocked(resolveToken).mockResolvedValueOnce({
-      serverUrl: 'https://self-hosted.example.com',
-      token: 'test-token',
-      userId: 'test-user',
-    });
+    vi.mocked(loadSettings).mockReturnValueOnce({ serverUrl: 'https://self-hosted.example.com' });
 
     const program = createProgram();
     const parsePromise = program.parseAsync([
@@ -114,6 +110,10 @@ describe('status command', () => {
 
     await parsePromise;
     expect(clientOptions.gatewayUrl).toBe('https://gateway.example.com');
+    expect(saveSettings).toHaveBeenCalledWith({
+      gatewayUrl: 'https://gateway.example.com',
+      serverUrl: 'https://self-hosted.example.com',
+    });
   });
 
   it('should log CONNECTED on successful connection', async () => {

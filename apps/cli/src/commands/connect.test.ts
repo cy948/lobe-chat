@@ -4,6 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../auth/resolveToken', () => ({
   resolveToken: vi.fn().mockResolvedValue({ token: 'test-token', userId: 'test-user' }),
 }));
+vi.mock('../settings', () => ({
+  loadSettings: vi.fn().mockReturnValue(null),
+  saveSettings: vi.fn(),
+}));
 
 vi.mock('../utils/logger', () => ({
   log: {
@@ -88,6 +92,8 @@ import { resolveToken } from '../auth/resolveToken';
 // eslint-disable-next-line import-x/first
 import { spawnDaemon, stopDaemon } from '../daemon/manager';
 // eslint-disable-next-line import-x/first
+import { loadSettings, saveSettings } from '../settings';
+// eslint-disable-next-line import-x/first
 import { executeToolCall } from '../tools';
 // eslint-disable-next-line import-x/first
 import { cleanupAllProcesses } from '../tools/shell';
@@ -127,11 +133,7 @@ describe('connect command', () => {
   });
 
   it('should require explicit gateway for custom login server', async () => {
-    vi.mocked(resolveToken).mockResolvedValueOnce({
-      serverUrl: 'https://self-hosted.example.com',
-      token: 'test-token',
-      userId: 'test-user',
-    });
+    vi.mocked(loadSettings).mockReturnValueOnce({ serverUrl: 'https://self-hosted.example.com' });
 
     const program = createProgram();
     await expect(program.parseAsync(['node', 'test', 'connect'])).rejects.toThrow('process.exit');
@@ -142,11 +144,7 @@ describe('connect command', () => {
   });
 
   it('should use explicit gateway for custom login server', async () => {
-    vi.mocked(resolveToken).mockResolvedValueOnce({
-      serverUrl: 'https://self-hosted.example.com',
-      token: 'test-token',
-      userId: 'test-user',
-    });
+    vi.mocked(loadSettings).mockReturnValueOnce({ serverUrl: 'https://self-hosted.example.com' });
 
     const program = createProgram();
     await program.parseAsync([
@@ -158,6 +156,10 @@ describe('connect command', () => {
     ]);
 
     expect(clientOptions.gatewayUrl).toBe('https://gateway.example.com');
+    expect(saveSettings).toHaveBeenCalledWith({
+      gatewayUrl: 'https://gateway.example.com',
+      serverUrl: 'https://self-hosted.example.com',
+    });
   });
 
   it('should handle tool call requests', async () => {

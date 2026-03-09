@@ -8,7 +8,6 @@ interface ResolveTokenOptions {
 }
 
 interface ResolvedAuth {
-  serverUrl?: string;
   token: string;
   userId: string;
 }
@@ -58,7 +57,7 @@ export async function resolveToken(options: ResolveTokenOptions): Promise<Resolv
       log.error("Stored token is invalid. Run 'lh login' again.");
       process.exit(1);
     }
-    return { serverUrl: result.credentials.serverUrl, token, userId };
+    return { token, userId };
   }
 
   log.error("No authentication found. Run 'lh login' first, or provide --token.");

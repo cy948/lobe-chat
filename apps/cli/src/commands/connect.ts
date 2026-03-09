@@ -22,11 +22,11 @@ import {
   stopDaemon,
   writeStatus,
 } from '../daemon/manager';
+import { loadSettings, saveSettings } from '../settings';
 import { executeToolCall } from '../tools';
 import { cleanupAllProcesses } from '../tools/shell';
 import { log, setVerbose } from '../utils/logger';
 
-const OFFICIAL_SERVER_URL = 'https://app.lobehub.com';
 const OFFICIAL_GATEWAY_URL = 'https://device-gateway.lobehub.com';
 
 interface ConnectOptions {
@@ -174,11 +174,26 @@ function buildDaemonArgs(options: ConnectOptions): string[] {
 
 async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
   const auth = await resolveToken(options);
-  const gatewayUrl = getGatewayUrl(options.gateway, auth.serverUrl);
+  const settings = loadSettings();
+  const gatewayUrl = options.gateway?.replace(/\/$/, '') || settings?.gatewayUrl;
+
+  if (!gatewayUrl && settings?.serverUrl) {
+    log.error(
+      `Current login uses custom --server ${settings?.serverUrl}. Please also provide '--gateway <url>' for the device gateway.`,
+    );
+    process.exit(1);
+    throw new Error('process.exit');
+  }
+
+  if (options.gateway && gatewayUrl) {
+    saveSettings({ ...settings, gatewayUrl });
+  }
+
+  const resolvedGatewayUrl = gatewayUrl || OFFICIAL_GATEWAY_URL;
 
   const client = new GatewayClient({
     deviceId: options.deviceId,
-    gatewayUrl,
+    gatewayUrl: resolvedGatewayUrl,
     logger: isDaemonChild ? createDaemonLogger() : log,
     token: auth.token,
     userId: auth.userId,
@@ -199,7 +214,7 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
   info(`  Device ID : ${client.currentDeviceId}`);
   info(`  Hostname  : ${os.hostname()}`);
   info(`  Platform  : ${process.platform}`);
-  info(`  Gateway   : ${gatewayUrl}`);
+  info(`  Gateway   : ${resolvedGatewayUrl}`);
   info(`  Auth      : jwt`);
   info(`  Mode      : ${isDaemonChild ? 'daemon' : 'foreground'}`);
   info('───────────────────');
@@ -209,7 +224,7 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     if (isDaemonChild) {
       writeStatus({
         connectionStatus,
-        gatewayUrl,
+        gatewayUrl: resolvedGatewayUrl,
         pid: process.pid,
         startedAt: startedAt.toISOString(),
       });
@@ -317,20 +332,6 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
 
   // Connect
   await client.connect();
-}
-
-function getGatewayUrl(gateway: string | undefined, serverUrl: string | undefined): string {
-  if (gateway) return gateway.replace(/\/$/, '');
-
-  if (serverUrl && serverUrl.replace(/\/$/, '') !== OFFICIAL_SERVER_URL) {
-    log.error(
-      `Current login uses custom --server ${serverUrl}. Please also provide '--gateway <url>' for the device gateway.`,
-    );
-    process.exit(1);
-    throw new Error('process.exit');
-  }
-
-  return OFFICIAL_GATEWAY_URL;
 }
 
 function createDaemonLogger() {

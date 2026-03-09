@@ -4,11 +4,15 @@ import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { saveCredentials } from '../auth/credentials';
+import { saveSettings } from '../settings';
 import { log } from '../utils/logger';
 import { registerLoginCommand, resolveCommandExecutable } from './login';
 
 vi.mock('../auth/credentials', () => ({
   saveCredentials: vi.fn(),
+}));
+vi.mock('../settings', () => ({
+  saveSettings: vi.fn(),
 }));
 
 vi.mock('../utils/logger', () => ({
@@ -22,6 +26,10 @@ vi.mock('../utils/logger', () => ({
 
 // Mock child_process to prevent browser opening
 vi.mock('node:child_process', () => ({
+  default: {
+    exec: vi.fn((_cmd: string, cb: any) => cb?.(null)),
+    execFile: vi.fn((_cmd: string, _args: string[], cb: any) => cb?.(null)),
+  },
   exec: vi.fn((_cmd: string, cb: any) => cb?.(null)),
   execFile: vi.fn((_cmd: string, _args: string[], cb: any) => cb?.(null)),
 }));
@@ -114,10 +122,21 @@ describe('login command', () => {
       expect.objectContaining({
         accessToken: 'new-token',
         refreshToken: 'refresh-tok',
-        serverUrl: 'https://app.lobehub.com',
       }),
     );
+    expect(saveSettings).toHaveBeenCalledWith({ serverUrl: 'https://app.lobehub.com' });
     expect(log.info).toHaveBeenCalledWith(expect.stringContaining('Login successful'));
+  });
+
+  it('should persist custom server into settings', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(deviceAuthResponse())
+      .mockResolvedValueOnce(tokenSuccessResponse());
+
+    const program = createProgram();
+    await runLoginAndAdvanceTimers(program, ['--server', 'https://test.com/']);
+
+    expect(saveSettings).toHaveBeenCalledWith({ serverUrl: 'https://test.com' });
   });
 
   it('should strip trailing slash from server URL', async () => {

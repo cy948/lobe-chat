@@ -82,17 +82,12 @@ describe('resolveToken', () => {
       vi.mocked(getValidToken).mockResolvedValue({
         credentials: {
           accessToken: token,
-          serverUrl: 'https://app.lobehub.com',
         },
       });
 
       const result = await resolveToken({});
 
-      expect(result).toEqual({
-        serverUrl: 'https://app.lobehub.com',
-        token,
-        userId: 'stored-user',
-      });
+      expect(result).toEqual({ token, userId: 'stored-user' });
     });
 
     it('should exit if stored token has no sub', async () => {
@@ -103,7 +98,6 @@ describe('resolveToken', () => {
       vi.mocked(getValidToken).mockResolvedValue({
         credentials: {
           accessToken: token,
-          serverUrl: 'https://app.lobehub.com',
         },
       });
 

@@ -2,9 +2,9 @@ import { GatewayClient } from '@lobechat/device-gateway-client';
 import type { Command } from 'commander';
 
 import { resolveToken } from '../auth/resolveToken';
+import { loadSettings, saveSettings } from '../settings';
 import { log, setVerbose } from '../utils/logger';
 
-const OFFICIAL_SERVER_URL = 'https://app.lobehub.com';
 const OFFICIAL_GATEWAY_URL = 'https://device-gateway.lobehub.com';
 
 interface StatusOptions {
@@ -30,12 +30,26 @@ export function registerStatusCommand(program: Command) {
       if (options.verbose) setVerbose(true);
 
       const auth = await resolveToken(options);
-      const gatewayUrl = getGatewayUrl(options.gateway, auth.serverUrl);
+      const settings = loadSettings();
+      const gatewayUrl = options.gateway?.replace(/\/$/, '') || settings?.gatewayUrl;
+
+      if (!gatewayUrl && settings?.serverUrl) {
+        log.error(
+          `Current login uses custom --server ${settings?.serverUrl}. Please also provide '--gateway <url>' for the device gateway.`,
+        );
+        process.exit(1);
+        throw new Error('process.exit');
+      }
+
+      if (options.gateway && gatewayUrl) {
+        saveSettings({ ...settings, gatewayUrl });
+      }
+
       const timeout = Number.parseInt(options.timeout || '10000', 10);
 
       const client = new GatewayClient({
         autoReconnect: false,
-        gatewayUrl,
+        gatewayUrl: gatewayUrl || OFFICIAL_GATEWAY_URL,
         logger: log,
         token: auth.token,
         userId: auth.userId,
@@ -79,18 +93,4 @@ export function registerStatusCommand(program: Command) {
 
       await client.connect();
     });
-}
-
-function getGatewayUrl(gateway: string | undefined, serverUrl: string | undefined): string {
-  if (gateway) return gateway.replace(/\/$/, '');
-
-  if (serverUrl && serverUrl.replace(/\/$/, '') !== OFFICIAL_SERVER_URL) {
-    log.error(
-      `Current login uses custom --server ${serverUrl}. Please also provide '--gateway <url>' for the device gateway.`,
-    );
-    process.exit(1);
-    throw new Error('process.exit');
-  }
-
-  return OFFICIAL_GATEWAY_URL;
 }

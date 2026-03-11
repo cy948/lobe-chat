@@ -204,6 +204,7 @@ export class AiAgentService {
       cronJobId,
       evalContext,
       maxSteps,
+      requireBoundDeviceOnline = false,
       userInterventionConfig,
       completionWebhook,
       stepWebhook,
@@ -346,7 +347,9 @@ export class AiAgentService {
 
     // Build device context for ToolsEngine enableChecker
     const gatewayConfigured = deviceProxy.isConfigured;
-    const boundDeviceId = agentConfig.agencyConfig?.boundDeviceId;
+    const topic = topicId ? await this.topicModel.findById(topicId) : undefined;
+    const topicBoundDeviceId = topic?.metadata?.boundDeviceId ?? undefined;
+    const boundDeviceId = topicBoundDeviceId ?? agentConfig.agencyConfig?.boundDeviceId;
     let onlineDevices: DeviceAttachment[] = [];
     if (gatewayConfigured) {
       try {
@@ -357,6 +360,13 @@ export class AiAgentService {
       }
     }
     const deviceOnline = onlineDevices.length > 0;
+    const isBoundDeviceOnline = boundDeviceId
+      ? onlineDevices.some((device) => device.deviceId === boundDeviceId)
+      : false;
+
+    if (requireBoundDeviceOnline && boundDeviceId && !isBoundDeviceOnline) {
+      throw new Error(`Bound device "${boundDeviceId}" is offline or unavailable`);
+    }
 
     const toolsContext: ServerAgentToolsContext = {
       installedPlugins,
@@ -437,7 +447,7 @@ export class AiAgentService {
     // 1. If agent has a bound device and it's online, use it
     // 2. In IM/Bot scenarios, auto-activate when exactly one device is online
     const activeDeviceId = boundDeviceId
-      ? deviceOnline
+      ? isBoundDeviceOnline
         ? boundDeviceId
         : undefined
       : (discordContext || botContext) && onlineDevices.length === 1

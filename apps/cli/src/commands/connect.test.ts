@@ -132,6 +132,20 @@ describe('connect command', () => {
     expect(log.info).toHaveBeenCalledWith(expect.stringContaining('LobeHub CLI'));
   });
 
+  it('should persist currentDeviceId after connection succeeds', async () => {
+    vi.mocked(loadSettings).mockReturnValue({ gatewayUrl: 'https://gateway.example.com' });
+
+    const program = createProgram();
+    await program.parseAsync(['node', 'test', 'connect']);
+
+    clientEventHandlers['connected']?.();
+
+    expect(saveSettings).toHaveBeenCalledWith({
+      currentDeviceId: 'mock-device-id',
+      gatewayUrl: 'https://gateway.example.com',
+    });
+  });
+
   it('should require explicit gateway for custom login server', async () => {
     vi.mocked(loadSettings).mockReturnValueOnce({ serverUrl: 'https://self-hosted.example.com' });
 

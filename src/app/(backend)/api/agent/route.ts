@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
       appContext,
       autoStart = true,
       existingMessageIds,
+      requireBoundDeviceOnline = false,
     } = body;
 
     // Validate required parameters
@@ -93,6 +94,7 @@ export async function POST(request: NextRequest) {
       autoStart,
       existingMessageIds,
       prompt,
+      requireBoundDeviceOnline,
       slug,
     });
 

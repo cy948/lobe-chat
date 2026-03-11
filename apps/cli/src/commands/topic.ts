@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import pc from 'picocolors';
 
 import { getTrpcClient } from '../api/client';
+import { bindCurrentDeviceToTopic, unbindDeviceFromTopic } from '../utils/deviceBinding';
 import { confirm, outputJson, printTable, timeAgo, truncate } from '../utils/format';
 import { log } from '../utils/logger';
 
@@ -119,6 +120,32 @@ export function registerTopicCommand(program: Command) {
         console.log(`${pc.green('✓')} Created topic ${pc.bold(r.id || r)}`);
       },
     );
+
+  // ── bind-current-device ──────────────────────────────
+
+  topic
+    .command('bind-current-device <id>')
+    .description('Bind the current CLI device to a topic')
+    .action(async (id: string) => {
+      const client = await getTrpcClient();
+      const deviceId = await bindCurrentDeviceToTopic(client, id);
+      if (!deviceId) return;
+
+      console.log(
+        `${pc.green('✓')} Bound topic ${pc.bold(id)} to current device ${pc.bold(deviceId)}`,
+      );
+    });
+
+  // ── unbind-device ────────────────────────────────────
+
+  topic
+    .command('unbind-device <id>')
+    .description('Remove the bound remote device from a topic')
+    .action(async (id: string) => {
+      const client = await getTrpcClient();
+      await unbindDeviceFromTopic(client, id);
+      console.log(`${pc.green('✓')} Unbound remote device from topic ${pc.bold(id)}`);
+    });
 
   // ── edit ──────────────────────────────────────────────
 

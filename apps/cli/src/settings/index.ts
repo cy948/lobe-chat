@@ -6,6 +6,7 @@ import { OFFICIAL_SERVER_URL } from '../constants/urls';
 import { log } from '../utils/logger';
 
 export interface StoredSettings {
+  currentDeviceId?: string;
   gatewayUrl?: string;
   serverUrl?: string;
 }
@@ -18,14 +19,16 @@ function normalizeUrl(url: string | undefined): string | undefined {
 }
 
 export function saveSettings(settings: StoredSettings): void {
+  const currentDeviceId = settings.currentDeviceId || undefined;
   const serverUrl = normalizeUrl(settings.serverUrl);
   const gatewayUrl = normalizeUrl(settings.gatewayUrl);
   const normalized: StoredSettings = {
+    currentDeviceId,
     gatewayUrl,
     serverUrl: serverUrl === OFFICIAL_SERVER_URL ? undefined : serverUrl,
   };
 
-  if (!normalized.serverUrl && !normalized.gatewayUrl) {
+  if (!normalized.currentDeviceId && !normalized.serverUrl && !normalized.gatewayUrl) {
     try {
       fs.unlinkSync(SETTINGS_FILE);
     } catch {}
@@ -42,14 +45,16 @@ export function loadSettings(): StoredSettings | null {
   try {
     const data = fs.readFileSync(SETTINGS_FILE, 'utf8');
     const parsed = JSON.parse(data) as StoredSettings;
+    const currentDeviceId = parsed.currentDeviceId || undefined;
     const gatewayUrl = normalizeUrl(parsed.gatewayUrl);
     const serverUrl = normalizeUrl(parsed.serverUrl);
     const normalized: StoredSettings = {
+      currentDeviceId,
       gatewayUrl,
       serverUrl: serverUrl === OFFICIAL_SERVER_URL ? undefined : serverUrl,
     };
 
-    if (!normalized.serverUrl && !normalized.gatewayUrl) return null;
+    if (!normalized.currentDeviceId && !normalized.serverUrl && !normalized.gatewayUrl) return null;
 
     return normalized;
   } catch {

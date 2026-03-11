@@ -18,8 +18,16 @@ const { mockTrpcClient } = vi.hoisted(() => ({
     aiAgent: {
       execAgent: { mutate: vi.fn() },
       getOperationStatus: { query: vi.fn() },
+      listOnlineDevices: { query: vi.fn() },
+    },
+    topic: {
+      updateTopicMetadata: { mutate: vi.fn() },
     },
   },
+}));
+
+const { loadSettings: mockLoadSettings } = vi.hoisted(() => ({
+  loadSettings: vi.fn(),
 }));
 
 const { getTrpcClient: mockGetTrpcClient } = vi.hoisted(() => ({
@@ -36,6 +44,7 @@ const { mockGetAuthInfo } = vi.hoisted(() => ({
 
 vi.mock('../api/client', () => ({ getTrpcClient: mockGetTrpcClient }));
 vi.mock('../api/http', () => ({ getAuthInfo: mockGetAuthInfo }));
+vi.mock('../settings', () => ({ loadSettings: mockLoadSettings }));
 vi.mock('../utils/agentStream', () => ({ streamAgentEvents: mockStreamAgentEvents }));
 vi.mock('../utils/logger', () => ({
   log: { debug: vi.fn(), error: vi.fn(), heartbeat: vi.fn(), info: vi.fn(), warn: vi.fn() },
@@ -55,6 +64,7 @@ describe('agent command', () => {
       headers: { 'Content-Type': 'application/json', 'Oidc-Auth': 'test-token' },
       serverUrl: 'https://example.com',
     });
+    mockLoadSettings.mockReturnValue(null);
     mockStreamAgentEvents.mockResolvedValue(undefined);
     for (const method of Object.values(mockTrpcClient.agent)) {
       for (const fn of Object.values(method)) {
@@ -62,6 +72,11 @@ describe('agent command', () => {
       }
     }
     for (const method of Object.values(mockTrpcClient.aiAgent)) {
+      for (const fn of Object.values(method)) {
+        (fn as ReturnType<typeof vi.fn>).mockReset();
+      }
+    }
+    for (const method of Object.values(mockTrpcClient.topic)) {
       for (const fn of Object.values(method)) {
         (fn as ReturnType<typeof vi.fn>).mockReset();
       }
@@ -284,7 +299,7 @@ describe('agent command', () => {
         expect.objectContaining({ agentId: 'a1', prompt: 'Hello' }),
       );
       expect(mockStreamAgentEvents).toHaveBeenCalledWith(
-        'https://example.com/api/agent/stream?operationId=op-123',
+        'https://example.com/api/agent/stream?operationId=op-123&includeHistory=true',
         expect.objectContaining({ 'Oidc-Auth': 'test-token' }),
         expect.objectContaining({ json: undefined, verbose: undefined }),
       );
@@ -400,6 +415,93 @@ describe('agent command', () => {
         expect.any(Object),
         expect.objectContaining({ json: true }),
       );
+    });
+
+    it('should bind the current device to the topic before running', async () => {
+      mockLoadSettings.mockReturnValue({ currentDeviceId: 'device-1' });
+      mockTrpcClient.aiAgent.listOnlineDevices.query.mockResolvedValue({
+        devices: [{ deviceId: 'device-1', online: true }],
+        gatewayConfigured: true,
+      });
+      mockTrpcClient.topic.updateTopicMetadata.mutate.mockResolvedValue([{ id: 'topic-1' }]);
+      mockTrpcClient.aiAgent.execAgent.mutate.mockResolvedValue({
+        operationId: 'op-bind',
+        success: true,
+        topicId: 'topic-1',
+      });
+
+      const program = createProgram();
+      await program.parseAsync([
+        'node',
+        'test',
+        'agent',
+        'run',
+        '--agent-id',
+        'a1',
+        '--prompt',
+        'Hi',
+        '--topic-id',
+        'topic-1',
+        '--bind-current-device',
+      ]);
+
+      expect(mockTrpcClient.aiAgent.listOnlineDevices.query).toHaveBeenCalledWith();
+      expect(mockTrpcClient.topic.updateTopicMetadata.mutate).toHaveBeenCalledWith({
+        id: 'topic-1',
+        metadata: { boundDeviceId: 'device-1' },
+      });
+      expect(mockTrpcClient.aiAgent.execAgent.mutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          appContext: { topicId: 'topic-1' },
+          requireBoundDeviceOnline: true,
+        }),
+      );
+    });
+
+    it('should fail when --bind-current-device is used without --topic-id', async () => {
+      const program = createProgram();
+      await program.parseAsync([
+        'node',
+        'test',
+        'agent',
+        'run',
+        '--agent-id',
+        'a1',
+        '--prompt',
+        'Hi',
+        '--bind-current-device',
+      ]);
+
+      expect(log.error).toHaveBeenCalledWith(expect.stringContaining('requires --topic-id'));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(mockTrpcClient.aiAgent.execAgent.mutate).not.toHaveBeenCalled();
+    });
+
+    it('should fail when the current device is offline', async () => {
+      mockLoadSettings.mockReturnValue({ currentDeviceId: 'device-1' });
+      mockTrpcClient.aiAgent.listOnlineDevices.query.mockResolvedValue({
+        devices: [],
+        gatewayConfigured: true,
+      });
+
+      const program = createProgram();
+      await program.parseAsync([
+        'node',
+        'test',
+        'agent',
+        'run',
+        '--agent-id',
+        'a1',
+        '--prompt',
+        'Hi',
+        '--topic-id',
+        'topic-1',
+        '--bind-current-device',
+      ]);
+
+      expect(log.error).toHaveBeenCalledWith(expect.stringContaining('offline or unavailable'));
+      expect(mockTrpcClient.topic.updateTopicMetadata.mutate).not.toHaveBeenCalled();
+      expect(mockTrpcClient.aiAgent.execAgent.mutate).not.toHaveBeenCalled();
     });
   });
 

@@ -170,6 +170,7 @@ export function registerLoginCommand(program: Command) {
             saveSettings(
               shouldPreserveGateway
                 ? {
+                    currentDeviceId: existingSettings.currentDeviceId,
                     gatewayUrl: existingSettings.gatewayUrl,
                     serverUrl,
                   }

@@ -181,6 +181,53 @@ describe('/api/agent/stream route', () => {
       expect(mockStreamEventManager.getStreamHistory).toHaveBeenCalledWith('test-operation', 50);
     });
 
+    it('should close after replaying historical agent_runtime_end', async () => {
+      const request = new NextRequest(
+        'https://test.com/api/agent/stream?operationId=test-operation&includeHistory=true',
+      );
+
+      mockStreamEventManager.getStreamHistory.mockResolvedValue([
+        {
+          type: 'agent_runtime_end',
+          timestamp: 400,
+          operationId: 'test-operation',
+          data: { status: 'completed' },
+        },
+        {
+          type: 'stream_end',
+          timestamp: 300,
+          operationId: 'test-operation',
+          data: { messageId: 'msg3' },
+        },
+      ]);
+      mockStreamEventManager.subscribeStreamEvents.mockResolvedValue(undefined);
+
+      const response = await GET(request);
+      const decoder = new TextDecoder();
+      const reader = response.body!.getReader();
+      const chunks: string[] = [];
+
+      while (true) {
+        const result = await reader.read();
+        if (result.done) break;
+        if (result.value) {
+          chunks.push(
+            result.value instanceof Uint8Array
+              ? decoder.decode(result.value)
+              : String(result.value),
+          );
+        }
+      }
+
+      reader.releaseLock();
+
+      expect(chunks).toEqual([
+        `id: conn_${MOCK_TIMESTAMP}\nevent: connected\ndata: {"lastEventId":"0","operationId":"test-operation","timestamp":${MOCK_TIMESTAMP},"type":"connected"}\n\n`,
+        `id: test-operation\nevent: stream_end\ndata: {"type":"stream_end","timestamp":300,"operationId":"test-operation","data":{"messageId":"msg3"}}\n\n`,
+        `id: test-operation\nevent: agent_runtime_end\ndata: {"type":"agent_runtime_end","timestamp":400,"operationId":"test-operation","data":{"status":"completed"}}\n\n`,
+      ]);
+    });
+
     it('should verify event filtering with exact format', async () => {
       const request = new NextRequest(
         'https://test.com/api/agent/stream?operationId=test-operation&includeHistory=true&lastEventId=200',

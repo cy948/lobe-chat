@@ -40,14 +40,22 @@ describe('settings', () => {
 
   it('should save and load custom server and gateway settings', () => {
     saveSettings({
+      currentDeviceId: 'device-123',
       gatewayUrl: 'https://gateway.example.com/',
       serverUrl: 'https://self-hosted.example.com/',
     });
 
     expect(loadSettings()).toEqual({
+      currentDeviceId: 'device-123',
       gatewayUrl: 'https://gateway.example.com',
       serverUrl: 'https://self-hosted.example.com',
     });
+  });
+
+  it('should persist currentDeviceId even without server or gateway settings', () => {
+    saveSettings({ currentDeviceId: 'device-123' });
+
+    expect(loadSettings()).toEqual({ currentDeviceId: 'device-123' });
   });
 
   it('should clear official server settings instead of persisting them', () => {

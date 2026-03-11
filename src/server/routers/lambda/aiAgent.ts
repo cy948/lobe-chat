@@ -15,6 +15,7 @@ import { serverDatabase } from '@/libs/trpc/lambda/middleware';
 import { AgentRuntimeService } from '@/server/services/agentRuntime';
 import { AiAgentService } from '@/server/services/aiAgent';
 import { AiChatService } from '@/server/services/aiChat';
+import { deviceProxy } from '@/server/services/toolExecution/deviceProxy';
 import { nanoid } from '@/utils/uuid';
 
 const log = debug('lobe-server:ai-agent-router');
@@ -95,6 +96,8 @@ const ExecAgentSchema = z
     existingMessageIds: z.array(z.string()).optional().default([]),
     /** The user input/prompt */
     prompt: z.string(),
+    /** Fail fast when the resolved bound device is offline */
+    requireBoundDeviceOnline: z.boolean().optional().default(false),
     /** The agent slug to run (either agentId or slug is required) */
     slug: z.string().optional(),
   })
@@ -248,6 +251,13 @@ const aiAgentProcedure = authedProcedure.use(serverDatabase).use(async (opts) =>
 });
 
 export const aiAgentRouter = router({
+  listOnlineDevices: aiAgentProcedure.query(async ({ ctx }) => {
+    return {
+      devices: await deviceProxy.queryDeviceList(ctx.userId),
+      gatewayConfigured: deviceProxy.isConfigured,
+    };
+  }),
+
   /**
    * Create Thread for client-side task execution in Group mode
    *
@@ -518,7 +528,15 @@ export const aiAgentRouter = router({
     }),
 
   execAgent: aiAgentProcedure.input(ExecAgentSchema).mutation(async ({ input, ctx }) => {
-    const { agentId, slug, prompt, appContext, autoStart = true, existingMessageIds = [] } = input;
+    const {
+      agentId,
+      slug,
+      prompt,
+      appContext,
+      autoStart = true,
+      existingMessageIds = [],
+      requireBoundDeviceOnline = false,
+    } = input;
 
     log('execAgent: identifier=%s, prompt=%s', agentId || slug, prompt.slice(0, 50));
 
@@ -529,6 +547,7 @@ export const aiAgentRouter = router({
         autoStart,
         existingMessageIds,
         prompt,
+        requireBoundDeviceOnline,
         slug,
       });
     } catch (error: any) {

@@ -6,6 +6,9 @@ import { registerTopicCommand } from './topic';
 
 const { mockTrpcClient } = vi.hoisted(() => ({
   mockTrpcClient: {
+    aiAgent: {
+      listOnlineDevices: { query: vi.fn() },
+    },
     topic: {
       batchDelete: { mutate: vi.fn() },
       createTopic: { mutate: vi.fn() },
@@ -14,8 +17,13 @@ const { mockTrpcClient } = vi.hoisted(() => ({
       removeTopic: { mutate: vi.fn() },
       searchTopics: { query: vi.fn() },
       updateTopic: { mutate: vi.fn() },
+      updateTopicMetadata: { mutate: vi.fn() },
     },
   },
+}));
+
+const { loadSettings: mockLoadSettings } = vi.hoisted(() => ({
+  loadSettings: vi.fn(),
 }));
 
 const { getTrpcClient: mockGetTrpcClient } = vi.hoisted(() => ({
@@ -23,6 +31,7 @@ const { getTrpcClient: mockGetTrpcClient } = vi.hoisted(() => ({
 }));
 
 vi.mock('../api/client', () => ({ getTrpcClient: mockGetTrpcClient }));
+vi.mock('../settings', () => ({ loadSettings: mockLoadSettings }));
 vi.mock('../utils/logger', () => ({
   log: { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() },
   setVerbose: vi.fn(),
@@ -36,6 +45,12 @@ describe('topic command', () => {
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
     consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     mockGetTrpcClient.mockResolvedValue(mockTrpcClient);
+    mockLoadSettings.mockReturnValue(null);
+    for (const method of Object.values(mockTrpcClient.aiAgent)) {
+      for (const fn of Object.values(method)) {
+        (fn as ReturnType<typeof vi.fn>).mockReset();
+      }
+    }
     for (const method of Object.values(mockTrpcClient.topic)) {
       for (const fn of Object.values(method)) {
         (fn as ReturnType<typeof vi.fn>).mockReset();
@@ -102,6 +117,57 @@ describe('topic command', () => {
       expect(mockTrpcClient.topic.createTopic.mutate).toHaveBeenCalledWith(
         expect.objectContaining({ title: 'New Topic' }),
       );
+    });
+  });
+
+  describe('bind-current-device', () => {
+    it('should bind the current device to the topic', async () => {
+      mockLoadSettings.mockReturnValue({ currentDeviceId: 'device-1' });
+      mockTrpcClient.aiAgent.listOnlineDevices.query.mockResolvedValue({
+        devices: [{ deviceId: 'device-1', online: true }],
+        gatewayConfigured: true,
+      });
+      mockTrpcClient.topic.updateTopicMetadata.mutate.mockResolvedValue([{ id: 't1' }]);
+
+      const program = createProgram();
+      await program.parseAsync(['node', 'test', 'topic', 'bind-current-device', 't1']);
+
+      expect(mockTrpcClient.aiAgent.listOnlineDevices.query).toHaveBeenCalledWith();
+      expect(mockTrpcClient.topic.updateTopicMetadata.mutate).toHaveBeenCalledWith({
+        id: 't1',
+        metadata: { boundDeviceId: 'device-1' },
+      });
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Bound topic'));
+    });
+
+    it('should fail when the current device is unavailable', async () => {
+      mockLoadSettings.mockReturnValue({ currentDeviceId: 'device-1' });
+      mockTrpcClient.aiAgent.listOnlineDevices.query.mockResolvedValue({
+        devices: [],
+        gatewayConfigured: true,
+      });
+
+      const program = createProgram();
+      await program.parseAsync(['node', 'test', 'topic', 'bind-current-device', 't1']);
+
+      expect(log.error).toHaveBeenCalledWith(expect.stringContaining('offline or unavailable'));
+      expect(mockTrpcClient.topic.updateTopicMetadata.mutate).not.toHaveBeenCalled();
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe('unbind-device', () => {
+    it('should remove the topic bound device', async () => {
+      mockTrpcClient.topic.updateTopicMetadata.mutate.mockResolvedValue([{ id: 't1' }]);
+
+      const program = createProgram();
+      await program.parseAsync(['node', 'test', 'topic', 'unbind-device', 't1']);
+
+      expect(mockTrpcClient.topic.updateTopicMetadata.mutate).toHaveBeenCalledWith({
+        id: 't1',
+        metadata: { boundDeviceId: null },
+      });
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Unbound remote device'));
     });
   });
 

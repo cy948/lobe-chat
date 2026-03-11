@@ -3,9 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AiAgentService } from '../index';
 
-const { mockMessageCreate, mockCreateOperation } = vi.hoisted(() => ({
+const { mockMessageCreate, mockCreateOperation, mockTopicFindById } = vi.hoisted(() => ({
   mockCreateOperation: vi.fn(),
   mockMessageCreate: vi.fn(),
+  mockTopicFindById: vi.fn(),
 }));
 
 const { mockDeviceProxy } = vi.hoisted(() => ({
@@ -68,6 +69,7 @@ vi.mock('@/database/models/plugin', () => ({
 vi.mock('@/database/models/topic', () => ({
   TopicModel: vi.fn().mockImplementation(() => ({
     create: vi.fn().mockResolvedValue({ id: 'topic-1' }),
+    findById: mockTopicFindById,
   })),
 }));
 
@@ -143,6 +145,7 @@ describe('AiAgentService.execAgent - device auto-activation', () => {
       operationId: 'op-123',
       success: true,
     });
+    mockTopicFindById.mockResolvedValue(undefined);
     // Reset device proxy state
     mockDeviceProxy.isConfigured = false;
     mockDeviceProxy.queryDeviceList.mockResolvedValue([]);
@@ -318,6 +321,101 @@ describe('AiAgentService.execAgent - device auto-activation', () => {
       expect(mockCreateOperation).toHaveBeenCalled();
       const createOpArgs = mockCreateOperation.mock.calls[0][0];
       expect(createOpArgs.activeDeviceId).toBeUndefined();
+    });
+
+    it('should NOT activate boundDeviceId when a different device is online', async () => {
+      mockDeviceProxy.isConfigured = true;
+      mockDeviceProxy.queryDeviceList.mockResolvedValue([onlineDevice2]);
+
+      const { AgentService } = await import('@/server/services/agent');
+      vi.mocked(AgentService).mockImplementation(
+        () =>
+          ({
+            getAgentConfig: vi.fn().mockResolvedValue({
+              agencyConfig: { boundDeviceId: 'device-001' },
+              chatConfig: {},
+              files: [],
+              id: 'agent-1',
+              knowledgeBases: [],
+              model: 'gpt-4',
+              plugins: [],
+              provider: 'openai',
+              systemRole: 'You are a helpful assistant',
+            }),
+          }) as any,
+      );
+
+      service = new AiAgentService(mockDb, userId);
+
+      await service.execAgent({
+        agentId: 'agent-1',
+        prompt: 'Run a command',
+      });
+
+      expect(mockCreateOperation).toHaveBeenCalled();
+      const createOpArgs = mockCreateOperation.mock.calls[0][0];
+      expect(createOpArgs.activeDeviceId).toBeUndefined();
+    });
+  });
+
+  describe('topic bound device scenario', () => {
+    it('should prioritize topic metadata boundDeviceId over agent boundDeviceId', async () => {
+      mockDeviceProxy.isConfigured = true;
+      mockDeviceProxy.queryDeviceList.mockResolvedValue([onlineDevice, onlineDevice2]);
+      mockTopicFindById.mockResolvedValue({
+        id: 'topic-1',
+        metadata: { boundDeviceId: 'device-002' },
+      });
+
+      const { AgentService } = await import('@/server/services/agent');
+      vi.mocked(AgentService).mockImplementation(
+        () =>
+          ({
+            getAgentConfig: vi.fn().mockResolvedValue({
+              agencyConfig: { boundDeviceId: 'device-001' },
+              chatConfig: {},
+              files: [],
+              id: 'agent-1',
+              knowledgeBases: [],
+              model: 'gpt-4',
+              plugins: [],
+              provider: 'openai',
+              systemRole: 'You are a helpful assistant',
+            }),
+          }) as any,
+      );
+
+      service = new AiAgentService(mockDb, userId);
+
+      await service.execAgent({
+        agentId: 'agent-1',
+        appContext: { topicId: 'topic-1' },
+        prompt: 'Use the topic device',
+      });
+
+      expect(mockCreateOperation).toHaveBeenCalled();
+      const createOpArgs = mockCreateOperation.mock.calls[0][0];
+      expect(createOpArgs.activeDeviceId).toBe('device-002');
+    });
+
+    it('should fail fast when requireBoundDeviceOnline is true and topic device is offline', async () => {
+      mockDeviceProxy.isConfigured = true;
+      mockDeviceProxy.queryDeviceList.mockResolvedValue([onlineDevice2]);
+      mockTopicFindById.mockResolvedValue({
+        id: 'topic-1',
+        metadata: { boundDeviceId: 'device-001' },
+      });
+
+      await expect(
+        service.execAgent({
+          agentId: 'agent-1',
+          appContext: { topicId: 'topic-1' },
+          prompt: 'Use the topic device',
+          requireBoundDeviceOnline: true,
+        }),
+      ).rejects.toThrow('Bound device "device-001" is offline or unavailable');
+
+      expect(mockCreateOperation).not.toHaveBeenCalled();
     });
   });
 

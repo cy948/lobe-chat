@@ -143,6 +143,7 @@ describe('login command', () => {
 
   it('should preserve existing gateway when logging into the same server', async () => {
     vi.mocked(loadSettings).mockReturnValueOnce({
+      currentDeviceId: 'device-123',
       gatewayUrl: 'https://gateway.example.com',
       serverUrl: 'https://test.com',
     });
@@ -154,6 +155,7 @@ describe('login command', () => {
     await runLoginAndAdvanceTimers(program, ['--server', 'https://test.com/']);
 
     expect(saveSettings).toHaveBeenCalledWith({
+      currentDeviceId: 'device-123',
       gatewayUrl: 'https://gateway.example.com',
       serverUrl: 'https://test.com',
     });
@@ -161,6 +163,7 @@ describe('login command', () => {
 
   it('should clear existing gateway when logging into a different server', async () => {
     vi.mocked(loadSettings).mockReturnValueOnce({
+      currentDeviceId: 'device-123',
       gatewayUrl: 'https://gateway.example.com',
       serverUrl: 'https://old.example.com',
     });

@@ -6,6 +6,7 @@ import pc from 'picocolors';
 import { getTrpcClient } from '../api/client';
 import { getAuthInfo } from '../api/http';
 import { replayAgentEvents, streamAgentEvents } from '../utils/agentStream';
+import { bindCurrentDeviceToTopic } from '../utils/deviceBinding';
 import { confirm, outputJson, printTable, truncate } from '../utils/format';
 import { log, setVerbose } from '../utils/logger';
 
@@ -247,6 +248,7 @@ export function registerAgentCommand(program: Command) {
     .option('-s, --slug <slug>', 'Agent slug')
     .option('-p, --prompt <text>', 'User prompt')
     .option('-t, --topic-id <id>', 'Reuse an existing topic')
+    .option('--bind-current-device', 'Bind the current CLI device to the topic before running')
     .option('--no-auto-start', 'Do not auto-start the agent')
     .option('--json', 'Output full JSON event stream')
     .option('-v, --verbose', 'Show detailed tool call info')
@@ -255,6 +257,7 @@ export function registerAgentCommand(program: Command) {
       async (options: {
         agentId?: string;
         autoStart?: boolean;
+        bindCurrentDevice?: boolean;
         json?: boolean;
         prompt?: string;
         replay?: string;
@@ -282,8 +285,18 @@ export function registerAgentCommand(program: Command) {
           process.exit(1);
           return;
         }
+        if (options.bindCurrentDevice && !options.topicId) {
+          log.error('--bind-current-device requires --topic-id.');
+          process.exit(1);
+          return;
+        }
 
         const client = await getTrpcClient();
+
+        if (options.bindCurrentDevice) {
+          const boundDeviceId = await bindCurrentDeviceToTopic(client, options.topicId!);
+          if (!boundDeviceId) return;
+        }
 
         // 1. Exec agent to get operationId
         const input: Record<string, any> = { prompt: options.prompt };
@@ -291,6 +304,7 @@ export function registerAgentCommand(program: Command) {
         if (options.slug) input.slug = options.slug;
         if (options.topicId) input.appContext = { topicId: options.topicId };
         if (options.autoStart === false) input.autoStart = false;
+        if (options.bindCurrentDevice) input.requireBoundDeviceOnline = true;
 
         const result = await client.aiAgent.execAgent.mutate(input as any);
         const r = result as any;
@@ -307,7 +321,7 @@ export function registerAgentCommand(program: Command) {
 
         // 2. Connect to SSE stream
         const { serverUrl, headers } = await getAuthInfo();
-        const streamUrl = `${serverUrl}/api/agent/stream?operationId=${encodeURIComponent(operationId)}`;
+        const streamUrl = `${serverUrl}/api/agent/stream?operationId=${encodeURIComponent(operationId)}&includeHistory=true`;
 
         await streamAgentEvents(streamUrl, headers, {
           json: options.json,

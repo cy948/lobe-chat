@@ -271,6 +271,7 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
   });
 
   client.on('connected', () => {
+    saveSettings({ ...loadSettings(), currentDeviceId: client.currentDeviceId });
     updateStatus('connected');
   });
 

@@ -45,52 +45,6 @@ export async function GET(request: NextRequest) {
 
     start(controller) {
       const writer = createSSEWriter(controller);
-
-      // Send connection confirmation event
-      writer.writeConnection(operationId, lastEventId);
-      log(`SSE connection established for operation ${operationId}`);
-
-      // If needed, send historical events first
-      if (includeHistory) {
-        streamManager
-          .getStreamHistory(operationId, 50)
-          .then((history) => {
-            // Send historical events in chronological order (earliest first)
-            const sortedHistory = history.reverse();
-
-            sortedHistory.forEach((event) => {
-              // Only send events newer than lastEventId
-              if (!lastEventId || lastEventId === '0' || event.timestamp.toString() > lastEventId) {
-                try {
-                  // Add SSE-specific fields, keeping format consistent with real-time events
-                  const sseEvent = {
-                    ...event,
-                    operationId,
-                    timestamp: event.timestamp || Date.now(),
-                  };
-                  writer.writeStreamEvent(sseEvent, operationId);
-                } catch (error) {
-                  console.error('[Agent Stream] Error sending history event:', error);
-                }
-              }
-            });
-
-            if (sortedHistory.length > 0) {
-              log(`Sent ${sortedHistory.length} historical events for operation ${operationId}`);
-            }
-          })
-          .catch((error) => {
-            console.error('[Agent Stream] Failed to load history:', error);
-
-            try {
-              writer.writeError(error, operationId, 'history_loading');
-            } catch (controllerError) {
-              console.error('[Agent Stream] Failed to send error event:', controllerError);
-            }
-          });
-      }
-
-      // Create AbortController for canceling subscription
       const abortController = new AbortController();
 
       // Track if stream has ended (agent_runtime_end received)
@@ -124,6 +78,60 @@ export async function GET(request: NextRequest) {
         clearInterval(heartbeatInterval);
         log(`SSE connection closed for operation ${operationId}`);
       };
+
+      // Send connection confirmation event
+      writer.writeConnection(operationId, lastEventId);
+      log(`SSE connection established for operation ${operationId}`);
+
+      // If needed, send historical events first
+      if (includeHistory) {
+        streamManager
+          .getStreamHistory(operationId, 50)
+          .then((history) => {
+            // Send historical events in chronological order (earliest first)
+            const sortedHistory = history.reverse();
+
+            sortedHistory.forEach((event) => {
+              // Only send events newer than lastEventId
+              if (!lastEventId || lastEventId === '0' || event.timestamp.toString() > lastEventId) {
+                try {
+                  // Add SSE-specific fields, keeping format consistent with real-time events
+                  const sseEvent = {
+                    ...event,
+                    operationId,
+                    timestamp: event.timestamp || Date.now(),
+                  };
+                  writer.writeStreamEvent(sseEvent, operationId);
+
+                  if (event.type === 'agent_runtime_end') {
+                    log(
+                      `Historical agent runtime end found for operation ${operationId}, terminating stream immediately`,
+                    );
+                    streamEnded = true;
+                    cleanup();
+                    controller.close();
+                    return;
+                  }
+                } catch (error) {
+                  console.error('[Agent Stream] Error sending history event:', error);
+                }
+              }
+            });
+
+            if (sortedHistory.length > 0) {
+              log(`Sent ${sortedHistory.length} historical events for operation ${operationId}`);
+            }
+          })
+          .catch((error) => {
+            console.error('[Agent Stream] Failed to load history:', error);
+
+            try {
+              writer.writeError(error, operationId, 'history_loading');
+            } catch (controllerError) {
+              console.error('[Agent Stream] Failed to send error event:', controllerError);
+            }
+          });
+      }
 
       // Subscribe to new streaming events
       const subscribeToEvents = async () => {

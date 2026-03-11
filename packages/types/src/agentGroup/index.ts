@@ -164,6 +164,8 @@ export interface ExecAgentParams {
   existingMessageIds?: string[];
   /** The user input/prompt */
   prompt: string;
+  /** Fail fast before starting the run if the resolved bound device is offline */
+  requireBoundDeviceOnline?: boolean;
   /** The agent slug to run (either agentId or slug is required) */
   slug?: string;
 }

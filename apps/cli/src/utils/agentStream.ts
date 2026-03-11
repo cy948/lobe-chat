@@ -13,6 +13,7 @@ export interface AgentStreamEvent {
 
 interface StreamOptions {
   json?: boolean;
+  signal?: AbortSignal;
   verbose?: boolean;
 }
 
@@ -25,7 +26,14 @@ export async function streamAgentEvents(
   headers: Record<string, string>,
   options: StreamOptions = {},
 ): Promise<void> {
-  const res = await fetch(url, { headers });
+  let res: Response;
+
+  try {
+    res = await fetch(url, { headers, signal: options.signal });
+  } catch (error) {
+    if (options.signal?.aborted) return;
+    throw error;
+  }
 
   if (!res.ok) {
     const text = await res.text();
@@ -51,7 +59,16 @@ export async function streamAgentEvents(
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      let result: ReadableStreamReadResult<Uint8Array>;
+
+      try {
+        result = await reader.read();
+      } catch (error) {
+        if (options.signal?.aborted) return;
+        throw error;
+      }
+
+      const { done, value } = result;
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });

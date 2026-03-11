@@ -1,12 +1,108 @@
+import { type AgentState } from '@lobechat/agent-runtime';
 import { createSSEHeaders, createSSEWriter } from '@lobechat/utils/server';
 import debug from 'debug';
 import { type NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
-import { StreamEventManager } from '@/server/modules/AgentRuntime';
+import {
+  createAgentStateManager,
+  createStreamEventManager,
+  type IAgentStateManager,
+} from '@/server/modules/AgentRuntime';
+import { type StreamEventManager } from '@/server/modules/AgentRuntime/StreamEventManager';
 
 const log = debug('api-route:agent:stream');
 const timing = debug('lobe-server:agent-runtime:timing');
+
+type StreamEvent = Awaited<ReturnType<StreamEventManager['getStreamHistory']>>[number];
+type StreamManager = ReturnType<typeof createStreamEventManager>;
+
+const TERMINAL_STATUSES = new Set<AgentState['status']>(['done', 'error', 'interrupted']);
+
+const isTerminalState = (state: AgentState | null): state is AgentState => {
+  return !!state && TERMINAL_STATUSES.has(state.status);
+};
+
+const shouldSendHistoryEvent = (event: StreamEvent, lastEventId: string): boolean => {
+  if (!lastEventId || lastEventId === '0') return true;
+
+  return event.timestamp.toString() > lastEventId;
+};
+
+const subscribeToStreamEvents = async (
+  streamManager: StreamManager,
+  operationId: string,
+  lastEventId: string,
+  onEvents: (events: StreamEvent[]) => void,
+  signal: AbortSignal,
+) => {
+  if (typeof (streamManager as any).subscribeStreamEvents === 'function') {
+    return streamManager.subscribeStreamEvents(operationId, lastEventId, onEvents, signal);
+  }
+
+  if (typeof (streamManager as any).subscribe === 'function') {
+    return new Promise<void>((resolve) => {
+      let settled = false;
+      let unsubscribe = () => {};
+
+      const handleAbort = () => {
+        if (settled) return;
+        settled = true;
+        unsubscribe();
+        resolve();
+      };
+
+      signal.addEventListener('abort', handleAbort, { once: true });
+
+      unsubscribe = streamManager.subscribe(operationId, (events) => {
+        if (signal.aborted) return;
+        onEvents(events);
+      });
+
+      if (signal.aborted) {
+        handleAbort();
+      }
+    });
+  }
+
+  throw new Error('Current stream manager does not support subscriptions');
+};
+
+const writeTerminalFallbackEvent = (
+  writer: ReturnType<typeof createSSEWriter>,
+  operationId: string,
+  state: AgentState,
+) => {
+  if (state.status === 'error') {
+    writer.writeError(
+      new Error(state.error?.message || 'Agent runtime failed'),
+      operationId,
+      'runtime_terminal_state',
+      Date.now(),
+    );
+    return;
+  }
+
+  writer.writeStreamEvent(
+    {
+      data: {
+        finalState: state,
+        operationId,
+        phase: 'execution_complete',
+        reason: state.status === 'interrupted' ? 'interrupted' : 'completed',
+        reasonDetail:
+          state.status === 'interrupted'
+            ? 'Agent runtime was interrupted before the stream attached'
+            : 'Agent runtime completed before the stream attached',
+      },
+      operationId,
+      stepIndex: state.stepCount,
+      timestamp: Date.now(),
+      type: 'agent_runtime_end',
+    },
+    operationId,
+  );
+};
 
 /**
  * Server-Sent Events (SSE) endpoint
@@ -14,7 +110,8 @@ const timing = debug('lobe-server:agent-runtime:timing');
  */
 export async function GET(request: NextRequest) {
   // Initialize stream event manager
-  const streamManager = new StreamEventManager();
+  const streamManager = createStreamEventManager();
+  const stateManager: IAgentStateManager = createAgentStateManager();
 
   const { searchParams } = new URL(request.url);
   const operationId = searchParams.get('operationId');
@@ -83,62 +180,13 @@ export async function GET(request: NextRequest) {
       writer.writeConnection(operationId, lastEventId);
       log(`SSE connection established for operation ${operationId}`);
 
-      // If needed, send historical events first
-      if (includeHistory) {
-        streamManager
-          .getStreamHistory(operationId, 50)
-          .then((history) => {
-            // Send historical events in chronological order (earliest first)
-            const sortedHistory = history.reverse();
-
-            sortedHistory.forEach((event) => {
-              // Only send events newer than lastEventId
-              if (!lastEventId || lastEventId === '0' || event.timestamp.toString() > lastEventId) {
-                try {
-                  // Add SSE-specific fields, keeping format consistent with real-time events
-                  const sseEvent = {
-                    ...event,
-                    operationId,
-                    timestamp: event.timestamp || Date.now(),
-                  };
-                  writer.writeStreamEvent(sseEvent, operationId);
-
-                  if (event.type === 'agent_runtime_end') {
-                    log(
-                      `Historical agent runtime end found for operation ${operationId}, terminating stream immediately`,
-                    );
-                    streamEnded = true;
-                    cleanup();
-                    controller.close();
-                    return;
-                  }
-                } catch (error) {
-                  console.error('[Agent Stream] Error sending history event:', error);
-                }
-              }
-            });
-
-            if (sortedHistory.length > 0) {
-              log(`Sent ${sortedHistory.length} historical events for operation ${operationId}`);
-            }
-          })
-          .catch((error) => {
-            console.error('[Agent Stream] Failed to load history:', error);
-
-            try {
-              writer.writeError(error, operationId, 'history_loading');
-            } catch (controllerError) {
-              console.error('[Agent Stream] Failed to send error event:', controllerError);
-            }
-          });
-      }
-
       // Subscribe to new streaming events
-      const subscribeToEvents = async () => {
+      const subscribeToEvents = async (resumeEventId: string) => {
         try {
-          await streamManager.subscribeStreamEvents(
+          await subscribeToStreamEvents(
+            streamManager,
             operationId,
-            lastEventId,
+            resumeEventId,
             (events) => {
               events.forEach((event) => {
                 // Skip all events if stream has ended
@@ -203,8 +251,76 @@ export async function GET(request: NextRequest) {
         }
       };
 
-      // Start subscription
-      subscribeToEvents();
+      const initializeStream = async () => {
+        let resumeEventId = lastEventId;
+
+        if (includeHistory) {
+          try {
+            const history = await streamManager.getStreamHistory(operationId, 200);
+            const sortedHistory = history.reverse();
+
+            for (const event of sortedHistory) {
+              if (!shouldSendHistoryEvent(event, lastEventId)) continue;
+
+              try {
+                const sseEvent = {
+                  ...event,
+                  operationId,
+                  timestamp: event.timestamp || Date.now(),
+                };
+                writer.writeStreamEvent(sseEvent, operationId);
+                resumeEventId = event.id || resumeEventId;
+
+                if (event.type === 'agent_runtime_end') {
+                  log(
+                    `Historical agent runtime end found for operation ${operationId}, terminating stream immediately`,
+                  );
+                  streamEnded = true;
+                  cleanup();
+                  controller.close();
+                  return;
+                }
+              } catch (error) {
+                console.error('[Agent Stream] Error sending history event:', error);
+              }
+            }
+
+            if (sortedHistory.length > 0) {
+              log(`Sent ${sortedHistory.length} historical events for operation ${operationId}`);
+            }
+          } catch (error) {
+            console.error('[Agent Stream] Failed to load history:', error);
+
+            try {
+              writer.writeError(error, operationId, 'history_loading');
+            } catch (controllerError) {
+              console.error('[Agent Stream] Failed to send error event:', controllerError);
+            }
+          }
+        }
+
+        try {
+          const currentState = await stateManager.loadAgentState(operationId);
+
+          if (isTerminalState(currentState)) {
+            log(
+              `Operation ${operationId} is already %s before subscription attaches, emitting terminal fallback`,
+              currentState.status,
+            );
+            streamEnded = true;
+            writeTerminalFallbackEvent(writer, operationId, currentState);
+            cleanup();
+            controller.close();
+            return;
+          }
+        } catch (error) {
+          console.error('[Agent Stream] Failed to load runtime state:', error);
+        }
+
+        await subscribeToEvents(resumeEventId);
+      };
+
+      void initializeStream();
 
       // Listen for connection close
       request.signal?.addEventListener('abort', cleanup);

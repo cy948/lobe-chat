@@ -3,12 +3,151 @@ import { readFileSync } from 'node:fs';
 import type { Command } from 'commander';
 import pc from 'picocolors';
 
+import type { TrpcClient } from '../api/client';
 import { getTrpcClient } from '../api/client';
 import { getAuthInfo } from '../api/http';
 import { replayAgentEvents, streamAgentEvents } from '../utils/agentStream';
 import { bindCurrentDeviceToTopic } from '../utils/deviceBinding';
 import { confirm, outputJson, printTable, truncate } from '../utils/format';
 import { log, setVerbose } from '../utils/logger';
+
+const TERMINAL_AGENT_STATUSES = new Set(['done', 'error', 'interrupted']);
+const STATUS_FALLBACK_INTERVAL = 1000;
+
+type OperationStatus = Awaited<ReturnType<TrpcClient['aiAgent']['getOperationStatus']['query']>>;
+type TopicMessages = Awaited<ReturnType<TrpcClient['message']['getMessages']['query']>>;
+
+const isTerminalOperationStatus = (status: OperationStatus): boolean => {
+  if (!status) return false;
+  if (status.isCompleted || status.hasError) return true;
+
+  return TERMINAL_AGENT_STATUSES.has(status.currentState?.status || '');
+};
+
+const wait = (ms: number, signal: AbortSignal): Promise<void> =>
+  new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+
+const waitForTerminalOperationStatus = async (
+  client: TrpcClient,
+  operationId: string,
+  signal: AbortSignal,
+): Promise<OperationStatus> => {
+  while (!signal.aborted) {
+    try {
+      const status = await client.aiAgent.getOperationStatus.query({ operationId });
+
+      if (isTerminalOperationStatus(status)) {
+        return status;
+      }
+    } catch (error) {
+      log.debug(`Status fallback check failed for ${operationId}: ${String(error)}`);
+    }
+
+    await wait(STATUS_FALLBACK_INTERVAL, signal);
+  }
+
+  return null;
+};
+
+const renderStatusFallback = (status: NonNullable<OperationStatus>, json?: boolean) => {
+  const terminalEvent = {
+    data: {
+      finalState: status.currentState,
+      operationId: status.operationId,
+      phase: 'execution_complete',
+      reason:
+        status.currentState.status === 'interrupted'
+          ? 'interrupted'
+          : status.currentState.status === 'error'
+            ? 'error'
+            : 'completed',
+      reasonDetail: 'Agent stream did not terminate cleanly; CLI exited via status fallback.',
+    },
+    operationId: status.operationId,
+    stepIndex: status.currentState.stepCount || 0,
+    timestamp: Date.now(),
+    type: 'agent_runtime_end',
+  };
+
+  if (json) {
+    console.log(JSON.stringify([terminalEvent], null, 2));
+    return;
+  }
+
+  console.log();
+
+  if (status.currentState.status === 'error') {
+    const errorText =
+      typeof status.currentState.error === 'string'
+        ? status.currentState.error
+        : status.currentState.error
+          ? JSON.stringify(status.currentState.error, null, 2)
+          : 'Unknown runtime error';
+
+    log.error(`Agent failed (status fallback): ${errorText}`);
+    return;
+  }
+
+  const parts: string[] = [`${pc.green('✓')} Agent finished ${pc.dim('(status fallback)')}`];
+  const stepCount = status.currentState.stepCount;
+  const totalTokens = status.currentState.usage?.total_tokens;
+  const totalCost = status.currentState.cost?.total;
+
+  if (stepCount !== undefined) {
+    parts.push(`${stepCount} step${stepCount !== 1 ? 's' : ''}`);
+  }
+  if (totalTokens) {
+    parts.push(`${totalTokens} tokens`);
+  }
+  if (totalCost !== undefined) {
+    parts.push(`$${totalCost.toFixed(4)}`);
+  }
+
+  console.log(parts.join(pc.dim(' · ')));
+};
+
+const getLatestAssistantMessage = async (
+  client: TrpcClient,
+  topicId?: string | null,
+): Promise<string | null> => {
+  if (!topicId) return null;
+
+  try {
+    const messages = (await client.message.getMessages.query({
+      current: 0,
+      pageSize: 200,
+      topicId,
+    })) as TopicMessages;
+
+    if (!Array.isArray(messages)) return null;
+
+    const latestAssistant = [...messages]
+      .reverse()
+      .find((message) => message?.role === 'assistant' && typeof message.content === 'string');
+
+    return latestAssistant?.content?.trim() || null;
+  } catch (error) {
+    log.debug(`Failed to load fallback assistant message for topic ${topicId}: ${String(error)}`);
+    return null;
+  }
+};
 
 /**
  * Resolve an agent identifier (agentId or slug) to a concrete agentId.
@@ -315,18 +454,75 @@ export function registerAgentCommand(program: Command) {
         }
 
         const operationId = r.operationId;
+        const resolvedTopicId = r.topicId || options.topicId;
         if (!options.json) {
-          log.info(`Operation: ${pc.dim(operationId)} · Topic: ${pc.dim(r.topicId || 'n/a')}`);
+          log.info(
+            `Operation: ${pc.dim(operationId)} · Topic: ${pc.dim(resolvedTopicId || 'n/a')}`,
+          );
         }
 
         // 2. Connect to SSE stream
         const { serverUrl, headers } = await getAuthInfo();
         const streamUrl = `${serverUrl}/api/agent/stream?operationId=${encodeURIComponent(operationId)}&includeHistory=true`;
+        const abortController = new AbortController();
+        let settled = false;
+        let exitCode = 0;
 
-        await streamAgentEvents(streamUrl, headers, {
-          json: options.json,
-          verbose: options.verbose,
-        });
+        const settle = () => {
+          if (settled) return false;
+          settled = true;
+          return true;
+        };
+
+        const streamPromise = (async () => {
+          await streamAgentEvents(streamUrl, headers, {
+            json: options.json,
+            signal: abortController.signal,
+            verbose: options.verbose,
+          });
+
+          if (settle()) {
+            abortController.abort();
+          }
+        })();
+
+        const statusFallbackPromise = (async () => {
+          const status = await waitForTerminalOperationStatus(
+            client as TrpcClient,
+            operationId,
+            abortController.signal,
+          );
+
+          if (!status || !settle()) return;
+
+          abortController.abort();
+          const fallbackContent = await getLatestAssistantMessage(
+            client as TrpcClient,
+            resolvedTopicId,
+          );
+
+          if (!options.json && fallbackContent) {
+            console.log();
+            console.log(fallbackContent);
+          }
+
+          renderStatusFallback(status, options.json);
+
+          if (
+            status.currentState.status === 'error' ||
+            status.currentState.status === 'interrupted'
+          ) {
+            exitCode = 1;
+          }
+        })();
+
+        await Promise.race([streamPromise, statusFallbackPromise]);
+        abortController.abort();
+        await Promise.allSettled([streamPromise, statusFallbackPromise]);
+
+        if (exitCode !== 0) {
+          process.exit(exitCode);
+        }
       },
     );
 

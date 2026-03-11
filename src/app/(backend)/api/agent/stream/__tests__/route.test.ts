@@ -7,11 +7,16 @@ import { GET } from '../route';
 // Mock dependencies first
 const mockStreamEventManager = {
   getStreamHistory: vi.fn(),
+  subscribe: vi.fn(),
   subscribeStreamEvents: vi.fn(),
+};
+const mockStateManager = {
+  loadAgentState: vi.fn(),
 };
 
 vi.mock('@/server/modules/AgentRuntime', () => ({
-  StreamEventManager: vi.fn(() => mockStreamEventManager),
+  createAgentStateManager: vi.fn(() => mockStateManager),
+  createStreamEventManager: vi.fn(() => mockStreamEventManager),
 }));
 
 describe('/api/agent/stream route', () => {
@@ -21,6 +26,7 @@ describe('/api/agent/stream route', () => {
     vi.resetAllMocks();
     // Mock Date.now to return consistent timestamp
     vi.spyOn(Date, 'now').mockReturnValue(MOCK_TIMESTAMP);
+    mockStateManager.loadAgentState.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -178,7 +184,7 @@ describe('/api/agent/stream route', () => {
       ]);
 
       // Verify API calls
-      expect(mockStreamEventManager.getStreamHistory).toHaveBeenCalledWith('test-operation', 50);
+      expect(mockStreamEventManager.getStreamHistory).toHaveBeenCalledWith('test-operation', 200);
     });
 
     it('should close after replaying historical agent_runtime_end', async () => {
@@ -226,6 +232,103 @@ describe('/api/agent/stream route', () => {
         `id: test-operation\nevent: stream_end\ndata: {"type":"stream_end","timestamp":300,"operationId":"test-operation","data":{"messageId":"msg3"}}\n\n`,
         `id: test-operation\nevent: agent_runtime_end\ndata: {"type":"agent_runtime_end","timestamp":400,"operationId":"test-operation","data":{"status":"completed"}}\n\n`,
       ]);
+    });
+
+    it('should emit a terminal fallback event when the operation is already done but history has no end event', async () => {
+      const request = new NextRequest(
+        'https://test.com/api/agent/stream?operationId=test-operation&includeHistory=true',
+      );
+
+      mockStreamEventManager.getStreamHistory.mockResolvedValue([
+        {
+          id: 'evt-1',
+          type: 'stream_end',
+          timestamp: 300,
+          operationId: 'test-operation',
+          data: { messageId: 'msg3' },
+        },
+      ]);
+      mockStateManager.loadAgentState.mockResolvedValue({
+        status: 'done',
+        stepCount: 2,
+      });
+
+      const response = await GET(request);
+      const decoder = new TextDecoder();
+      const reader = response.body!.getReader();
+      const chunks: string[] = [];
+
+      while (true) {
+        const result = await reader.read();
+        if (result.done) break;
+        if (result.value) {
+          chunks.push(
+            result.value instanceof Uint8Array
+              ? decoder.decode(result.value)
+              : String(result.value),
+          );
+        }
+      }
+
+      reader.releaseLock();
+
+      expect(chunks).toEqual([
+        `id: conn_${MOCK_TIMESTAMP}\nevent: connected\ndata: {"lastEventId":"0","operationId":"test-operation","timestamp":${MOCK_TIMESTAMP},"type":"connected"}\n\n`,
+        `id: test-operation\nevent: stream_end\ndata: {"id":"evt-1","type":"stream_end","timestamp":300,"operationId":"test-operation","data":{"messageId":"msg3"}}\n\n`,
+        `id: test-operation\nevent: agent_runtime_end\ndata: {"data":{"finalState":{"status":"done","stepCount":2},"operationId":"test-operation","phase":"execution_complete","reason":"completed","reasonDetail":"Agent runtime completed before the stream attached"},"operationId":"test-operation","stepIndex":2,"timestamp":${MOCK_TIMESTAMP},"type":"agent_runtime_end"}\n\n`,
+      ]);
+      expect(mockStreamEventManager.subscribeStreamEvents).not.toHaveBeenCalled();
+    });
+
+    it('should support in-memory stream subscriptions in local mode', async () => {
+      const request = new NextRequest(
+        'https://test.com/api/agent/stream?operationId=test-operation',
+      );
+      const subscribeStreamEvents = mockStreamEventManager.subscribeStreamEvents;
+      (mockStreamEventManager as any).subscribeStreamEvents = undefined;
+
+      try {
+        mockStreamEventManager.subscribe.mockImplementation((_operationId, callback) => {
+          callback([
+            {
+              data: { status: 'completed' },
+              operationId: 'test-operation',
+              stepIndex: 1,
+              timestamp: 400,
+              type: 'agent_runtime_end',
+            },
+          ]);
+
+          return vi.fn();
+        });
+
+        const response = await GET(request);
+        const decoder = new TextDecoder();
+        const reader = response.body!.getReader();
+        const chunks: string[] = [];
+
+        while (true) {
+          const result = await reader.read();
+          if (result.done) break;
+          if (result.value) {
+            chunks.push(
+              result.value instanceof Uint8Array
+                ? decoder.decode(result.value)
+                : String(result.value),
+            );
+          }
+        }
+
+        reader.releaseLock();
+
+        expect(chunks).toEqual([
+          `id: conn_${MOCK_TIMESTAMP}\nevent: connected\ndata: {"lastEventId":"0","operationId":"test-operation","timestamp":${MOCK_TIMESTAMP},"type":"connected"}\n\n`,
+          `id: test-operation\nevent: agent_runtime_end\ndata: {"data":{"status":"completed"},"operationId":"test-operation","stepIndex":1,"timestamp":400,"type":"agent_runtime_end"}\n\n`,
+        ]);
+        expect(mockStreamEventManager.subscribe).toHaveBeenCalledOnce();
+      } finally {
+        (mockStreamEventManager as any).subscribeStreamEvents = subscribeStreamEvents;
+      }
     });
 
     it('should verify event filtering with exact format', async () => {
@@ -319,7 +422,7 @@ data: {"type":"stream_end","timestamp":300,"operationId":"test-operation","data"
       ]);
 
       // Verify API calls
-      expect(mockStreamEventManager.getStreamHistory).toHaveBeenCalledWith('test-operation', 50);
+      expect(mockStreamEventManager.getStreamHistory).toHaveBeenCalledWith('test-operation', 200);
     });
 
     it('should handle errors with exact error event format', async () => {
@@ -384,7 +487,7 @@ data: {"type":"stream_end","timestamp":300,"operationId":"test-operation","data"
       );
 
       // Verify getStreamHistory was called
-      expect(mockStreamEventManager.getStreamHistory).toHaveBeenCalledWith('test-operation', 50);
+      expect(mockStreamEventManager.getStreamHistory).toHaveBeenCalledWith('test-operation', 200);
     });
 
     it('should verify stream subscription with exact parameters', async () => {

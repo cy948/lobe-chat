@@ -20,6 +20,9 @@ const { mockTrpcClient } = vi.hoisted(() => ({
       getOperationStatus: { query: vi.fn() },
       listOnlineDevices: { query: vi.fn() },
     },
+    message: {
+      getMessages: { query: vi.fn() },
+    },
     topic: {
       updateTopicMetadata: { mutate: vi.fn() },
     },
@@ -76,11 +79,23 @@ describe('agent command', () => {
         (fn as ReturnType<typeof vi.fn>).mockReset();
       }
     }
+    for (const method of Object.values(mockTrpcClient.message)) {
+      for (const fn of Object.values(method)) {
+        (fn as ReturnType<typeof vi.fn>).mockReset();
+      }
+    }
     for (const method of Object.values(mockTrpcClient.topic)) {
       for (const fn of Object.values(method)) {
         (fn as ReturnType<typeof vi.fn>).mockReset();
       }
     }
+    mockTrpcClient.aiAgent.getOperationStatus.query.mockResolvedValue({
+      currentState: { status: 'running', stepCount: 0 },
+      hasError: false,
+      isCompleted: false,
+      operationId: 'op-default',
+    });
+    mockTrpcClient.message.getMessages.query.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -301,7 +316,11 @@ describe('agent command', () => {
       expect(mockStreamAgentEvents).toHaveBeenCalledWith(
         'https://example.com/api/agent/stream?operationId=op-123&includeHistory=true',
         expect.objectContaining({ 'Oidc-Auth': 'test-token' }),
-        expect.objectContaining({ json: undefined, verbose: undefined }),
+        expect.objectContaining({
+          json: undefined,
+          signal: expect.any(AbortSignal),
+          verbose: undefined,
+        }),
       );
     });
 
@@ -413,7 +432,94 @@ describe('agent command', () => {
       expect(mockStreamAgentEvents).toHaveBeenCalledWith(
         expect.any(String),
         expect.any(Object),
-        expect.objectContaining({ json: true }),
+        expect.objectContaining({ json: true, signal: expect.any(AbortSignal) }),
+      );
+    });
+
+    it('should exit via status fallback when the stream does not terminate', async () => {
+      mockTrpcClient.aiAgent.execAgent.mutate.mockResolvedValue({
+        operationId: 'op-fallback',
+        success: true,
+        topicId: 'topic-fallback',
+      });
+      mockTrpcClient.aiAgent.getOperationStatus.query.mockResolvedValueOnce({
+        currentState: { status: 'done', stepCount: 2, usage: { total_tokens: 42 } },
+        hasError: false,
+        isCompleted: true,
+        operationId: 'op-fallback',
+      });
+      mockTrpcClient.message.getMessages.query.mockResolvedValue([
+        { content: 'User prompt', role: 'user' },
+        { content: 'Final assistant reply', role: 'assistant' },
+      ]);
+      mockStreamAgentEvents.mockImplementation(
+        (_url: string, _headers: Record<string, string>, options: { signal?: AbortSignal }) =>
+          new Promise<void>((resolve) => {
+            options.signal?.addEventListener('abort', () => resolve(), { once: true });
+          }),
+      );
+
+      const program = createProgram();
+      await program.parseAsync([
+        'node',
+        'test',
+        'agent',
+        'run',
+        '--agent-id',
+        'a1',
+        '--prompt',
+        'Hello',
+      ]);
+
+      expect(mockTrpcClient.aiAgent.getOperationStatus.query).toHaveBeenCalledWith({
+        operationId: 'op-fallback',
+      });
+      expect(mockTrpcClient.message.getMessages.query).toHaveBeenCalledWith({
+        current: 0,
+        pageSize: 200,
+        topicId: 'topic-fallback',
+      });
+      expect(consoleSpy).toHaveBeenCalledWith('Final assistant reply');
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('status fallback'));
+    });
+
+    it('should serialize object errors in status fallback output', async () => {
+      mockTrpcClient.aiAgent.execAgent.mutate.mockResolvedValue({
+        operationId: 'op-error-fallback',
+        success: true,
+        topicId: 'topic-error',
+      });
+      mockTrpcClient.aiAgent.getOperationStatus.query.mockResolvedValueOnce({
+        currentState: {
+          error: { code: 'E_DEVICE', message: 'Device execution failed' },
+          status: 'error',
+          stepCount: 1,
+        },
+        hasError: true,
+        isCompleted: false,
+        operationId: 'op-error-fallback',
+      });
+      mockStreamAgentEvents.mockImplementation(
+        (_url: string, _headers: Record<string, string>, options: { signal?: AbortSignal }) =>
+          new Promise<void>((resolve) => {
+            options.signal?.addEventListener('abort', () => resolve(), { once: true });
+          }),
+      );
+
+      const program = createProgram();
+      await program.parseAsync([
+        'node',
+        'test',
+        'agent',
+        'run',
+        '--agent-id',
+        'a1',
+        '--prompt',
+        'Hello',
+      ]);
+
+      expect(log.error).toHaveBeenCalledWith(
+        expect.stringContaining('"message": "Device execution failed"'),
       );
     });
 

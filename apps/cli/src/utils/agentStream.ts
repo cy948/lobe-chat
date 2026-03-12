@@ -70,15 +70,18 @@ export async function streamAgentEvents(
 
         // Empty line = end of SSE message
         if (line === '' && eventData) {
-          if (eventType === 'heartbeat') {
-            log.heartbeat();
-            eventType = '';
-            eventData = '';
-            continue;
-          }
-
           try {
             const event: AgentStreamEvent = JSON.parse(eventData);
+            const effectiveType = eventType || event.type;
+
+            console.log(`received event: ${effectiveType || 'unknown'}`);
+
+            if (effectiveType === 'heartbeat') {
+              log.heartbeat();
+              eventType = '';
+              eventData = '';
+              continue;
+            }
 
             if (options.json) {
               jsonEvents.push(event);
@@ -99,9 +102,7 @@ export async function streamAgentEvents(
               if (options.json) {
                 console.log(JSON.stringify(jsonEvents, null, 2));
               }
-              log.error(
-                `Agent error: ${event.data?.message || event.data?.error || 'Unknown error'}`,
-              );
+              log.error(`Agent error: ${formatEventError(event)}`);
               process.exit(1);
             }
           } catch {
@@ -146,7 +147,7 @@ export function replayAgentEvents(events: AgentStreamEvent[], options: StreamOpt
     }
 
     if (event.type === 'error') {
-      log.error(`Agent error: ${event.data?.message || event.data?.error || 'Unknown error'}`);
+      log.error(`Agent error: ${formatEventError(event)}`);
       return;
     }
   }
@@ -256,4 +257,23 @@ function renderEnd(event: AgentStreamEvent): void {
   }
 
   console.log(parts.join(pc.dim(' · ')));
+}
+
+function formatEventError(event: AgentStreamEvent): string {
+  const phase = event.data?.phase ? `${event.data.phase}: ` : '';
+  const errorType =
+    event.data?.errorType || event.data?.type || event.data?.finalState?.error?.type;
+  const message =
+    event.data?.message ||
+    event.data?.error ||
+    event.data?.reasonDetail ||
+    event.data?.finalState?.error?.message ||
+    event.data?.finalState?.error?.type ||
+    'Unknown error';
+
+  if (errorType && errorType !== message) {
+    return `${phase}${errorType}: ${message}`;
+  }
+
+  return `${phase}${message}`;
 }

@@ -1,8 +1,10 @@
 # Device Gateway
 
-设备网关服务，用于本地开发与调试。
+**English** · [简体中文](./README.zh-CN.md)
 
-## Gateway 启动
+Device Gateway is a local service for development and debugging.
+
+## Gateway Startup
 
 ```bash
 cat > .dev.vars << EOF
@@ -13,14 +15,14 @@ bun i
 bun dev
 ```
 
-## 主服务端环境变量
+## Server Environment Variables
 
-主服务端通过以下环境变量连接 Device Gateway：
+The main server connects to Device Gateway with the following environment variables:
 
 ```bash
-# Device Gateway 的 HTTP 基础地址，例如 https://device-gateway.example.com
-# 在本地开发时，通常是 http://localhost:8787
+# The base HTTP URL of Device Gateway, for example https://device-gateway.example.com
+# In local development, this is usually http://localhost:8787
 DEVICE_GATEWAY_URL=http://localhost:8787
-# 与 Device Gateway 中的 SERVICE_TOKEN 保持一致
+# Must match SERVICE_TOKEN configured in Device Gateway
 DEVICE_GATEWAY_SERVICE_TOKEN=dev-service-token
 ```

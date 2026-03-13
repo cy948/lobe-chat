@@ -30,7 +30,7 @@ export async function POST(req: Request) {
       threadId,
       topicId,
       userId,
-      operationId: _operationId,
+      operationId,
       reason,
       status,
       cost,
@@ -69,7 +69,7 @@ export async function POST(req: Request) {
     const service = new AgentEvalRunService(db, userId);
 
     const { allThreadsDone, allRunDone } = await service.recordThreadCompletion({
-      operationId: _operationId,
+      operationId,
       runId,
       status,
       telemetry: {

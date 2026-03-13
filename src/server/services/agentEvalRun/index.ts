@@ -27,6 +27,7 @@ import { AgentService } from '@/server/services/agent';
 import { AgentRuntimeService } from '@/server/services/agentRuntime/AgentRuntimeService';
 import { AiAgentService } from '@/server/services/aiAgent';
 import { AgentEvalRunWorkflow } from '@/server/workflows/agentEvalRun';
+import { getTimeoutResumeDecision } from '@/utils/eval/timeoutResume';
 
 /** Round cost to at most 6 decimal places to avoid floating-point noise */
 const roundCost = (v: number): number => Math.round(v * 1e6) / 1e6;
@@ -75,6 +76,7 @@ export class AgentEvalRunService {
     run: { config?: EvalRunConfig | null },
     runTopic: {
       createdAt?: Date | null;
+      evalResult?: EvalRunTopicResult | null;
       status?: string | null;
       testCase?: { content?: { input?: string } | null } | null;
       testCaseId: string;
@@ -83,38 +85,11 @@ export class AgentEvalRunService {
     messages: any[] = [],
   ) {
     const timeoutMs = this.getRunTimeoutMs(run);
-    const anchor = this.getTimeoutResumeAnchor(runTopic, messages);
-
-    if (runTopic.status !== 'timeout') {
-      return {
-        eligible: false,
-        reason: `status=${runTopic.status ?? 'unknown'}`,
-        timeoutMs,
-      };
-    }
-
-    if (!anchor) {
-      return {
-        eligible: false,
-        reason: 'missing_timeout_anchor',
-        timeoutMs,
-      };
-    }
-
-    const elapsedMs = Date.now() - new Date(anchor).getTime();
-    if (elapsedMs > timeoutMs) {
-      return {
-        eligible: false,
-        reason: 'resume_window_expired',
-        timeoutMs,
-      };
-    }
-
-    return {
-      eligible: true,
-      reason: undefined,
+    return getTimeoutResumeDecision({
+      durationMs: runTopic.evalResult?.duration,
+      status: runTopic.status,
       timeoutMs,
-    };
+    });
   }
 
   async previewTimeoutResumes(runId: string) {
@@ -126,12 +101,14 @@ export class AgentEvalRunService {
 
     const eligibleTopics: Array<{
       anchorAt?: Date | null;
+      duration?: number;
       input?: string;
       testCaseId: string;
       topicId: string;
     }> = [];
     const skippedTopics: Array<{
       anchorAt?: Date | null;
+      duration?: number;
       input?: string;
       reason: string;
       testCaseId: string;
@@ -145,6 +122,7 @@ export class AgentEvalRunService {
       const decision = this.getTimeoutResumeDecision(run, topic, messages);
       const item = {
         anchorAt: this.getTimeoutResumeAnchor(topic, messages),
+        duration: (topic.evalResult as EvalRunTopicResult | undefined)?.duration,
         input: topic.testCase?.content?.input,
         testCaseId: topic.testCaseId,
         topicId: topic.topicId,

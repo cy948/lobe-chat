@@ -105,6 +105,7 @@ describe('AgentEvalRunService resume timeout', () => {
     await runTopicModel.updateByRunAndTopic(run.id, runTopic!.topicId, {
       evalResult: {
         completionReason: 'timeout',
+        duration: 120_000,
         operationId: 'op-expired',
         rubricScores: [],
       },
@@ -276,7 +277,7 @@ describe('AgentEvalRunService resume timeout', () => {
     expect(updatedPendingThread?.metadata?.operationId).toBe('op-recreated');
   });
 
-  it('should skip previewing stale timeout cases that exceeded the resume timeout window', async () => {
+  it('should skip previewing timeout cases whose duration exceeded the configured timeout', async () => {
     const { run, cases } = await setupMultiCaseRun([{ assistantOutput: null }]);
     const runModel = new AgentEvalRunModel(serverDB, userId);
     await runModel.update(run.id, {
@@ -295,21 +296,13 @@ describe('AgentEvalRunService resume timeout', () => {
       status: 'timeout',
     });
 
-    await serverDB.insert(messages).values({
-      content: 'stale message',
-      createdAt: new Date(Date.now() - 120_000),
-      role: 'assistant',
-      topicId: runTopic!.topicId,
-      userId,
-    });
-
     const service = new AgentEvalRunService(serverDB, userId);
     const preview = await service.previewTimeoutResumes(run.id);
 
     expect(preview.eligibleTopics).toHaveLength(0);
     expect(preview.skippedTopics).toEqual([
       expect.objectContaining({
-        reason: 'resume_window_expired',
+        reason: 'timeout_exceeded',
         testCaseId: cases[0].testCase.id,
         topicId: runTopic!.topicId,
       }),

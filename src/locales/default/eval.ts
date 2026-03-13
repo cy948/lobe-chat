@@ -214,11 +214,16 @@ export default {
   'run.actions.resumeTimeouts.preview.eligible': 'Tasks to be queued',
   'run.actions.resumeTimeouts.preview.skipped': 'Tasks skipped',
   'run.actions.resumeTimeouts.preview.empty': 'No timeout cases are currently eligible for resume.',
+  'run.actions.resumeTimeouts.preview.emptyEligible': 'Should increase timeout settings in Run',
   'run.actions.resumeTimeouts.preview.timeoutWindow': 'Resume window: {{minutes}} min',
-  'run.actions.resumeTimeouts.preview.reason.resume_window_expired':
-    'Skipped: exceeded the allowed resume timeout window',
-  'run.actions.resumeTimeouts.preview.reason.missing_timeout_anchor':
-    'Skipped: missing timeout anchor timestamp',
+  'run.actions.resumeTimeouts.preview.columns.caseId': 'Case ID',
+  'run.actions.resumeTimeouts.preview.columns.duration': 'Duration',
+  'run.actions.resumeTimeouts.preview.columns.status': 'Status',
+  'run.actions.resumeTimeouts.preview.ready': 'Ready',
+  'run.actions.resumeTimeouts.preview.reason.timeout_exceeded':
+    'Skipped: duration exceeds the configured timeout',
+  'run.actions.resumeTimeouts.preview.reason.missing_timeout_duration':
+    'Skipped: missing timeout duration',
   'run.actions.resumeTimeouts.preview.reason.unknown': 'Skipped: unknown reason',
   'run.actions.run': 'Run',
   'run.edit.error': 'Failed to update evaluation',

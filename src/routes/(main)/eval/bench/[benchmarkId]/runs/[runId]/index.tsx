@@ -1,12 +1,14 @@
 'use client';
 
 import { Flexbox } from '@lobehub/ui';
-import { App, Button, Card, Progress, Typography } from 'antd';
+import { App, Button, Card, Progress, Table, Tag, Typography } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { Play, RotateCcw } from 'lucide-react';
-import { Fragment, memo, useState } from 'react';
+import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 
+import { formatDuration } from '@/routes/(main)/eval/utils';
 import { runSelectors, useEvalStore } from '@/store/eval';
 
 import CaseResultsTable from './features/CaseResultsTable';
@@ -18,6 +20,15 @@ import RunningState from './features/RunningState';
 import StatsCards from './features/StatsCards';
 
 const POLLING_INTERVAL = 3000;
+
+interface TimeoutPreviewItem {
+  anchorAt?: Date | null;
+  duration?: number;
+  input?: string;
+  reason?: string;
+  testCaseId: string;
+  topicId: string;
+}
 
 const RunDetail = memo(() => {
   const { t } = useTranslation('eval');
@@ -56,34 +67,77 @@ const RunDetail = memo(() => {
   const progress = totalCases > 0 ? Math.round((completedCases / totalCases) * 100) : 0;
   const showProgress = totalCases > 0 && progress < 100;
   const errorCount = (metrics?.errorCases ?? 0) + (metrics?.timeoutCases ?? 0);
-  const timeoutCount = metrics?.timeoutCases ?? 0;
   const canRetry = isFinished && errorCount > 0;
-  const canResumeTimeouts = isFinished && timeoutCount > 0;
-  const renderPreviewList = (
-    items: Array<{ input?: string; reason?: string; testCaseId: string }>,
-    showReason = false,
-  ) =>
+  const hasTimeoutResults = !!runResults?.results?.some(
+    (item: { status?: string | null }) => item.status === 'timeout',
+  );
+  const canResumeTimeouts = hasTimeoutResults;
+  const getPreviewColumns = (): ColumnsType<TimeoutPreviewItem> => [
+    {
+      dataIndex: 'testCaseId',
+      key: 'testCaseId',
+      render: (value: string) => (
+        <span style={{ color: 'var(--ant-color-text-secondary)', fontFamily: 'monospace' }}>
+          #{value.slice(0, 8)}
+        </span>
+      ),
+      title: t('run.actions.resumeTimeouts.preview.columns.caseId'),
+      width: 120,
+    },
+    {
+      dataIndex: 'input',
+      key: 'input',
+      render: (value?: string, record?: TimeoutPreviewItem) => value || record?.testCaseId || '-',
+      title: t('table.columns.input'),
+    },
+    {
+      dataIndex: 'duration',
+      key: 'duration',
+      render: (value?: number) =>
+        value !== undefined && value !== null ? (
+          <Typography.Text style={{ fontFamily: 'monospace' }} type="secondary">
+            {formatDuration(value)}
+          </Typography.Text>
+        ) : (
+          '-'
+        ),
+      title: t('run.actions.resumeTimeouts.preview.columns.duration'),
+      width: 140,
+    },
+    {
+      dataIndex: 'reason',
+      key: 'reason',
+      render: (reason?: string) =>
+        reason ? (
+          <Tag bordered={false} color="default">
+            {t(`run.actions.resumeTimeouts.preview.reason.${reason}`, {
+              defaultValue: t('run.actions.resumeTimeouts.preview.reason.unknown'),
+            })}
+          </Tag>
+        ) : (
+          <Tag bordered={false} color="success">
+            {t('run.actions.resumeTimeouts.preview.ready')}
+          </Tag>
+        ),
+      title: t('run.actions.resumeTimeouts.preview.columns.status'),
+      width: 220,
+    },
+  ];
+
+  const renderPreviewTable = (items: TimeoutPreviewItem[], emptyText?: string) =>
     items.length === 0 ? (
       <Typography.Text type="secondary">
-        {t('run.actions.resumeTimeouts.preview.empty')}
+        {emptyText || t('run.actions.resumeTimeouts.preview.empty')}
       </Typography.Text>
     ) : (
-      <Flexbox gap={6}>
-        {items.map((item) => (
-          <Fragment key={item.testCaseId}>
-            <Typography.Text>
-              #{item.testCaseId.slice(0, 8)} · {item.input || item.testCaseId}
-            </Typography.Text>
-            {showReason && item.reason && (
-              <Typography.Text type="secondary">
-                {t(`run.actions.resumeTimeouts.preview.reason.${item.reason}`, {
-                  defaultValue: t('run.actions.resumeTimeouts.preview.reason.unknown'),
-                })}
-              </Typography.Text>
-            )}
-          </Fragment>
-        ))}
-      </Flexbox>
+      <Table<TimeoutPreviewItem>
+        columns={getPreviewColumns()}
+        dataSource={items}
+        pagination={false}
+        rowKey="testCaseId"
+        scroll={{ y: 240 }}
+        size="small"
+      />
     );
 
   return (
@@ -194,14 +248,17 @@ const RunDetail = memo(() => {
                                   {t('run.actions.resumeTimeouts.preview.eligible')} (
                                   {preview.eligibleTopics.length})
                                 </Typography.Text>
-                                {renderPreviewList(preview.eligibleTopics)}
+                                {renderPreviewTable(
+                                  preview.eligibleTopics,
+                                  t('run.actions.resumeTimeouts.preview.emptyEligible'),
+                                )}
                               </Flexbox>
                               <Flexbox gap={8}>
                                 <Typography.Text strong>
                                   {t('run.actions.resumeTimeouts.preview.skipped')} (
                                   {preview.skippedTopics.length})
                                 </Typography.Text>
-                                {renderPreviewList(preview.skippedTopics, true)}
+                                {renderPreviewTable(preview.skippedTopics)}
                               </Flexbox>
                             </Flexbox>
                           ),
@@ -216,6 +273,7 @@ const RunDetail = memo(() => {
                             }
                           },
                           title: t('run.actions.resumeTimeouts.preview.title'),
+                          width: 960,
                         });
                       } catch (error: any) {
                         message.error(error?.message || t('run.actions.resumeTimeouts'));

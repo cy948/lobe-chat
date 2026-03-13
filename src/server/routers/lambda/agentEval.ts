@@ -823,12 +823,7 @@ export const agentEvalRouter = router({
         ),
       );
 
-      return {
-        queuedCount: preview.eligibleTopics.length,
-        runId: input.id,
-        skippedCount: preview.skippedTopics.length,
-        success: true,
-      };
+      return { success: true };
     }),
 
   previewRunTimeouts: agentEvalProcedure
@@ -861,7 +856,7 @@ export const agentEvalRouter = router({
         userId: ctx.userId,
       });
 
-      return { runId: input.runId, success: true, testCaseId: input.testCaseId };
+      return { success: true };
     }),
 
   /**

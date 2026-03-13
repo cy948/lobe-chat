@@ -53,6 +53,7 @@ describe('AgentEvalRunService resume timeout', () => {
     await runTopicModel.updateByRunAndTopic(run.id, runTopic!.topicId, {
       evalResult: {
         completionReason: 'timeout',
+        duration: 30_000,
         operationId: 'op-existing',
         rubricScores: [],
       },
@@ -196,7 +197,7 @@ describe('AgentEvalRunService resume timeout', () => {
     const runTopicModel = new AgentEvalRunTopicModel(serverDB, userId);
     const runTopic = await runTopicModel.findByRunAndTestCase(run.id, cases[0].testCase.id);
     await runTopicModel.updateByRunAndTopic(run.id, runTopic!.topicId, {
-      evalResult: { completionReason: 'timeout', rubricScores: [] },
+      evalResult: { completionReason: 'timeout', duration: 30_000, rubricScores: [] },
       status: 'timeout',
     });
 

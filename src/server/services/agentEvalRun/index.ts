@@ -65,24 +65,12 @@ export class AgentEvalRunService {
     return (run.config?.timeout as number) ?? DEFAULT_EVAL_TIMEOUT;
   }
 
-  private getTimeoutResumeAnchor(runTopic: { createdAt?: Date | null }, messages: any[] = []) {
-    const latestMessage = messages.at(-1);
-    return latestMessage?.createdAt
-      ? new Date(latestMessage.createdAt)
-      : (runTopic.createdAt ?? null);
-  }
-
   private getTimeoutResumeDecision(
     run: { config?: EvalRunConfig | null },
     runTopic: {
-      createdAt?: Date | null;
       evalResult?: EvalRunTopicResult | null;
       status?: string | null;
-      testCase?: { content?: { input?: string } | null } | null;
-      testCaseId: string;
-      topicId: string;
     },
-    messages: any[] = [],
   ) {
     const timeoutMs = this.getRunTimeoutMs(run);
     return getTimeoutResumeDecision({
@@ -100,14 +88,12 @@ export class AgentEvalRunService {
     const timeoutMs = this.getRunTimeoutMs(run);
 
     const eligibleTopics: Array<{
-      anchorAt?: Date | null;
       duration?: number;
       input?: string;
       testCaseId: string;
       topicId: string;
     }> = [];
     const skippedTopics: Array<{
-      anchorAt?: Date | null;
       duration?: number;
       input?: string;
       reason: string;
@@ -118,10 +104,8 @@ export class AgentEvalRunService {
     for (const topic of runTopics) {
       if (topic.status !== 'timeout') continue;
 
-      const messages = await this.messageModel.query({ topicId: topic.topicId });
-      const decision = this.getTimeoutResumeDecision(run, topic, messages);
+      const decision = this.getTimeoutResumeDecision(run, topic);
       const item = {
-        anchorAt: this.getTimeoutResumeAnchor(topic, messages),
         duration: (topic.evalResult as EvalRunTopicResult | undefined)?.duration,
         input: topic.testCase?.content?.input,
         testCaseId: topic.testCaseId,
@@ -735,8 +719,7 @@ export class AgentEvalRunService {
 
     const runTopic = await this.runTopicModel.findByRunAndTestCase(runId, testCaseId);
     if (!runTopic) throw new Error('RunTopic not found');
-    const topicMessagesForDecision = await this.messageModel.query({ topicId: runTopic.topicId });
-    const decision = this.getTimeoutResumeDecision(run, runTopic, topicMessagesForDecision);
+    const decision = this.getTimeoutResumeDecision(run, runTopic);
     if (!decision.eligible) {
       throw new Error(`RunTopic is not resumable: ${decision.reason}`);
     }

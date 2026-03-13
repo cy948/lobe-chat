@@ -22,7 +22,6 @@ import StatsCards from './features/StatsCards';
 const POLLING_INTERVAL = 3000;
 
 interface TimeoutPreviewItem {
-  anchorAt?: Date | null;
   duration?: number;
   input?: string;
   reason?: string;

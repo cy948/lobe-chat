@@ -31,7 +31,6 @@ import { getTimeoutResumeDecision } from '@/utils/eval/timeoutResume';
 
 /** Round cost to at most 6 decimal places to avoid floating-point noise */
 const roundCost = (v: number): number => Math.round(v * 1e6) / 1e6;
-const resolveAppUrl = () => process.env.APP_URL || appEnv.APP_URL;
 const DEFAULT_EVAL_TIMEOUT = 1_200_000;
 
 export class AgentEvalRunService {
@@ -547,7 +546,7 @@ export class AgentEvalRunService {
     const aiAgentService = new AiAgentService(this.db, this.userId);
     const webhookUrl = new URL(
       '/api/workflows/agent-eval-run/on-trajectory-complete',
-      resolveAppUrl(),
+      appEnv.APP_URL,
     ).toString();
 
     try {
@@ -664,7 +663,7 @@ export class AgentEvalRunService {
     const aiAgentService = new AiAgentService(this.db, this.userId);
     const webhookUrl = new URL(
       '/api/workflows/agent-eval-run/on-thread-complete',
-      resolveAppUrl(),
+      appEnv.APP_URL,
     ).toString();
 
     try {
@@ -726,11 +725,11 @@ export class AgentEvalRunService {
 
     const completionWebhook = new URL(
       '/api/workflows/agent-eval-run/on-trajectory-complete',
-      resolveAppUrl(),
+      appEnv.APP_URL,
     ).toString();
     const threadCompletionWebhook = new URL(
       '/api/workflows/agent-eval-run/on-thread-complete',
-      resolveAppUrl(),
+      appEnv.APP_URL,
     ).toString();
 
     const agentSnapshot =

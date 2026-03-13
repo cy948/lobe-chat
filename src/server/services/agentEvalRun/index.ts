@@ -119,14 +119,12 @@ export class AgentEvalRunService {
       duration?: number;
       input?: string;
       testCaseId: string;
-      topicId: string;
     }> = [];
     const skippedTopics: Array<{
       duration?: number;
       input?: string;
       reason: string;
       testCaseId: string;
-      topicId: string;
     }> = [];
 
     for (const topic of runTopics) {
@@ -137,7 +135,6 @@ export class AgentEvalRunService {
         duration: (topic.evalResult as EvalRunTopicResult | undefined)?.duration,
         input: topic.testCase?.content?.input,
         testCaseId: topic.testCaseId,
-        topicId: topic.topicId,
       };
 
       if (decision.eligible) {

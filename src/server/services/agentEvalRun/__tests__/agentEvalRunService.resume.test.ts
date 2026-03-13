@@ -330,7 +330,6 @@ describe('AgentEvalRunService resume timeout', () => {
       expect.objectContaining({
         reason: 'timeout_exceeded',
         testCaseId: cases[0].testCase.id,
-        topicId: runTopic!.topicId,
       }),
     ]);
   });

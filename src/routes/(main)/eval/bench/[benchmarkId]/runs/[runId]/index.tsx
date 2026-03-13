@@ -26,7 +26,6 @@ interface TimeoutPreviewItem {
   input?: string;
   reason?: string;
   testCaseId: string;
-  topicId: string;
 }
 
 const RunDetail = memo(() => {

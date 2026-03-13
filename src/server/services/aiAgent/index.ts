@@ -109,10 +109,6 @@ interface InternalExecAgentParams extends Omit<ExecAgentParams, 'prompt'> {
   initialMessages?: any[];
   /** Maximum steps for the agent operation */
   maxSteps?: number;
-  /**
-   * Whether the LLM call should use streaming.
-   * Defaults to true. Set to false for non-streaming scenarios (e.g., bot integrations).
-   */
   prompt?: string;
   /** Step lifecycle callbacks for operation tracking (server-side only) */
   stepCallbacks?: StepLifecycleCallbacks;

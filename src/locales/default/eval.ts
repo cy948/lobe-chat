@@ -202,6 +202,24 @@ export default {
   'run.actions.retryErrors': 'Retry Errors',
   'run.actions.retryErrors.confirm':
     'This will re-run all error and timeout cases. Passed and failed cases will not be affected.',
+  'run.actions.resumeCase': 'Resume',
+  'run.actions.resumeTimeouts': 'Resume Timeouts',
+  'run.actions.resumeTimeouts.confirm':
+    'This will submit resume tasks for all timeout cases. Execution will continue after QStash schedules them.',
+  'run.actions.resumeTimeouts.success':
+    'Resume tasks have been submitted and are waiting for QStash scheduling.',
+  'run.actions.resumeCase.success':
+    'Resume task has been submitted and is waiting for QStash scheduling.',
+  'run.actions.resumeTimeouts.preview.title': 'Resume Timeout Cases',
+  'run.actions.resumeTimeouts.preview.eligible': 'Tasks to be queued',
+  'run.actions.resumeTimeouts.preview.skipped': 'Tasks skipped',
+  'run.actions.resumeTimeouts.preview.empty': 'No timeout cases are currently eligible for resume.',
+  'run.actions.resumeTimeouts.preview.timeoutWindow': 'Resume window: {{minutes}} min',
+  'run.actions.resumeTimeouts.preview.reason.resume_window_expired':
+    'Skipped: exceeded the allowed resume timeout window',
+  'run.actions.resumeTimeouts.preview.reason.missing_timeout_anchor':
+    'Skipped: missing timeout anchor timestamp',
+  'run.actions.resumeTimeouts.preview.reason.unknown': 'Skipped: unknown reason',
   'run.actions.run': 'Run',
   'run.edit.error': 'Failed to update evaluation',
   'run.edit.success': 'Evaluation updated successfully',

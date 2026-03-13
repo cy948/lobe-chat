@@ -26,9 +26,12 @@ export interface RunAction {
   internal_dispatchRunDetail: (payload: RunDetailDispatch) => void;
   internal_updateRunDetailLoading: (id: string, loading: boolean) => void;
   internal_updateRunResultLoading: (id: string, loading: boolean) => void;
+  previewRunTimeouts: (id: string) => Promise<any>;
   refreshDatasetRuns: (datasetId: string) => Promise<void>;
   refreshRunDetail: (id: string) => Promise<void>;
   refreshRuns: (benchmarkId?: string) => Promise<void>;
+  resumeRunTimeoutCase: (runId: string, testCaseId: string) => Promise<void>;
+  resumeRunTimeouts: (id: string) => Promise<void>;
   retryRunCase: (runId: string, testCaseId: string) => Promise<void>;
   retryRunErrors: (id: string) => Promise<void>;
   startRun: (id: string, force?: boolean) => Promise<void>;
@@ -71,6 +74,10 @@ export const createRunSlice: StateCreator<
     await agentEvalService.deleteRun(id);
     get().internal_dispatchRunDetail({ id, type: 'deleteRunDetail' });
     await get().refreshRuns();
+  },
+
+  previewRunTimeouts: async (id) => {
+    return agentEvalService.previewRunTimeouts(id);
   },
 
   internal_dispatchRunDetail: (payload) => {
@@ -127,6 +134,16 @@ export const createRunSlice: StateCreator<
       // Revalidate all benchmark-level run list entries
       await mutate((key) => Array.isArray(key) && key[0] === FETCH_RUNS_KEY);
     }
+  },
+
+  resumeRunTimeoutCase: async (runId, testCaseId) => {
+    await agentEvalService.resumeRunTimeoutCase(runId, testCaseId);
+    await get().refreshRunDetail(runId);
+  },
+
+  resumeRunTimeouts: async (id) => {
+    await agentEvalService.resumeRunTimeouts(id);
+    await get().refreshRunDetail(id);
   },
 
   retryRunCase: async (runId, testCaseId) => {

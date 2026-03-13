@@ -12,6 +12,7 @@ import type { LobeToolManifest } from '@lobechat/context-engine';
 import type { LobeChatDatabase } from '@lobechat/database';
 import type {
   ChatTopicBotContext,
+  EvalRunAgentSnapshot,
   ExecAgentParams,
   ExecAgentResult,
   ExecGroupAgentParams,
@@ -136,6 +137,23 @@ interface InternalExecAgentParams extends ExecAgentParams {
    * - 'qstash': deliver via QStash publishJSON for guaranteed delivery
    */
   webhookDelivery?: 'fetch' | 'qstash';
+}
+
+interface ResumeOperationParams {
+  agentSnapshot?: EvalRunAgentSnapshot | null;
+  appContext: {
+    agentId?: string | null;
+    threadId?: string | null;
+    topicId: string;
+  };
+  completionWebhook?: {
+    body?: Record<string, unknown>;
+    url: string;
+  };
+  evalContext?: EvalContext;
+  initialContext: AgentRuntimeContext;
+  initialMessages: any[];
+  maxSteps?: number;
 }
 
 /**
@@ -811,6 +829,228 @@ export class AiAgentService {
         userMessageId: userMessageRecord.id,
       };
     }
+  }
+
+  async createOperationFromTrajectory(params: ResumeOperationParams): Promise<{
+    operationId: string;
+    success: true;
+  }> {
+    const {
+      agentSnapshot,
+      appContext,
+      completionWebhook,
+      evalContext,
+      initialContext,
+      initialMessages,
+      maxSteps,
+    } = params;
+
+    const topicId = appContext.topicId;
+    const threadId = appContext.threadId ?? undefined;
+
+    if (!agentSnapshot?.model || !agentSnapshot.provider) {
+      throw new Error('Agent snapshot with model/provider is required to recreate eval operation');
+    }
+
+    const model = agentSnapshot.model;
+    const provider = agentSnapshot.provider;
+
+    const runtimeAgentConfig = {
+      avatar: agentSnapshot.avatar ?? undefined,
+      chatConfig: agentSnapshot.chatConfig ?? undefined,
+      fewShots: agentSnapshot.fewShots ?? undefined,
+      model,
+      params: agentSnapshot.params ?? undefined,
+      plugins: agentSnapshot.plugins ?? [],
+      provider,
+      systemRole: agentSnapshot.systemRole ?? undefined,
+      title: agentSnapshot.title ?? undefined,
+    };
+
+    const installedPlugins = await this.pluginModel.query();
+    const { LOBE_DEFAULT_MODEL_LIST } = await import('model-bank');
+    const isModelSupportToolUse = (m: string, p: string) => {
+      const info = LOBE_DEFAULT_MODEL_LIST.find((item) => item.id === m && item.providerId === p);
+      return info?.abilities?.functionCall ?? true;
+    };
+
+    let lobehubSkillManifests: LobeToolManifest[] = [];
+    try {
+      lobehubSkillManifests = await this.marketService.getLobehubSkillManifests();
+    } catch (error) {
+      log('createOperationFromTrajectory: failed to fetch lobehub skill manifests: %O', error);
+    }
+
+    let klavisManifests: LobeToolManifest[] = [];
+    try {
+      klavisManifests = await this.klavisService.getKlavisManifests();
+    } catch (error) {
+      log('createOperationFromTrajectory: failed to fetch klavis manifests: %O', error);
+    }
+
+    let globalMemoryEnabled = false;
+    let userTimezone: string | undefined;
+    try {
+      const userModel = new UserModel(this.db, this.userId);
+      const settings = await userModel.getUserSettings();
+      const memorySettings = settings?.memory as { enabled?: boolean } | undefined;
+      globalMemoryEnabled = memorySettings?.enabled !== false;
+      const generalSettings = settings?.general as { timezone?: string } | undefined;
+      userTimezone = generalSettings?.timezone;
+    } catch (error) {
+      log('createOperationFromTrajectory: failed to fetch user settings: %O', error);
+    }
+
+    const gatewayConfigured = deviceProxy.isConfigured;
+    const boundDeviceId = (runtimeAgentConfig as any).agencyConfig?.boundDeviceId;
+    let onlineDevices: DeviceAttachment[] = [];
+    if (gatewayConfigured) {
+      try {
+        onlineDevices = await deviceProxy.queryDeviceList(this.userId);
+      } catch (error) {
+        log('createOperationFromTrajectory: failed to query device list: %O', error);
+      }
+    }
+    const deviceOnline = onlineDevices.length > 0;
+
+    const toolsEngine = createServerAgentToolsEngine(
+      {
+        installedPlugins,
+        isModelSupportToolUse,
+      } satisfies ServerAgentToolsContext,
+      {
+        additionalManifests: [...lobehubSkillManifests, ...klavisManifests],
+        agentConfig: {
+          chatConfig: runtimeAgentConfig.chatConfig ?? undefined,
+          plugins: runtimeAgentConfig.plugins ?? undefined,
+        },
+        deviceContext: gatewayConfigured
+          ? { boundDeviceId, deviceOnline, gatewayConfigured: true }
+          : undefined,
+        globalMemoryEnabled,
+        hasEnabledKnowledgeBases: false,
+        model,
+        provider,
+      },
+    );
+
+    const pluginIds = [
+      ...(runtimeAgentConfig.plugins || []),
+      LocalSystemManifest.identifier,
+      RemoteDeviceManifest.identifier,
+    ];
+
+    const toolsResult = toolsEngine.generateToolsDetailed({ model, provider, toolIds: pluginIds });
+    const tools = toolsResult.tools;
+
+    const manifestMap = toolsEngine.getEnabledPluginManifests(pluginIds);
+    const toolManifestMap: Record<string, any> = {};
+    manifestMap.forEach((manifest, id) => {
+      toolManifestMap[id] = manifest;
+    });
+
+    const toolSourceMap: Record<string, 'builtin' | 'plugin' | 'mcp' | 'klavis' | 'lobehubSkill'> =
+      {};
+    for (const manifest of lobehubSkillManifests) {
+      toolSourceMap[manifest.identifier] = 'lobehubSkill';
+    }
+    for (const manifest of klavisManifests) {
+      toolSourceMap[manifest.identifier] = 'klavis';
+    }
+
+    if (toolManifestMap[RemoteDeviceManifest.identifier]) {
+      toolManifestMap[RemoteDeviceManifest.identifier] = {
+        ...toolManifestMap[RemoteDeviceManifest.identifier],
+        systemRole: generateSystemPrompt(onlineDevices),
+      };
+    }
+
+    const activeDeviceId = boundDeviceId ? (deviceOnline ? boundDeviceId : undefined) : undefined;
+
+    let deviceSystemInfo: Record<string, string> = {};
+    if (activeDeviceId) {
+      try {
+        const systemInfo = await deviceProxy.queryDeviceSystemInfo(this.userId, activeDeviceId);
+        if (systemInfo) {
+          const activeDevice = onlineDevices.find((d) => d.deviceId === activeDeviceId);
+          deviceSystemInfo = {
+            arch: systemInfo.arch,
+            desktopPath: systemInfo.desktopPath,
+            documentsPath: systemInfo.documentsPath,
+            downloadsPath: systemInfo.downloadsPath,
+            homePath: systemInfo.homePath,
+            musicPath: systemInfo.musicPath,
+            picturesPath: systemInfo.picturesPath,
+            platform: activeDevice?.platform ?? 'unknown',
+            userDataPath: systemInfo.userDataPath,
+            videosPath: systemInfo.videosPath,
+            workingDirectory: systemInfo.workingDirectory,
+          };
+        }
+      } catch (error) {
+        log('createOperationFromTrajectory: failed to fetch device system info: %O', error);
+      }
+    }
+
+    let userMemory: ServerUserMemoryConfig | undefined;
+    if (globalMemoryEnabled) {
+      try {
+        const personaModel = new UserPersonaModel(this.db, this.userId);
+        const persona = await personaModel.getLatestPersonaDocument();
+
+        if (persona?.persona) {
+          userMemory = {
+            fetchedAt: Date.now(),
+            memories: {
+              contexts: [],
+              experiences: [],
+              persona: {
+                narrative: persona.persona,
+                tagline: persona.tagline,
+              },
+              preferences: [],
+            },
+          };
+        }
+      } catch (error) {
+        log('createOperationFromTrajectory: failed to fetch user persona: %O', error);
+      }
+    }
+
+    const timestamp = Date.now();
+    const operationId = `op_${timestamp}_${topicId}_${nanoid(8)}`;
+
+    await this.agentRuntimeService.createOperation({
+      activeDeviceId,
+      agentConfig: runtimeAgentConfig,
+      deviceSystemInfo: Object.keys(deviceSystemInfo).length > 0 ? deviceSystemInfo : undefined,
+      userTimezone,
+      appContext: {
+        agentId: appContext.agentId ?? undefined,
+        threadId,
+        topicId,
+      },
+      autoStart: false,
+      completionWebhook,
+      evalContext,
+      initialContext,
+      initialMessages,
+      maxSteps,
+      modelRuntimeConfig: { model, provider },
+      operationId,
+      stream: true,
+      toolSet: {
+        enabledToolIds: toolsResult.enabledToolIds,
+        manifestMap: toolManifestMap,
+        sourceMap: toolSourceMap,
+        tools,
+      },
+      userId: this.userId,
+      userInterventionConfig: { approvalMode: 'headless' },
+      userMemory,
+    });
+
+    return { operationId, success: true };
   }
 
   /**

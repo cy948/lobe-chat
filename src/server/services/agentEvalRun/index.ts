@@ -1,3 +1,5 @@
+import { type AgentRuntimeContext } from '@lobechat/agent-runtime';
+import { LOADING_FLAT } from '@lobechat/const';
 import { type LobeChatDatabase } from '@lobechat/database';
 import { evaluate } from '@lobechat/eval-rubric';
 import type {
@@ -28,6 +30,8 @@ import { AgentEvalRunWorkflow } from '@/server/workflows/agentEvalRun';
 
 /** Round cost to at most 6 decimal places to avoid floating-point noise */
 const roundCost = (v: number): number => Math.round(v * 1e6) / 1e6;
+const resolveAppUrl = () => process.env.APP_URL || appEnv.APP_URL;
+const DEFAULT_EVAL_TIMEOUT = 1_200_000;
 
 export class AgentEvalRunService {
   private readonly db: LobeChatDatabase;
@@ -54,6 +58,322 @@ export class AgentEvalRunService {
     this.threadModel = new ThreadModel(db, userId);
     this.topicModel = new TopicModel(db, userId);
     this.agentService = new AgentService(db, userId);
+  }
+
+  private getRunTimeoutMs(run: { config?: EvalRunConfig | null }) {
+    return (run.config?.timeout as number) ?? DEFAULT_EVAL_TIMEOUT;
+  }
+
+  private getTimeoutResumeAnchor(runTopic: { createdAt?: Date | null }, messages: any[] = []) {
+    const latestMessage = messages.at(-1);
+    return latestMessage?.createdAt
+      ? new Date(latestMessage.createdAt)
+      : (runTopic.createdAt ?? null);
+  }
+
+  private getTimeoutResumeDecision(
+    run: { config?: EvalRunConfig | null },
+    runTopic: {
+      createdAt?: Date | null;
+      status?: string | null;
+      testCase?: { content?: { input?: string } | null } | null;
+      testCaseId: string;
+      topicId: string;
+    },
+    messages: any[] = [],
+  ) {
+    const timeoutMs = this.getRunTimeoutMs(run);
+    const anchor = this.getTimeoutResumeAnchor(runTopic, messages);
+
+    if (runTopic.status !== 'timeout') {
+      return {
+        eligible: false,
+        reason: `status=${runTopic.status ?? 'unknown'}`,
+        timeoutMs,
+      };
+    }
+
+    if (!anchor) {
+      return {
+        eligible: false,
+        reason: 'missing_timeout_anchor',
+        timeoutMs,
+      };
+    }
+
+    const elapsedMs = Date.now() - new Date(anchor).getTime();
+    if (elapsedMs > timeoutMs) {
+      return {
+        eligible: false,
+        reason: 'resume_window_expired',
+        timeoutMs,
+      };
+    }
+
+    return {
+      eligible: true,
+      reason: undefined,
+      timeoutMs,
+    };
+  }
+
+  async previewTimeoutResumes(runId: string) {
+    const run = await this.runModel.findById(runId);
+    if (!run) throw new Error('Run not found');
+
+    const runTopics = await this.runTopicModel.findByRunId(runId);
+    const timeoutMs = this.getRunTimeoutMs(run);
+
+    const eligibleTopics: Array<{
+      anchorAt?: Date | null;
+      input?: string;
+      testCaseId: string;
+      topicId: string;
+    }> = [];
+    const skippedTopics: Array<{
+      anchorAt?: Date | null;
+      input?: string;
+      reason: string;
+      testCaseId: string;
+      topicId: string;
+    }> = [];
+
+    for (const topic of runTopics) {
+      if (topic.status !== 'timeout') continue;
+
+      const messages = await this.messageModel.query({ topicId: topic.topicId });
+      const decision = this.getTimeoutResumeDecision(run, topic, messages);
+      const item = {
+        anchorAt: this.getTimeoutResumeAnchor(topic, messages),
+        input: topic.testCase?.content?.input,
+        testCaseId: topic.testCaseId,
+        topicId: topic.topicId,
+      };
+
+      if (decision.eligible) {
+        eligibleTopics.push(item);
+      } else {
+        skippedTopics.push({
+          ...item,
+          reason: decision.reason || 'unknown',
+        });
+      }
+    }
+
+    return {
+      eligibleTopics,
+      skippedTopics,
+      timeoutMs,
+    };
+  }
+
+  private buildResumeContext(
+    messages: any[],
+    operationId: string,
+  ): {
+    initialContext: AgentRuntimeContext;
+    initialMessages: any[];
+  } {
+    const initialMessages = [...messages];
+    let existingAssistantMessageId: string | undefined;
+
+    while (initialMessages.length > 0) {
+      const lastMessage = initialMessages.at(-1);
+
+      if (
+        lastMessage?.role === 'assistant' &&
+        lastMessage.content === LOADING_FLAT &&
+        (!lastMessage.tools || lastMessage.tools.length === 0)
+      ) {
+        existingAssistantMessageId = lastMessage.id;
+        initialMessages.pop();
+        continue;
+      }
+
+      break;
+    }
+
+    const lastMessage = initialMessages.at(-1);
+    if (!lastMessage) {
+      throw new Error('Unable to infer resume context from empty trajectory');
+    }
+
+    if (lastMessage.role === 'tool') {
+      let toolCount = 0;
+
+      for (let i = initialMessages.length - 1; i >= 0; i--) {
+        if (initialMessages[i]?.role !== 'tool') break;
+        toolCount++;
+      }
+
+      return {
+        initialContext: {
+          payload: { parentMessageId: lastMessage.id },
+          phase: toolCount > 1 ? 'tools_batch_result' : 'tool_result',
+          session: {
+            messageCount: initialMessages.length,
+            sessionId: operationId,
+            status: 'idle',
+            stepCount: 0,
+          },
+        },
+        initialMessages,
+      };
+    }
+
+    if (lastMessage.role === 'assistant') {
+      const toolsCalling = Array.isArray(lastMessage.tools) ? lastMessage.tools : [];
+      const toolCalls = toolsCalling.map((tool: any) => ({
+        function: {
+          arguments: tool.arguments || '{}',
+          name: tool.apiName,
+        },
+        id: tool.id,
+        ...(tool.thoughtSignature ? { thoughtSignature: tool.thoughtSignature } : {}),
+        type: 'function',
+      }));
+
+      return {
+        initialContext: {
+          payload: {
+            hasToolsCalling: toolsCalling.length > 0,
+            parentMessageId: lastMessage.id,
+            result: {
+              content: lastMessage.content || '',
+              tool_calls: toolCalls,
+            },
+            toolsCalling,
+          },
+          phase: 'llm_result',
+          session: {
+            messageCount: initialMessages.length,
+            sessionId: operationId,
+            status: 'idle',
+            stepCount: 0,
+          },
+        },
+        initialMessages,
+      };
+    }
+
+    if (lastMessage.role === 'user') {
+      return {
+        initialContext: {
+          payload: {
+            ...(existingAssistantMessageId
+              ? { assistantMessageId: existingAssistantMessageId }
+              : {}),
+            isFirstMessage: true,
+            message: [{ content: lastMessage.content || '' }],
+            parentMessageId: lastMessage.id,
+          },
+          phase: 'user_input',
+          session: {
+            messageCount: initialMessages.length,
+            sessionId: operationId,
+            status: 'idle',
+            stepCount: 0,
+          },
+        },
+        initialMessages,
+      };
+    }
+
+    throw new Error(`Unsupported resume boundary: ${lastMessage.role}`);
+  }
+
+  private async recreateOperationFromTrajectory(params: {
+    agentSnapshot?: EvalRunAgentSnapshot;
+    appContext: {
+      agentId?: string | null;
+      threadId?: string;
+      topicId: string;
+    };
+    completionWebhook: {
+      body: Record<string, unknown>;
+      url: string;
+    };
+    evalContext?: {
+      envPrompt: string;
+    };
+    maxSteps?: number;
+    messages: any[];
+  }) {
+    const aiAgentService = new AiAgentService(this.db, this.userId);
+    const resumeContext = this.buildResumeContext(
+      params.messages,
+      `resume_${params.appContext.topicId}`,
+    );
+
+    const created = await aiAgentService.createOperationFromTrajectory({
+      agentSnapshot: params.agentSnapshot,
+      appContext: params.appContext,
+      completionWebhook: params.completionWebhook,
+      evalContext: params.evalContext,
+      initialContext: resumeContext.initialContext,
+      initialMessages: resumeContext.initialMessages,
+      maxSteps: params.maxSteps,
+    });
+
+    return { ...created, initialContext: resumeContext.initialContext };
+  }
+
+  private async resumeOperation(params: {
+    agentSnapshot?: EvalRunAgentSnapshot;
+    appContext: {
+      agentId?: string | null;
+      threadId?: string;
+      topicId: string;
+    };
+    completionWebhook: {
+      body: Record<string, unknown>;
+      url: string;
+    };
+    evalContext?: {
+      envPrompt: string;
+    };
+    maxSteps?: number;
+    messages: any[];
+    operationId?: string;
+    priority?: 'high' | 'normal' | 'low';
+  }) {
+    const agentRuntimeService = new AgentRuntimeService(this.db, this.userId);
+    const liveStatus = params.operationId
+      ? await agentRuntimeService.getOperationStatus({
+          historyLimit: 1,
+          includeHistory: true,
+          operationId: params.operationId,
+        })
+      : null;
+
+    const liveContext = liveStatus?.executionHistory?.at(-1)?.context;
+
+    if (params.operationId && liveStatus && liveContext) {
+      await agentRuntimeService.startExecution({
+        context: liveContext,
+        operationId: params.operationId,
+        priority: params.priority ?? 'high',
+      });
+
+      return { operationId: params.operationId };
+    }
+
+    const recreated = await this.recreateOperationFromTrajectory({
+      agentSnapshot: params.agentSnapshot,
+      appContext: params.appContext,
+      completionWebhook: params.completionWebhook,
+      evalContext: params.evalContext,
+      maxSteps: params.maxSteps,
+      messages: params.messages,
+    });
+
+    await agentRuntimeService.startExecution({
+      context: recreated.initialContext,
+      operationId: recreated.operationId,
+      priority: params.priority ?? 'high',
+    });
+
+    return { operationId: recreated.operationId };
   }
 
   async createRun(params: {
@@ -265,7 +585,7 @@ export class AgentEvalRunService {
     const aiAgentService = new AiAgentService(this.db, this.userId);
     const webhookUrl = new URL(
       '/api/workflows/agent-eval-run/on-trajectory-complete',
-      appEnv.APP_URL,
+      resolveAppUrl(),
     ).toString();
 
     try {
@@ -382,7 +702,7 @@ export class AgentEvalRunService {
     const aiAgentService = new AiAgentService(this.db, this.userId);
     const webhookUrl = new URL(
       '/api/workflows/agent-eval-run/on-thread-complete',
-      appEnv.APP_URL,
+      resolveAppUrl(),
     ).toString();
 
     try {
@@ -431,12 +751,151 @@ export class AgentEvalRunService {
     }
   }
 
+  async resumeTimeoutCase(runId: string, testCaseId: string): Promise<{ resumedCount: number }> {
+    const run = await this.runModel.findById(runId);
+    if (!run) throw new Error('Run not found');
+
+    const runTopic = await this.runTopicModel.findByRunAndTestCase(runId, testCaseId);
+    if (!runTopic) throw new Error('RunTopic not found');
+    const topicMessagesForDecision = await this.messageModel.query({ topicId: runTopic.topicId });
+    const decision = this.getTimeoutResumeDecision(run, runTopic, topicMessagesForDecision);
+    if (!decision.eligible) {
+      throw new Error(`RunTopic is not resumable: ${decision.reason}`);
+    }
+
+    const completionWebhook = new URL(
+      '/api/workflows/agent-eval-run/on-trajectory-complete',
+      resolveAppUrl(),
+    ).toString();
+    const threadCompletionWebhook = new URL(
+      '/api/workflows/agent-eval-run/on-thread-complete',
+      resolveAppUrl(),
+    ).toString();
+
+    const agentSnapshot =
+      (run.config as EvalRunConfig | null | undefined)?.agentSnapshot ?? undefined;
+    const envPrompt = (await this.datasetModel.findById(run.datasetId))?.evalConfig?.envPrompt;
+
+    let resumedCount = 0;
+
+    if ((run.config?.k ?? 1) > 1) {
+      const allThreads = await this.threadModel.queryByTopicId(runTopic.topicId);
+      const evalThreads = allThreads.filter((thread) => thread.type === 'eval');
+
+      for (const thread of evalThreads) {
+        const metadata = (thread.metadata || {}) as Record<string, any>;
+        if (metadata.completedAt) continue;
+
+        const threadMessages = await this.messageModel.query({
+          threadId: thread.id,
+          topicId: runTopic.topicId,
+        });
+
+        if (threadMessages.length === 0) continue;
+
+        const { operationId } = await this.resumeOperation({
+          agentSnapshot,
+          appContext: {
+            agentId:
+              run.targetAgentId ??
+              threadMessages.find((message: { agentId?: string | null }) => !!message.agentId)
+                ?.agentId,
+            threadId: thread.id,
+            topicId: runTopic.topicId,
+          },
+          completionWebhook: {
+            body: {
+              runId,
+              testCaseId,
+              threadId: thread.id,
+              topicId: runTopic.topicId,
+              userId: this.userId,
+            },
+            url: threadCompletionWebhook,
+          },
+          ...(envPrompt && { evalContext: { envPrompt } }),
+          maxSteps: run.config?.maxSteps,
+          messages: threadMessages,
+          operationId: metadata.operationId as string | undefined,
+        });
+
+        await this.threadModel.update(thread.id, {
+          metadata: {
+            ...metadata,
+            operationId,
+          },
+        } as any);
+        resumedCount++;
+      }
+    } else {
+      const existingResult = (runTopic.evalResult || {}) as EvalRunTopicResult;
+      const topicMessages = await this.messageModel.query({ topicId: runTopic.topicId });
+
+      const { operationId } = await this.resumeOperation({
+        agentSnapshot,
+        appContext: {
+          agentId:
+            run.targetAgentId ??
+            topicMessages.find((message: { agentId?: string | null }) => !!message.agentId)
+              ?.agentId,
+          topicId: runTopic.topicId,
+        },
+        completionWebhook: {
+          body: { runId, testCaseId, userId: this.userId },
+          url: completionWebhook,
+        },
+        ...(envPrompt && { evalContext: { envPrompt } }),
+        maxSteps: run.config?.maxSteps,
+        messages: topicMessages,
+        operationId: existingResult.operationId,
+      });
+
+      await this.runTopicModel.updateByRunAndTopic(runId, runTopic.topicId, {
+        createdAt: new Date(),
+        evalResult: {
+          ...existingResult,
+          completionReason: undefined,
+          duration: undefined,
+          error: undefined,
+          operationId,
+        },
+        passed: undefined,
+        score: undefined,
+        status: 'running',
+      });
+      resumedCount = 1;
+    }
+
+    if (resumedCount > 0) {
+      const latestRunTopic = await this.runTopicModel.findByRunAndTestCase(runId, testCaseId);
+
+      await this.runTopicModel.updateByRunAndTopic(runId, runTopic.topicId, {
+        createdAt: new Date(),
+        evalResult: {
+          ...latestRunTopic?.evalResult,
+          completionReason: undefined,
+          duration: undefined,
+          error: undefined,
+        },
+        passed: undefined,
+        score: undefined,
+        status: 'running',
+      });
+
+      await this.runModel.update(runId, { status: 'running' });
+      await this.recomputeRunProgressMetrics(runId);
+    }
+
+    return { resumedCount };
+  }
+
   /**
    * Record a single thread's completion (for pass@k).
    * Evaluates the thread's messages, writes result to thread.metadata,
    * then checks if all K threads are done. If so, aggregates into RunTopic.
    */
   async recordThreadCompletion(params: {
+    operationId?: string;
     runId: string;
     status: string;
     telemetry: {
@@ -453,7 +912,13 @@ export class AgentEvalRunService {
     threadId: string;
     topicId: string;
   }): Promise<{ allRunDone: boolean; allThreadsDone: boolean }> {
-    const { runId, testCaseId, threadId, topicId, telemetry, status } = params;
+    const { runId, testCaseId, threadId, topicId, telemetry, status, operationId } = params;
+
+    const thread = await this.threadModel.findById(threadId);
+    const currentOperationId = thread?.metadata?.operationId as string | undefined;
+    if (operationId && currentOperationId && operationId !== currentOperationId) {
+      return { allRunDone: false, allThreadsDone: false };
+    }
 
     // 1. Evaluate this thread's messages
     const evalResult = await this.evaluateThread({
@@ -902,6 +1367,7 @@ export class AgentEvalRunService {
   }
 
   async recordTrajectoryCompletion(params: {
+    operationId?: string;
     runId: string;
     status?: string;
     telemetry: {
@@ -917,11 +1383,17 @@ export class AgentEvalRunService {
     };
     testCaseId: string;
   }): Promise<{ allDone: boolean; completedCount: number }> {
-    const { runId, testCaseId, telemetry, status } = params;
+    const { runId, testCaseId, telemetry, status, operationId } = params;
 
     // Write runtime telemetry to RunTopic
     const runTopic = await this.runTopicModel.findByRunAndTestCase(runId, testCaseId);
     if (runTopic) {
+      const currentOperationId = runTopic.evalResult?.operationId;
+      if (operationId && currentOperationId && operationId !== currentOperationId) {
+        const run = await this.runModel.findById(runId);
+        return { allDone: false, completedCount: run?.metrics?.completedCases ?? 0 };
+      }
+
       // Skip if topic is already in a terminal state (e.g. timeout marked by checkAndHandleRunTimeout).
       // The interrupted agent still fires the completion webhook, but we must not overwrite the result.
       const terminalStates = ['passed', 'failed', 'error', 'timeout', 'external'];
@@ -1330,7 +1802,7 @@ export class AgentEvalRunService {
     metrics?: EvalRunMetrics | null;
     startedAt?: Date | null;
   }): Promise<boolean> {
-    const perCaseTimeout = (run.config?.timeout as number) ?? 1_200_000; // 20 min default
+    const perCaseTimeout = this.getRunTimeoutMs(run);
     const now = Date.now();
 
     // Early exit: if run started less than timeout ago, no topic could have timed out
@@ -1349,6 +1821,18 @@ export class AgentEvalRunService {
       if (opId) {
         try {
           await agentRuntimeService.interruptOperation(opId);
+        } catch {
+          // best effort — don't block timeout handling
+        }
+      }
+
+      const threads = await this.threadModel.queryByTopicId(row.topicId);
+      for (const thread of threads.filter((item) => item.type === 'eval')) {
+        const threadOperationId = thread.metadata?.operationId;
+        if (!threadOperationId) continue;
+
+        try {
+          await agentRuntimeService.interruptOperation(threadOperationId as string);
         } catch {
           // best effort — don't block timeout handling
         }
@@ -1416,6 +1900,31 @@ export class AgentEvalRunService {
     }
 
     return true;
+  }
+
+  private async recomputeRunProgressMetrics(runId: string) {
+    const run = await this.runModel.findById(runId);
+    if (!run) return;
+
+    const allTopics = await this.runTopicModel.findByRunId(runId);
+    const completedCount = allTopics.filter(
+      (t) =>
+        (t.evalResult && 'completionReason' in t.evalResult) ||
+        t.status === 'timeout' ||
+        t.status === 'external',
+    ).length;
+
+    await this.runModel.update(runId, {
+      metrics: {
+        ...(run.metrics as EvalRunMetrics),
+        completedCases: completedCount,
+        errorCases: allTopics.filter((t) => t.status === 'error').length,
+        externalCases: allTopics.filter((t) => t.status === 'external').length || undefined,
+        failedCases: allTopics.filter((t) => t.status === 'failed').length,
+        passedCases: allTopics.filter((t) => t.status === 'passed').length,
+        timeoutCases: allTopics.filter((t) => t.status === 'timeout').length,
+      },
+    });
   }
 
   private async snapshotAgentConfig(agentId: string): Promise<EvalRunAgentSnapshot | undefined> {

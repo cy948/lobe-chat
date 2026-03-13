@@ -3,10 +3,10 @@
 import type { EvalThreadResult } from '@lobechat/types';
 import { formatCost, formatShortenNumber } from '@lobechat/utils';
 import { ActionIcon, Flexbox, Icon, Tag } from '@lobehub/ui';
-import { Badge, Input, Select, Table, Tooltip } from 'antd';
+import { App, Badge, Input, Select, Table, Tooltip } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { createStaticStyles, cssVar } from 'antd-style';
-import { Footprints, RotateCcw } from 'lucide-react';
+import { Footprints, Play, RotateCcw } from 'lucide-react';
 import { memo, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
@@ -47,6 +47,7 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
 interface CaseResultsTableProps {
   benchmarkId: string;
   k?: number;
+  onResumeCase?: (testCaseId: string) => Promise<void>;
   onRetryCase?: (testCaseId: string) => Promise<void>;
   results: any[];
   runId: string;
@@ -179,15 +180,18 @@ const RETRYABLE_STATUSES = new Set(['error', 'failed', 'timeout']);
 const FINISHED_RUN_STATUSES = new Set(['completed', 'failed', 'aborted']);
 
 const CaseResultsTable = memo<CaseResultsTableProps>(
-  ({ results, benchmarkId, runId, k = 1, onRetryCase, runStatus }) => {
+  ({ results, benchmarkId, runId, k = 1, onResumeCase, onRetryCase, runStatus }) => {
     const { t } = useTranslation('eval');
+    const { message } = App.useApp();
     const [searchText, setSearchText] = useState('');
     const [statusFilter, setStatusFilter] = useState<string>('all');
     const [pageSize, setPageSize] = useState(20);
     const [retryingCaseId, setRetryingCaseId] = useState<string | null>(null);
+    const [resumingCaseId, setResumingCaseId] = useState<string | null>(null);
 
     const isMultiK = k > 1;
     const canRetryCase = onRetryCase && runStatus && FINISHED_RUN_STATUSES.has(runStatus);
+    const canResumeCase = onResumeCase && runStatus && FINISHED_RUN_STATUSES.has(runStatus);
 
     const filteredResults = useMemo(() => {
       let filtered = results;
@@ -381,37 +385,75 @@ const CaseResultsTable = memo<CaseResultsTableProps>(
         });
       }
 
-      if (canRetryCase) {
+      if (canRetryCase || canResumeCase) {
         cols.push({
           key: 'actions',
           render: (_: any, record: any) => {
-            if (!RETRYABLE_STATUSES.has(record.status)) return null;
             const isRetrying = retryingCaseId === record.testCaseId;
+            const isResuming = resumingCaseId === record.testCaseId;
+
             return (
-              <Tooltip title={t('run.actions.retryCase')}>
-                <ActionIcon
-                  icon={RotateCcw}
-                  loading={isRetrying}
-                  size="small"
-                  onClick={async () => {
-                    setRetryingCaseId(record.testCaseId);
-                    try {
-                      await onRetryCase!(record.testCaseId);
-                    } finally {
-                      setRetryingCaseId(null);
-                    }
-                  }}
-                />
-              </Tooltip>
+              <Flexbox horizontal gap={4}>
+                {canResumeCase && record.status === 'timeout' && (
+                  <Tooltip title={t('run.actions.resumeCase')}>
+                    <ActionIcon
+                      icon={Play}
+                      loading={isResuming}
+                      size="small"
+                      onClick={async () => {
+                        setResumingCaseId(record.testCaseId);
+                        try {
+                          await onResumeCase!(record.testCaseId);
+                          message.success(t('run.actions.resumeCase.success'));
+                        } catch (error: any) {
+                          message.error(error?.message || t('run.actions.resumeCase'));
+                        } finally {
+                          setResumingCaseId(null);
+                        }
+                      }}
+                    />
+                  </Tooltip>
+                )}
+                {canRetryCase && RETRYABLE_STATUSES.has(record.status) && (
+                  <Tooltip title={t('run.actions.retryCase')}>
+                    <ActionIcon
+                      icon={RotateCcw}
+                      loading={isRetrying}
+                      size="small"
+                      onClick={async () => {
+                        setRetryingCaseId(record.testCaseId);
+                        try {
+                          await onRetryCase!(record.testCaseId);
+                        } finally {
+                          setRetryingCaseId(null);
+                        }
+                      }}
+                    />
+                  </Tooltip>
+                )}
+              </Flexbox>
             );
           },
           title: '',
-          width: 48,
+          width: 84,
         });
       }
 
       return cols;
-    }, [benchmarkId, runId, t, isMultiK, k, canRetryCase, retryingCaseId, onRetryCase]);
+    }, [
+      benchmarkId,
+      runId,
+      t,
+      isMultiK,
+      k,
+      canResumeCase,
+      canRetryCase,
+      resumingCaseId,
+      retryingCaseId,
+      onResumeCase,
+      onRetryCase,
+      message,
+    ]);
 
     return (
       <Flexbox gap={0}>
@@ -431,6 +473,7 @@ const CaseResultsTable = memo<CaseResultsTableProps>(
               { label: t('table.filter.passed'), value: 'passed' },
               { label: t('table.filter.failed'), value: 'failed' },
               { label: t('table.filter.error'), value: 'error' },
+              { label: t('run.status.timeout'), value: 'timeout' },
               { label: t('table.filter.running'), value: 'running' },
               { label: t('run.status.pending'), value: 'pending' },
               { label: t('run.status.external'), value: 'external' },

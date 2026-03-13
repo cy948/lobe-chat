@@ -13,6 +13,7 @@ const WORKFLOW_PATHS = {
   onThreadComplete: '/api/workflows/agent-eval-run/on-thread-complete',
   onTrajectoryComplete: '/api/workflows/agent-eval-run/on-trajectory-complete',
   paginateTestCases: '/api/workflows/agent-eval-run/paginate-test-cases',
+  resumeTimeoutCase: '/api/workflows/agent-eval-run/resume-timeout-case',
   runAgentTrajectory: '/api/workflows/agent-eval-run/run-agent-trajectory',
   runBenchmark: '/api/workflows/agent-eval-run/run-benchmark',
   runThreadTrajectory: '/api/workflows/agent-eval-run/run-thread-trajectory',
@@ -40,6 +41,12 @@ export interface ExecuteTestCasePayload {
 }
 
 export interface RunAgentTrajectoryPayload {
+  runId: string;
+  testCaseId: string;
+  userId: string;
+}
+
+export interface ResumeTimeoutCasePayload {
   runId: string;
   testCaseId: string;
   userId: string;
@@ -146,6 +153,16 @@ export class AgentEvalRunWorkflow {
     const url = getWorkflowUrl(WORKFLOW_PATHS.runAgentTrajectory);
     log(
       'Triggering run-agent-trajectory workflow: run=%s, testCase=%s',
+      payload.runId,
+      payload.testCaseId,
+    );
+    return workflowClient.trigger({ body: payload, url });
+  }
+
+  static triggerResumeTimeoutCase(payload: ResumeTimeoutCasePayload) {
+    const url = getWorkflowUrl(WORKFLOW_PATHS.resumeTimeoutCase);
+    log(
+      'Triggering resume-timeout-case workflow: run=%s, testCase=%s',
       payload.runId,
       payload.testCaseId,
     );

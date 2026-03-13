@@ -70,6 +70,7 @@ export async function POST(req: Request) {
     const service = new AgentEvalRunService(db, userId);
 
     const { allDone, completedCount } = await service.recordTrajectoryCompletion({
+      operationId,
       runId,
       status,
       telemetry: {

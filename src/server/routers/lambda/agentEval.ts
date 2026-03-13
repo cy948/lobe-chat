@@ -805,6 +805,65 @@ export const agentEvalRouter = router({
       return { runId: input.runId, success: true, testCaseId: input.testCaseId };
     }),
 
+  resumeRunTimeouts: agentEvalProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const run = await ctx.runModel.findById(input.id);
+      if (!run) throw new TRPCError({ code: 'NOT_FOUND', message: 'Run not found' });
+
+      const preview = await ctx.runService.previewTimeoutResumes(input.id);
+
+      await Promise.all(
+        preview.eligibleTopics.map((topic) =>
+          AgentEvalRunWorkflow.triggerResumeTimeoutCase({
+            runId: input.id,
+            testCaseId: topic.testCaseId,
+            userId: ctx.userId,
+          }),
+        ),
+      );
+
+      return {
+        queuedCount: preview.eligibleTopics.length,
+        runId: input.id,
+        skippedCount: preview.skippedTopics.length,
+        success: true,
+      };
+    }),
+
+  previewRunTimeouts: agentEvalProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ input, ctx }) => {
+      const run = await ctx.runModel.findById(input.id);
+      if (!run) throw new TRPCError({ code: 'NOT_FOUND', message: 'Run not found' });
+
+      return ctx.runService.previewTimeoutResumes(input.id);
+    }),
+
+  resumeRunTimeoutCase: agentEvalProcedure
+    .input(z.object({ runId: z.string(), testCaseId: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const run = await ctx.runModel.findById(input.runId);
+      if (!run) throw new TRPCError({ code: 'NOT_FOUND', message: 'Run not found' });
+
+      const preview = await ctx.runService.previewTimeoutResumes(input.runId);
+      const resumable = preview.eligibleTopics.some((item) => item.testCaseId === input.testCaseId);
+      if (!resumable) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'This timeout case is no longer eligible for resume',
+        });
+      }
+
+      await AgentEvalRunWorkflow.triggerResumeTimeoutCase({
+        runId: input.runId,
+        testCaseId: input.testCaseId,
+        userId: ctx.userId,
+      });
+
+      return { runId: input.runId, success: true, testCaseId: input.testCaseId };
+    }),
+
   /**
    * Get real-time progress of a running evaluation
    */

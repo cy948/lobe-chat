@@ -147,6 +147,10 @@ class AgentEvalService {
     return lambdaClient.agentEval.getRunDetails.query({ id });
   }
 
+  async previewRunTimeouts(id: string) {
+    return lambdaClient.agentEval.previewRunTimeouts.query({ id });
+  }
+
   async getRunResults(id: string) {
     return lambdaClient.agentEval.getRunResults.query({ id });
   }
@@ -174,6 +178,14 @@ class AgentEvalService {
 
   async retryRunCase(runId: string, testCaseId: string) {
     return lambdaClient.agentEval.retryRunCase.mutate({ runId, testCaseId });
+  }
+
+  async resumeRunTimeouts(id: string) {
+    return lambdaClient.agentEval.resumeRunTimeouts.mutate({ id });
+  }
+
+  async resumeRunTimeoutCase(runId: string, testCaseId: string) {
+    return lambdaClient.agentEval.resumeRunTimeoutCase.mutate({ runId, testCaseId });
   }
 
   async updateRun(params: {

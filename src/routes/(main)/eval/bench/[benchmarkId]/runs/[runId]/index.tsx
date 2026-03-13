@@ -2,8 +2,8 @@
 
 import { Flexbox } from '@lobehub/ui';
 import { App, Button, Card, Progress, Typography } from 'antd';
-import { RotateCcw } from 'lucide-react';
-import { memo, useState } from 'react';
+import { Play, RotateCcw } from 'lucide-react';
+import { Fragment, memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 
@@ -21,16 +21,21 @@ const POLLING_INTERVAL = 3000;
 
 const RunDetail = memo(() => {
   const { t } = useTranslation('eval');
-  const { modal } = App.useApp();
+  const { message, modal } = App.useApp();
   const { benchmarkId, runId } = useParams<{ benchmarkId: string; runId: string }>();
   const useFetchRunDetail = useEvalStore((s) => s.useFetchRunDetail);
   const useFetchRunResults = useEvalStore((s) => s.useFetchRunResults);
+  const previewRunTimeouts = useEvalStore((s) => s.previewRunTimeouts);
+  const resumeRunTimeoutCase = useEvalStore((s) => s.resumeRunTimeoutCase);
+  const resumeRunTimeouts = useEvalStore((s) => s.resumeRunTimeouts);
   const retryRunErrors = useEvalStore((s) => s.retryRunErrors);
   const retryRunCase = useEvalStore((s) => s.retryRunCase);
   const runDetail = useEvalStore(runSelectors.getRunDetailById(runId!));
   const runResults = useEvalStore(runSelectors.getRunResultsById(runId!));
   const isActive = useEvalStore(runSelectors.isRunActive(runId!));
   const [retrying, setRetrying] = useState(false);
+  const [previewingResume, setPreviewingResume] = useState(false);
+  const [resuming, setResuming] = useState(false);
 
   const pollingConfig = { refreshInterval: isActive ? POLLING_INTERVAL : 0 };
 
@@ -51,7 +56,35 @@ const RunDetail = memo(() => {
   const progress = totalCases > 0 ? Math.round((completedCases / totalCases) * 100) : 0;
   const showProgress = totalCases > 0 && progress < 100;
   const errorCount = (metrics?.errorCases ?? 0) + (metrics?.timeoutCases ?? 0);
+  const timeoutCount = metrics?.timeoutCases ?? 0;
   const canRetry = isFinished && errorCount > 0;
+  const canResumeTimeouts = isFinished && timeoutCount > 0;
+  const renderPreviewList = (
+    items: Array<{ input?: string; reason?: string; testCaseId: string }>,
+    showReason = false,
+  ) =>
+    items.length === 0 ? (
+      <Typography.Text type="secondary">
+        {t('run.actions.resumeTimeouts.preview.empty')}
+      </Typography.Text>
+    ) : (
+      <Flexbox gap={6}>
+        {items.map((item) => (
+          <Fragment key={item.testCaseId}>
+            <Typography.Text>
+              #{item.testCaseId.slice(0, 8)} · {item.input || item.testCaseId}
+            </Typography.Text>
+            {showReason && item.reason && (
+              <Typography.Text type="secondary">
+                {t(`run.actions.resumeTimeouts.preview.reason.${item.reason}`, {
+                  defaultValue: t('run.actions.resumeTimeouts.preview.reason.unknown'),
+                })}
+              </Typography.Text>
+            )}
+          </Fragment>
+        ))}
+      </Flexbox>
+    );
 
   return (
     <Flexbox gap={24} padding={24} style={{ margin: '0 auto', maxWidth: 1440, width: '100%' }}>
@@ -134,28 +167,90 @@ const RunDetail = memo(() => {
                   {progress}%
                 </Typography.Text>
               </Flexbox>
-            ) : canRetry ? (
-              <Button
-                icon={<RotateCcw size={14} />}
-                loading={retrying}
-                size="small"
-                onClick={() => {
-                  modal.confirm({
-                    content: t('run.actions.retryErrors.confirm'),
-                    onOk: async () => {
-                      setRetrying(true);
+            ) : canRetry || canResumeTimeouts ? (
+              <Flexbox horizontal gap={8}>
+                {canResumeTimeouts && (
+                  <Button
+                    icon={<Play size={14} />}
+                    loading={previewingResume || resuming}
+                    size="small"
+                    onClick={async () => {
+                      setPreviewingResume(true);
                       try {
-                        await retryRunErrors(runId!);
+                        const preview = await previewRunTimeouts(runId!);
+                        modal.confirm({
+                          content: (
+                            <Flexbox gap={16}>
+                              <Typography.Text type="secondary">
+                                {t('run.actions.resumeTimeouts.confirm')}
+                              </Typography.Text>
+                              <Typography.Text type="secondary">
+                                {t('run.actions.resumeTimeouts.preview.timeoutWindow', {
+                                  minutes: Math.round((preview.timeoutMs ?? 0) / 60_000),
+                                })}
+                              </Typography.Text>
+                              <Flexbox gap={8}>
+                                <Typography.Text strong>
+                                  {t('run.actions.resumeTimeouts.preview.eligible')} (
+                                  {preview.eligibleTopics.length})
+                                </Typography.Text>
+                                {renderPreviewList(preview.eligibleTopics)}
+                              </Flexbox>
+                              <Flexbox gap={8}>
+                                <Typography.Text strong>
+                                  {t('run.actions.resumeTimeouts.preview.skipped')} (
+                                  {preview.skippedTopics.length})
+                                </Typography.Text>
+                                {renderPreviewList(preview.skippedTopics, true)}
+                              </Flexbox>
+                            </Flexbox>
+                          ),
+                          okButtonProps: { disabled: preview.eligibleTopics.length === 0 },
+                          onOk: async () => {
+                            setResuming(true);
+                            try {
+                              await resumeRunTimeouts(runId!);
+                              message.success(t('run.actions.resumeTimeouts.success'));
+                            } finally {
+                              setResuming(false);
+                            }
+                          },
+                          title: t('run.actions.resumeTimeouts.preview.title'),
+                        });
+                      } catch (error: any) {
+                        message.error(error?.message || t('run.actions.resumeTimeouts'));
                       } finally {
-                        setRetrying(false);
+                        setPreviewingResume(false);
                       }
-                    },
-                    title: t('run.actions.retryErrors'),
-                  });
-                }}
-              >
-                {t('run.actions.retryErrors')}
-              </Button>
+                    }}
+                  >
+                    {t('run.actions.resumeTimeouts')}
+                  </Button>
+                )}
+                {canRetry && (
+                  <Button
+                    icon={<RotateCcw size={14} />}
+                    loading={retrying}
+                    size="small"
+                    onClick={() => {
+                      modal.confirm({
+                        content: t('run.actions.retryErrors.confirm'),
+                        onOk: async () => {
+                          setRetrying(true);
+                          try {
+                            await retryRunErrors(runId!);
+                          } finally {
+                            setRetrying(false);
+                          }
+                        },
+                        title: t('run.actions.retryErrors'),
+                      });
+                    }}
+                  >
+                    {t('run.actions.retryErrors')}
+                  </Button>
+                )}
+              </Flexbox>
             ) : undefined
           }
           title={
@@ -170,6 +265,7 @@ const RunDetail = memo(() => {
             results={runResults.results}
             runId={runId!}
             runStatus={runDetail.status}
+            onResumeCase={(testCaseId) => resumeRunTimeoutCase(runId!, testCaseId)}
             onRetryCase={(testCaseId) => retryRunCase(runId!, testCaseId)}
           />
         </Card>

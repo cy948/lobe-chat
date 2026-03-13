@@ -295,14 +295,18 @@ export class AgentEvalRunService {
       `resume_${params.appContext.topicId}`,
     );
 
-    const created = await aiAgentService.createOperationFromTrajectory({
+    const created = await aiAgentService.execAgent({
+      agentId: params.appContext.agentId ?? undefined,
       agentSnapshot: params.agentSnapshot,
       appContext: params.appContext,
+      autoStart: false,
       completionWebhook: params.completionWebhook,
       evalContext: params.evalContext,
       initialContext: resumeContext.initialContext,
       initialMessages: resumeContext.initialMessages,
       maxSteps: params.maxSteps,
+      stream: true,
+      userInterventionConfig: { approvalMode: 'headless' },
     });
 
     return { ...created, initialContext: resumeContext.initialContext };

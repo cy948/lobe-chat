@@ -14,9 +14,19 @@ const agentRuntimeMocks = vi.hoisted(() => ({
 }));
 
 const aiAgentMocks = vi.hoisted(() => ({
-  createOperationFromTrajectory: vi
-    .fn()
-    .mockResolvedValue({ operationId: 'op-recreated', success: true }),
+  execAgent: vi.fn().mockResolvedValue({
+    agentId: 'agt-resume',
+    assistantMessageId: 'msg-assistant',
+    autoStarted: false,
+    createdAt: new Date().toISOString(),
+    message: 'Agent operation created successfully',
+    operationId: 'op-recreated',
+    status: 'created',
+    success: true,
+    timestamp: new Date().toISOString(),
+    topicId: 'topic-resume',
+    userMessageId: 'msg-user',
+  }),
 }));
 
 vi.mock('@/server/services/agentRuntime/AgentRuntimeService', () => ({
@@ -29,8 +39,12 @@ vi.mock('@/server/services/agentRuntime/AgentRuntimeService', () => ({
 
 vi.mock('@/server/services/aiAgent', () => ({
   AiAgentService: vi.fn().mockImplementation(() => ({
-    createOperationFromTrajectory: aiAgentMocks.createOperationFromTrajectory,
+    execAgent: aiAgentMocks.execAgent,
   })),
+}));
+
+vi.mock('@/envs/app', () => ({
+  appEnv: { APP_URL: 'https://example.com' },
 }));
 
 beforeEach(() => {
@@ -84,7 +98,7 @@ describe('AgentEvalRunService resume timeout', () => {
       operationId: 'op-existing',
       priority: 'high',
     });
-    expect(aiAgentMocks.createOperationFromTrajectory).not.toHaveBeenCalled();
+    expect(aiAgentMocks.execAgent).not.toHaveBeenCalled();
   });
 
   it('should recreate an expired operation from persisted tool-result boundary', async () => {
@@ -156,9 +170,14 @@ describe('AgentEvalRunService resume timeout', () => {
     const result = await service.resumeTimeoutCase(run.id, cases[0].testCase.id);
 
     expect(result).toEqual({ resumedCount: 1 });
-    expect(aiAgentMocks.createOperationFromTrajectory).toHaveBeenCalledWith(
+    expect(aiAgentMocks.execAgent).toHaveBeenCalledWith(
       expect.objectContaining({
+        agentSnapshot: expect.objectContaining({
+          model: 'gpt-4o-mini',
+          provider: 'openai',
+        }),
         appContext: { agentId: undefined, topicId: runTopic!.topicId },
+        autoStart: false,
         initialContext: expect.objectContaining({
           payload: { parentMessageId: toolMessage.id },
           phase: 'tool_result',
@@ -256,13 +275,18 @@ describe('AgentEvalRunService resume timeout', () => {
     const result = await service.resumeTimeoutCase(run.id, cases[0].testCase.id);
 
     expect(result).toEqual({ resumedCount: 1 });
-    expect(aiAgentMocks.createOperationFromTrajectory).toHaveBeenCalledWith(
+    expect(aiAgentMocks.execAgent).toHaveBeenCalledWith(
       expect.objectContaining({
+        agentSnapshot: expect.objectContaining({
+          model: 'gpt-4o-mini',
+          provider: 'openai',
+        }),
         appContext: {
           agentId: undefined,
           threadId: pendingThread!.id,
           topicId: runTopic!.topicId,
         },
+        autoStart: false,
         initialContext: expect.objectContaining({
           phase: 'llm_result',
           payload: expect.objectContaining({
@@ -291,6 +315,7 @@ describe('AgentEvalRunService resume timeout', () => {
     await runTopicModel.updateByRunAndTopic(run.id, runTopic!.topicId, {
       evalResult: {
         completionReason: 'timeout',
+        duration: 120_000,
         operationId: 'op-expired',
         rubricScores: [],
       },

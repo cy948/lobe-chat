@@ -195,6 +195,86 @@ describe('AiAgentService.execAgent - topic history loading', () => {
     });
   });
 
+  describe('when continuation context is provided', () => {
+    it('should reuse initialContext and initialMessages without creating new DB messages', async () => {
+      const initialContext = {
+        payload: {
+          hasToolsCalling: true,
+          parentMessageId: 'msg-assistant-prev',
+          result: {
+            content: '',
+            tool_calls: [
+              {
+                function: { arguments: '{"q":"weather"}', name: 'search' },
+                id: 'tool-call-1',
+                type: 'function',
+              },
+            ],
+          },
+          toolsCalling: [
+            {
+              apiName: 'search',
+              arguments: '{"q":"weather"}',
+              id: 'tool-call-1',
+            },
+          ],
+        },
+        phase: 'llm_result',
+        session: {
+          messageCount: 2,
+          sessionId: 'resume_topic-existing',
+          status: 'idle',
+          stepCount: 0,
+        },
+      } as any;
+      const initialMessages = [
+        { content: 'Q', id: 'msg-user-prev', role: 'user' },
+        {
+          content: '',
+          id: 'msg-assistant-prev',
+          role: 'assistant',
+          tools: [
+            {
+              apiName: 'search',
+              arguments: '{"q":"weather"}',
+              id: 'tool-call-1',
+            },
+          ],
+        },
+      ];
+
+      const result = await service.execAgent({
+        agentSnapshot: {
+          model: 'gpt-4',
+          plugins: [],
+          provider: 'openai',
+          systemRole: 'You are a helpful assistant',
+        },
+        appContext: { topicId: 'topic-existing' },
+        autoStart: false,
+        initialContext,
+        initialMessages,
+      });
+
+      expect(mockMessageCreate).not.toHaveBeenCalled();
+      expect(mockMessageQuery).not.toHaveBeenCalled();
+      expect(mockCreateOperation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          appContext: expect.objectContaining({ topicId: 'topic-existing' }),
+          autoStart: false,
+          initialContext: expect.objectContaining({
+            phase: 'llm_result',
+            payload: expect.objectContaining({ parentMessageId: 'msg-assistant-prev' }),
+          }),
+          initialMessages,
+        }),
+      );
+
+      expect(result.assistantMessageId).toBe('');
+      expect(result.userMessageId).toBe('msg-assistant-prev');
+    });
+  });
+
   describe('when no topicId is provided (first message, new conversation)', () => {
     it('should only include the current user message in initialMessages', async () => {
       await service.execAgent({

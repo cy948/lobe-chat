@@ -77,7 +77,9 @@ function formatErrorForMetadata(error: unknown): Record<string, any> | undefined
  * Internal params for execAgent with step lifecycle callbacks
  * This extends the public ExecAgentParams with server-side only options
  */
-interface InternalExecAgentParams extends ExecAgentParams {
+interface InternalExecAgentParams extends Omit<ExecAgentParams, 'prompt'> {
+  /** Agent snapshot for continuation mode when DB config lookup should be skipped */
+  agentSnapshot?: EvalRunAgentSnapshot | null;
   /** Bot context for topic metadata (platform, applicationId, platformThreadId) */
   botContext?: ChatTopicBotContext;
   /**
@@ -101,8 +103,17 @@ interface InternalExecAgentParams extends ExecAgentParams {
     size?: number;
     url: string;
   }>;
+  /** Existing execution context for continuation mode */
+  initialContext?: AgentRuntimeContext;
+  /** Existing messages for continuation mode */
+  initialMessages?: any[];
   /** Maximum steps for the agent operation */
   maxSteps?: number;
+  /**
+   * Whether the LLM call should use streaming.
+   * Defaults to true. Set to false for non-streaming scenarios (e.g., bot integrations).
+   */
+  prompt?: string;
   /** Step lifecycle callbacks for operation tracking (server-side only) */
   stepCallbacks?: StepLifecycleCallbacks;
   /**
@@ -113,10 +124,6 @@ interface InternalExecAgentParams extends ExecAgentParams {
     body?: Record<string, unknown>;
     url: string;
   };
-  /**
-   * Whether the LLM call should use streaming.
-   * Defaults to true. Set to false for non-streaming scenarios (e.g., bot integrations).
-   */
   stream?: boolean;
   /**
    * Custom title for the topic.
@@ -137,23 +144,6 @@ interface InternalExecAgentParams extends ExecAgentParams {
    * - 'qstash': deliver via QStash publishJSON for guaranteed delivery
    */
   webhookDelivery?: 'fetch' | 'qstash';
-}
-
-interface ResumeOperationParams {
-  agentSnapshot?: EvalRunAgentSnapshot | null;
-  appContext: {
-    agentId?: string | null;
-    threadId?: string | null;
-    topicId: string;
-  };
-  completionWebhook?: {
-    body?: Record<string, unknown>;
-    url: string;
-  };
-  evalContext?: EvalContext;
-  initialContext: AgentRuntimeContext;
-  initialMessages: any[];
-  maxSteps?: number;
 }
 
 /**
@@ -207,6 +197,7 @@ export class AiAgentService {
   async execAgent(params: InternalExecAgentParams): Promise<ExecAgentResult> {
     const {
       agentId,
+      agentSnapshot,
       slug,
       prompt,
       appContext,
@@ -222,6 +213,8 @@ export class AiAgentService {
       trigger,
       cronJobId,
       evalContext,
+      initialContext,
+      initialMessages,
       maxSteps,
       userInterventionConfig,
       completionWebhook,
@@ -229,32 +222,76 @@ export class AiAgentService {
       webhookDelivery,
     } = params;
 
-    // Validate that either agentId or slug is provided
-    if (!agentId && !slug) {
-      throw new Error('Either agentId or slug must be provided');
+    const isContinuationMode = initialContext !== undefined || initialMessages !== undefined;
+
+    if (isContinuationMode && (!initialContext || !initialMessages)) {
+      throw new Error(
+        'Continuation mode requires both initialContext and initialMessages to be provided',
+      );
+    }
+
+    if (!isContinuationMode && !prompt) {
+      throw new Error('Prompt is required when initialContext/initialMessages are not provided');
+    }
+
+    // Validate that either agentId/slug or agentSnapshot is provided
+    if (!agentId && !slug && !agentSnapshot?.model) {
+      throw new Error('Either agentId/slug or agentSnapshot must be provided');
+    }
+
+    if (isContinuationMode && !appContext?.topicId) {
+      throw new Error('Continuation mode requires appContext.topicId');
     }
 
     // Determine the identifier to use (agentId takes precedence)
-    const identifier = agentId || slug!;
-
-    log('execAgent: identifier=%s, prompt=%s', identifier, prompt.slice(0, 50));
-
-    // 1. Get agent configuration with default config merged (supports both id and slug)
-    const agentConfig = await this.agentService.getAgentConfig(identifier);
-    if (!agentConfig) {
-      throw new Error(`Agent not found: ${identifier}`);
-    }
-
-    // Use actual agent ID from config for subsequent operations
-    const resolvedAgentId = agentConfig.id;
+    const identifier = agentId || slug;
 
     log(
-      'execAgent: got agent config for %s (id: %s), model: %s, provider: %s',
-      identifier,
-      resolvedAgentId,
-      agentConfig.model,
-      agentConfig.provider,
+      'execAgent: identifier=%s, continuation=%s, prompt=%s',
+      identifier || 'snapshot',
+      isContinuationMode,
+      prompt?.slice(0, 50) || '',
     );
+
+    let agentConfig: any;
+    let resolvedAgentId = agentId || 'resume';
+
+    if (identifier) {
+      // 1. Get agent configuration with default config merged (supports both id and slug)
+      agentConfig = await this.agentService.getAgentConfig(identifier);
+      if (!agentConfig) {
+        throw new Error(`Agent not found: ${identifier}`);
+      }
+
+      // Use actual agent ID from config for subsequent operations
+      resolvedAgentId = agentConfig.id;
+
+      log(
+        'execAgent: got agent config for %s (id: %s), model: %s, provider: %s',
+        identifier,
+        resolvedAgentId,
+        agentConfig.model,
+        agentConfig.provider,
+      );
+    } else {
+      if (!agentSnapshot?.model || !agentSnapshot.provider) {
+        throw new Error('Agent snapshot with model/provider is required for continuation mode');
+      }
+
+      agentConfig = {
+        avatar: agentSnapshot.avatar ?? undefined,
+        chatConfig: agentSnapshot.chatConfig ?? undefined,
+        fewShots: agentSnapshot.fewShots ?? undefined,
+        id: resolvedAgentId,
+        knowledgeBases: [],
+        model: agentSnapshot.model,
+        params: agentSnapshot.params ?? undefined,
+        plugins: agentSnapshot.plugins ?? [],
+        provider: agentSnapshot.provider,
+        systemRole: agentSnapshot.systemRole ?? undefined,
+        title: agentSnapshot.title ?? undefined,
+      };
+    }
 
     // 2. Merge builtin agent runtime config (systemRole, plugins)
     // The DB only stores persist config. Runtime config (e.g. inbox systemRole) is generated dynamically.
@@ -300,7 +337,9 @@ export class AiAgentService {
         agentId: resolvedAgentId,
         metadata,
         title:
-          title !== undefined ? title : prompt.slice(0, 50) + (prompt.length > 50 ? '...' : ''),
+          title !== undefined
+            ? title
+            : (prompt || '').slice(0, 50) + ((prompt || '').length > 50 ? '...' : ''),
         trigger,
       });
       topicId = newTopic.id;
@@ -619,17 +658,17 @@ export class AiAgentService {
     }
 
     // 11. Get existing messages if provided
-    let historyMessages: any[] = [];
-    if (existingMessageIds.length > 0) {
-      historyMessages = await this.messageModel.query({
+    let allMessages: any[] = initialMessages ? [...initialMessages] : [];
+    if (!isContinuationMode && existingMessageIds.length > 0) {
+      const historyMessages = await this.messageModel.query({
         sessionId: appContext?.sessionId,
         topicId: appContext?.topicId ?? undefined,
       });
       const idSet = new Set(existingMessageIds);
-      historyMessages = historyMessages.filter((msg) => idSet.has(msg.id));
-    } else if (appContext?.topicId) {
+      allMessages = historyMessages.filter((msg) => idSet.has(msg.id));
+    } else if (!isContinuationMode && appContext?.topicId) {
       // Follow-up message in existing topic: load all history for context
-      historyMessages = await this.messageModel.query({
+      allMessages = await this.messageModel.query({
         sessionId: appContext?.sessionId,
         topicId: appContext.topicId,
       });
@@ -670,62 +709,76 @@ export class AiAgentService {
 
     // 13. Create user message in database
     // Include threadId if provided (for SubAgent task execution in isolated Thread)
-    const userMessageRecord = await this.messageModel.create({
-      agentId: resolvedAgentId,
-      content: prompt,
-      files: fileIds,
-      role: 'user',
-      threadId: appContext?.threadId ?? undefined,
-      topicId,
-    });
-    log('execAgent: created user message %s', userMessageRecord.id);
+    let userMessageRecord:
+      | {
+          id: string;
+        }
+      | undefined;
+    let assistantMessageRecord:
+      | {
+          id: string;
+        }
+      | undefined;
 
-    // 14. Create assistant message placeholder in database
-    // Include threadId if provided (for SubAgent task execution in isolated Thread)
-    const assistantMessageRecord = await this.messageModel.create({
-      agentId: resolvedAgentId,
-      content: LOADING_FLAT,
-      model,
-      parentId: userMessageRecord.id,
-      provider,
-      role: 'assistant',
-      threadId: appContext?.threadId ?? undefined,
-      topicId,
-    });
-    log('execAgent: created assistant message %s', assistantMessageRecord.id);
+    if (!isContinuationMode) {
+      userMessageRecord = await this.messageModel.create({
+        agentId: resolvedAgentId,
+        content: prompt!,
+        files: fileIds,
+        role: 'user',
+        threadId: appContext?.threadId ?? undefined,
+        topicId,
+      });
+      log('execAgent: created user message %s', userMessageRecord.id);
 
-    // Create user message object for processing (include imageList for vision models)
-    const userMessage = { content: prompt, imageList, role: 'user' as const };
+      assistantMessageRecord = await this.messageModel.create({
+        agentId: resolvedAgentId,
+        content: LOADING_FLAT,
+        model,
+        parentId: userMessageRecord.id,
+        provider,
+        role: 'assistant',
+        threadId: appContext?.threadId ?? undefined,
+        topicId,
+      });
+      log('execAgent: created assistant message %s', assistantMessageRecord.id);
 
-    // Combine history messages with user message
-    const allMessages = [...historyMessages, userMessage];
-
-    log('execAgent: prepared evalContext for executor');
+      const userMessage = { content: prompt!, imageList, role: 'user' as const };
+      allMessages = [...allMessages, userMessage];
+      log('execAgent: prepared evalContext for executor');
+    }
 
     // 15. Generate operation ID: agt_{timestamp}_{agentId}_{topicId}_{random}
     const timestamp = Date.now();
     const operationId = `op_${timestamp}_${resolvedAgentId}_${topicId}_${nanoid(8)}`;
 
-    // 16. Create initial context
-    const initialContext: AgentRuntimeContext = {
-      payload: {
-        // Pass assistant message ID so agent runtime knows which message to update
-        assistantMessageId: assistantMessageRecord.id,
-        isFirstMessage: true,
-        message: [{ content: prompt }],
-        // Pass user message ID as parentMessageId for reference
-        parentMessageId: userMessageRecord.id,
-        // Include tools for initial LLM call
-        tools,
-      },
-      phase: 'user_input' as const,
-      session: {
-        messageCount: allMessages.length,
-        sessionId: operationId,
-        status: 'idle' as const,
-        stepCount: 0,
-      },
-    };
+    const runtimeInitialContext: AgentRuntimeContext = isContinuationMode
+      ? {
+          ...initialContext!,
+          session: {
+            ...initialContext!.session,
+            messageCount: allMessages.length,
+            sessionId: operationId,
+            status: 'idle' as const,
+            stepCount: 0,
+          },
+        }
+      : {
+          payload: {
+            assistantMessageId: assistantMessageRecord!.id,
+            isFirstMessage: true,
+            message: [{ content: prompt! }],
+            parentMessageId: userMessageRecord!.id,
+            tools,
+          },
+          phase: 'user_input' as const,
+          session: {
+            messageCount: allMessages.length,
+            sessionId: operationId,
+            status: 'idle' as const,
+            stepCount: 0,
+          },
+        };
 
     // 17. Log final operation parameters summary
     log(
@@ -757,7 +810,7 @@ export class AiAgentService {
         completionWebhook,
         discordContext,
         evalContext,
-        initialContext,
+        initialContext: runtimeInitialContext,
         initialMessages: allMessages,
         maxSteps,
         modelRuntimeConfig: { model, provider },
@@ -781,7 +834,9 @@ export class AiAgentService {
 
       return {
         agentId: resolvedAgentId,
-        assistantMessageId: assistantMessageRecord.id,
+        assistantMessageId:
+          assistantMessageRecord?.id ||
+          ((runtimeInitialContext.payload as any)?.assistantMessageId ?? ''),
         autoStarted: result.autoStarted,
         createdAt: new Date().toISOString(),
         message: 'Agent operation created successfully',
@@ -791,7 +846,8 @@ export class AiAgentService {
         success: true,
         timestamp: new Date().toISOString(),
         topicId,
-        userMessageId: userMessageRecord.id,
+        userMessageId:
+          userMessageRecord?.id || ((runtimeInitialContext.payload as any)?.parentMessageId ?? ''),
       };
     } catch (error) {
       // Operation startup failed (e.g., QStash queue service unavailable)
@@ -802,21 +858,25 @@ export class AiAgentService {
         errorMessage,
       );
 
-      await this.messageModel.update(assistantMessageRecord.id, {
-        content: '',
-        error: {
-          body: {
-            detail: errorMessage,
+      if (assistantMessageRecord?.id) {
+        await this.messageModel.update(assistantMessageRecord.id, {
+          content: '',
+          error: {
+            body: {
+              detail: errorMessage,
+            },
+            message: errorMessage,
+            type: 'ServerAgentRuntimeError',
           },
-          message: errorMessage,
-          type: 'ServerAgentRuntimeError', // ServiceUnavailable - agent runtime service unavailable
-        },
-      });
+        });
+      }
 
       // Return result with error status - messages are valid but agent didn't start
       return {
         agentId: resolvedAgentId,
-        assistantMessageId: assistantMessageRecord.id,
+        assistantMessageId:
+          assistantMessageRecord?.id ||
+          ((runtimeInitialContext.payload as any)?.assistantMessageId ?? ''),
         autoStarted: false,
         createdAt: new Date().toISOString(),
         error: errorMessage,
@@ -826,231 +886,10 @@ export class AiAgentService {
         success: false,
         timestamp: new Date().toISOString(),
         topicId,
-        userMessageId: userMessageRecord.id,
+        userMessageId:
+          userMessageRecord?.id || ((runtimeInitialContext.payload as any)?.parentMessageId ?? ''),
       };
     }
-  }
-
-  async createOperationFromTrajectory(params: ResumeOperationParams): Promise<{
-    operationId: string;
-    success: true;
-  }> {
-    const {
-      agentSnapshot,
-      appContext,
-      completionWebhook,
-      evalContext,
-      initialContext,
-      initialMessages,
-      maxSteps,
-    } = params;
-
-    const topicId = appContext.topicId;
-    const threadId = appContext.threadId ?? undefined;
-
-    if (!agentSnapshot?.model || !agentSnapshot.provider) {
-      throw new Error('Agent snapshot with model/provider is required to recreate eval operation');
-    }
-
-    const model = agentSnapshot.model;
-    const provider = agentSnapshot.provider;
-
-    const runtimeAgentConfig = {
-      avatar: agentSnapshot.avatar ?? undefined,
-      chatConfig: agentSnapshot.chatConfig ?? undefined,
-      fewShots: agentSnapshot.fewShots ?? undefined,
-      model,
-      params: agentSnapshot.params ?? undefined,
-      plugins: agentSnapshot.plugins ?? [],
-      provider,
-      systemRole: agentSnapshot.systemRole ?? undefined,
-      title: agentSnapshot.title ?? undefined,
-    };
-
-    const installedPlugins = await this.pluginModel.query();
-    const { LOBE_DEFAULT_MODEL_LIST } = await import('model-bank');
-    const isModelSupportToolUse = (m: string, p: string) => {
-      const info = LOBE_DEFAULT_MODEL_LIST.find((item) => item.id === m && item.providerId === p);
-      return info?.abilities?.functionCall ?? true;
-    };
-
-    let lobehubSkillManifests: LobeToolManifest[] = [];
-    try {
-      lobehubSkillManifests = await this.marketService.getLobehubSkillManifests();
-    } catch (error) {
-      log('createOperationFromTrajectory: failed to fetch lobehub skill manifests: %O', error);
-    }
-
-    let klavisManifests: LobeToolManifest[] = [];
-    try {
-      klavisManifests = await this.klavisService.getKlavisManifests();
-    } catch (error) {
-      log('createOperationFromTrajectory: failed to fetch klavis manifests: %O', error);
-    }
-
-    let globalMemoryEnabled = false;
-    let userTimezone: string | undefined;
-    try {
-      const userModel = new UserModel(this.db, this.userId);
-      const settings = await userModel.getUserSettings();
-      const memorySettings = settings?.memory as { enabled?: boolean } | undefined;
-      globalMemoryEnabled = memorySettings?.enabled !== false;
-      const generalSettings = settings?.general as { timezone?: string } | undefined;
-      userTimezone = generalSettings?.timezone;
-    } catch (error) {
-      log('createOperationFromTrajectory: failed to fetch user settings: %O', error);
-    }
-
-    const gatewayConfigured = deviceProxy.isConfigured;
-    const boundDeviceId = (runtimeAgentConfig as any).agencyConfig?.boundDeviceId;
-    let onlineDevices: DeviceAttachment[] = [];
-    if (gatewayConfigured) {
-      try {
-        onlineDevices = await deviceProxy.queryDeviceList(this.userId);
-      } catch (error) {
-        log('createOperationFromTrajectory: failed to query device list: %O', error);
-      }
-    }
-    const deviceOnline = onlineDevices.length > 0;
-
-    const toolsEngine = createServerAgentToolsEngine(
-      {
-        installedPlugins,
-        isModelSupportToolUse,
-      } satisfies ServerAgentToolsContext,
-      {
-        additionalManifests: [...lobehubSkillManifests, ...klavisManifests],
-        agentConfig: {
-          chatConfig: runtimeAgentConfig.chatConfig ?? undefined,
-          plugins: runtimeAgentConfig.plugins ?? undefined,
-        },
-        deviceContext: gatewayConfigured
-          ? { boundDeviceId, deviceOnline, gatewayConfigured: true }
-          : undefined,
-        globalMemoryEnabled,
-        hasEnabledKnowledgeBases: false,
-        model,
-        provider,
-      },
-    );
-
-    const pluginIds = [
-      ...(runtimeAgentConfig.plugins || []),
-      LocalSystemManifest.identifier,
-      RemoteDeviceManifest.identifier,
-    ];
-
-    const toolsResult = toolsEngine.generateToolsDetailed({ model, provider, toolIds: pluginIds });
-    const tools = toolsResult.tools;
-
-    const manifestMap = toolsEngine.getEnabledPluginManifests(pluginIds);
-    const toolManifestMap: Record<string, any> = {};
-    manifestMap.forEach((manifest, id) => {
-      toolManifestMap[id] = manifest;
-    });
-
-    const toolSourceMap: Record<string, 'builtin' | 'plugin' | 'mcp' | 'klavis' | 'lobehubSkill'> =
-      {};
-    for (const manifest of lobehubSkillManifests) {
-      toolSourceMap[manifest.identifier] = 'lobehubSkill';
-    }
-    for (const manifest of klavisManifests) {
-      toolSourceMap[manifest.identifier] = 'klavis';
-    }
-
-    if (toolManifestMap[RemoteDeviceManifest.identifier]) {
-      toolManifestMap[RemoteDeviceManifest.identifier] = {
-        ...toolManifestMap[RemoteDeviceManifest.identifier],
-        systemRole: generateSystemPrompt(onlineDevices),
-      };
-    }
-
-    const activeDeviceId = boundDeviceId ? (deviceOnline ? boundDeviceId : undefined) : undefined;
-
-    let deviceSystemInfo: Record<string, string> = {};
-    if (activeDeviceId) {
-      try {
-        const systemInfo = await deviceProxy.queryDeviceSystemInfo(this.userId, activeDeviceId);
-        if (systemInfo) {
-          const activeDevice = onlineDevices.find((d) => d.deviceId === activeDeviceId);
-          deviceSystemInfo = {
-            arch: systemInfo.arch,
-            desktopPath: systemInfo.desktopPath,
-            documentsPath: systemInfo.documentsPath,
-            downloadsPath: systemInfo.downloadsPath,
-            homePath: systemInfo.homePath,
-            musicPath: systemInfo.musicPath,
-            picturesPath: systemInfo.picturesPath,
-            platform: activeDevice?.platform ?? 'unknown',
-            userDataPath: systemInfo.userDataPath,
-            videosPath: systemInfo.videosPath,
-            workingDirectory: systemInfo.workingDirectory,
-          };
-        }
-      } catch (error) {
-        log('createOperationFromTrajectory: failed to fetch device system info: %O', error);
-      }
-    }
-
-    let userMemory: ServerUserMemoryConfig | undefined;
-    if (globalMemoryEnabled) {
-      try {
-        const personaModel = new UserPersonaModel(this.db, this.userId);
-        const persona = await personaModel.getLatestPersonaDocument();
-
-        if (persona?.persona) {
-          userMemory = {
-            fetchedAt: Date.now(),
-            memories: {
-              contexts: [],
-              experiences: [],
-              persona: {
-                narrative: persona.persona,
-                tagline: persona.tagline,
-              },
-              preferences: [],
-            },
-          };
-        }
-      } catch (error) {
-        log('createOperationFromTrajectory: failed to fetch user persona: %O', error);
-      }
-    }
-
-    const timestamp = Date.now();
-    const operationId = `op_${timestamp}_${topicId}_${nanoid(8)}`;
-
-    await this.agentRuntimeService.createOperation({
-      activeDeviceId,
-      agentConfig: runtimeAgentConfig,
-      deviceSystemInfo: Object.keys(deviceSystemInfo).length > 0 ? deviceSystemInfo : undefined,
-      userTimezone,
-      appContext: {
-        agentId: appContext.agentId ?? undefined,
-        threadId,
-        topicId,
-      },
-      autoStart: false,
-      completionWebhook,
-      evalContext,
-      initialContext,
-      initialMessages,
-      maxSteps,
-      modelRuntimeConfig: { model, provider },
-      operationId,
-      stream: true,
-      toolSet: {
-        enabledToolIds: toolsResult.enabledToolIds,
-        manifestMap: toolManifestMap,
-        sourceMap: toolSourceMap,
-        tools,
-      },
-      userId: this.userId,
-      userInterventionConfig: { approvalMode: 'headless' },
-      userMemory,
-    });
-
-    return { operationId, success: true };
   }
 
   /**

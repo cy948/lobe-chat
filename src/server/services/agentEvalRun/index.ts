@@ -27,7 +27,6 @@ import { AgentService } from '@/server/services/agent';
 import { AgentRuntimeService } from '@/server/services/agentRuntime/AgentRuntimeService';
 import { AiAgentService } from '@/server/services/aiAgent';
 import { AgentEvalRunWorkflow } from '@/server/workflows/agentEvalRun';
-import { getTimeoutResumeDecision } from '@/utils/eval/timeoutResume';
 
 /** Round cost to at most 6 decimal places to avoid floating-point noise */
 const roundCost = (v: number): number => Math.round(v * 1e6) / 1e6;
@@ -72,11 +71,41 @@ export class AgentEvalRunService {
     },
   ) {
     const timeoutMs = this.getRunTimeoutMs(run);
-    return getTimeoutResumeDecision({
-      durationMs: runTopic.evalResult?.duration,
-      status: runTopic.status,
+    const durationMs = runTopic.evalResult?.duration;
+
+    if (runTopic.status !== 'timeout') {
+      return {
+        durationMs,
+        eligible: false,
+        reason: `status=${runTopic.status ?? 'unknown'}`,
+        timeoutMs,
+      };
+    }
+
+    if (durationMs === undefined || durationMs === null) {
+      return {
+        durationMs,
+        eligible: false,
+        reason: 'missing_timeout_duration',
+        timeoutMs,
+      };
+    }
+
+    if (durationMs > timeoutMs) {
+      return {
+        durationMs,
+        eligible: false,
+        reason: 'timeout_exceeded',
+        timeoutMs,
+      };
+    }
+
+    return {
+      durationMs,
+      eligible: true,
+      reason: undefined,
       timeoutMs,
-    });
+    };
   }
 
   async previewTimeoutResumes(runId: string) {

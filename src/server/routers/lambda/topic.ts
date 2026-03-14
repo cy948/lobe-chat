@@ -322,9 +322,19 @@ export const topicRouter = router({
   }),
 
   recentTopics: topicProcedure
-    .input(z.object({ limit: z.number().optional() }).optional())
+    .input(
+      z
+        .object({
+          excludeTriggers: z.array(z.string()).optional(),
+          limit: z.number().optional(),
+        })
+        .optional(),
+    )
     .query(async ({ ctx, input }): Promise<RecentTopic[]> => {
-      const recentTopics = await ctx.topicModel.queryRecent(input?.limit ?? 12);
+      const recentTopics = await ctx.topicModel.queryRecent(
+        input?.limit ?? 12,
+        input?.excludeTriggers,
+      );
 
       // Separate agent topics and group topics
       const agentTopics = recentTopics.filter((t) => t.type === 'agent');
@@ -489,6 +499,7 @@ export const topicRouter = router({
     .input(
       z.object({
         agentId: z.string().optional(),
+        excludeTriggers: z.array(z.string()).optional(),
         groupId: z.string().nullable().optional(),
         keywords: z.string(),
         sessionId: z.string().nullable().optional(),
@@ -501,7 +512,11 @@ export const topicRouter = router({
         ctx.userId,
       );
 
-      return ctx.topicModel.queryByKeyword(input.keywords, resolved.sessionId);
+      return ctx.topicModel.queryByKeyword(
+        input.keywords,
+        resolved.sessionId,
+        input.excludeTriggers,
+      );
     }),
 
   /**

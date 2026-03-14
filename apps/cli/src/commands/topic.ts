@@ -7,6 +7,33 @@ import { getTrpcClient } from '../api/client';
 import { confirm, outputJson, printTable, timeAgo, truncate } from '../utils/format';
 import { log } from '../utils/logger';
 
+const DEFAULT_EXCLUDE_TRIGGERS = ['eval'];
+
+const parseFilter = (filter?: string) => {
+  if (!filter) return { excludeTriggers: DEFAULT_EXCLUDE_TRIGGERS };
+  const trimmed = filter.trim();
+  if (!trimmed) return { excludeTriggers: DEFAULT_EXCLUDE_TRIGGERS };
+  if (trimmed.toLowerCase() === 'none') return { excludeTriggers: undefined };
+  const lower = trimmed.toLowerCase();
+  const prefix = 'trigger!=';
+  if (!lower.startsWith(prefix)) {
+    log.error("Invalid --filter. Use 'trigger!=eval,cron' or 'none'.");
+    process.exit(1);
+  }
+
+  const rawList = trimmed.slice(prefix.length);
+  const excludeTriggers = rawList
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+  if (excludeTriggers.length === 0) {
+    log.error("Invalid --filter. Use 'trigger!=eval,cron' or 'none'.");
+    process.exit(1);
+  }
+
+  return { excludeTriggers };
+};
+
 export function registerTopicCommand(program: Command) {
   const topic = program.command('topic').description('Manage conversation topics');
 
@@ -18,10 +45,12 @@ export function registerTopicCommand(program: Command) {
     .option('--agent-id <id>', 'Filter by agent ID')
     .option('-L, --limit <n>', 'Page size', '30')
     .option('--page <n>', 'Page number', '1')
+    .option('--filter <expr>', 'Filter by trigger (e.g. trigger!=eval,cron or none)')
     .option('--json [fields]', 'Output JSON, optionally specify fields (comma-separated)')
     .action(
       async (options: {
         agentId?: string;
+        filter?: string;
         json?: string | boolean;
         limit?: string;
         page?: string;
@@ -29,6 +58,8 @@ export function registerTopicCommand(program: Command) {
         const client = await getTrpcClient();
 
         const input: Record<string, any> = {};
+        const { excludeTriggers } = parseFilter(options.filter);
+        if (excludeTriggers && excludeTriggers.length > 0) input.excludeTriggers = excludeTriggers;
         if (options.agentId) input.agentId = options.agentId;
         if (options.limit) input.pageSize = Number.parseInt(options.limit, 10);
         if (options.page) input.current = Number.parseInt(options.page, 10);
@@ -64,31 +95,39 @@ export function registerTopicCommand(program: Command) {
     .command('search <keywords>')
     .description('Search topics')
     .option('--agent-id <id>', 'Filter by agent ID')
+    .option('--filter <expr>', 'Filter by trigger (e.g. trigger!=eval,cron or none)')
     .option('--json [fields]', 'Output JSON, optionally specify fields (comma-separated)')
-    .action(async (keywords: string, options: { agentId?: string; json?: string | boolean }) => {
-      const client = await getTrpcClient();
+    .action(
+      async (
+        keywords: string,
+        options: { agentId?: string; filter?: string; json?: string | boolean },
+      ) => {
+        const client = await getTrpcClient();
 
-      const input: Record<string, any> = { keywords };
-      if (options.agentId) input.agentId = options.agentId;
+        const input: Record<string, any> = { keywords };
+        const { excludeTriggers } = parseFilter(options.filter);
+        if (excludeTriggers && excludeTriggers.length > 0) input.excludeTriggers = excludeTriggers;
+        if (options.agentId) input.agentId = options.agentId;
 
-      const result = await client.topic.searchTopics.query(input as any);
-      const items = Array.isArray(result) ? result : [];
+        const result = await client.topic.searchTopics.query(input as any);
+        const items = Array.isArray(result) ? result : [];
 
-      if (options.json !== undefined) {
-        const fields = typeof options.json === 'string' ? options.json : undefined;
-        outputJson(items, fields);
-        return;
-      }
+        if (options.json !== undefined) {
+          const fields = typeof options.json === 'string' ? options.json : undefined;
+          outputJson(items, fields);
+          return;
+        }
 
-      if (items.length === 0) {
-        console.log('No topics found.');
-        return;
-      }
+        if (items.length === 0) {
+          console.log('No topics found.');
+          return;
+        }
 
-      const rows = items.map((t: any) => [t.id || '', truncate(t.title || 'Untitled', 50)]);
+        const rows = items.map((t: any) => [t.id || '', truncate(t.title || 'Untitled', 50)]);
 
-      printTable(rows, ['ID', 'TITLE']);
-    });
+        printTable(rows, ['ID', 'TITLE']);
+      },
+    );
 
   // ── create ────────────────────────────────────────────
 
@@ -304,12 +343,16 @@ export function registerTopicCommand(program: Command) {
     .command('recent')
     .description('List recent topics')
     .option('-L, --limit <n>', 'Number of items', '10')
+    .option('--filter <expr>', 'Filter by trigger (e.g. trigger!=eval,cron or none)')
     .option('--json [fields]', 'Output JSON, optionally specify fields (comma-separated)')
-    .action(async (options: { json?: string | boolean; limit?: string }) => {
+    .action(async (options: { filter?: string; json?: string | boolean; limit?: string }) => {
       const client = await getTrpcClient();
       const limit = Number.parseInt(options.limit || '10', 10);
 
-      const result = await client.topic.recentTopics.query({ limit });
+      const { excludeTriggers } = parseFilter(options.filter);
+      const input: Record<string, any> = { limit };
+      if (excludeTriggers && excludeTriggers.length > 0) input.excludeTriggers = excludeTriggers;
+      const result = await client.topic.recentTopics.query(input as any);
       const items = Array.isArray(result) ? result : [];
 
       if (options.json !== undefined) {

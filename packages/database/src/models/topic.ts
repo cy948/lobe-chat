@@ -238,10 +238,19 @@ export class TopicModel {
       .where(eq(topics.userId, this.userId));
   };
 
-  queryByKeyword = async (keyword: string, containerId?: string | null): Promise<TopicItem[]> => {
+  queryByKeyword = async (
+    keyword: string,
+    containerId?: string | null,
+    excludeTriggers?: string[],
+  ): Promise<TopicItem[]> => {
     if (!keyword) return [];
 
     const keywordLowerCase = keyword.toLowerCase();
+
+    const excludeTriggerCondition =
+      excludeTriggers && excludeTriggers.length > 0
+        ? or(isNull(topics.trigger), not(inArray(topics.trigger, excludeTriggers)))
+        : undefined;
 
     // Query topics matching by title
     const topicsByTitle = await this.db.query.topics.findMany({
@@ -250,6 +259,7 @@ export class TopicModel {
         eq(topics.userId, this.userId),
         this.matchContainer(containerId),
         ilike(topics.title, `%${keywordLowerCase}%`),
+        excludeTriggerCondition,
       ),
     });
 
@@ -264,6 +274,7 @@ export class TopicModel {
           ilike(messages.content, `%${keywordLowerCase}%`),
           eq(topics.userId, this.userId),
           this.matchContainer(containerId),
+          excludeTriggerCondition,
         ),
       )
       .groupBy(messages.topicId);
@@ -279,7 +290,11 @@ export class TopicModel {
 
     const topicsByMessages = await this.db.query.topics.findMany({
       orderBy: [desc(topics.updatedAt)],
-      where: and(eq(topics.userId, this.userId), inArray(topics.id, topicIds)),
+      where: and(
+        eq(topics.userId, this.userId),
+        inArray(topics.id, topicIds),
+        excludeTriggerCondition,
+      ),
     });
 
     // Merge results and deduplicate
@@ -376,7 +391,12 @@ export class TopicModel {
    * - For group topics: includes topics with groupId
    * - For inbox: includes topics with slug='inbox'
    */
-  queryRecent = async (limit: number = 12) => {
+  queryRecent = async (limit: number = 12, excludeTriggers?: string[]) => {
+    const excludeTriggerCondition =
+      excludeTriggers && excludeTriggers.length > 0
+        ? or(isNull(topics.trigger), not(inArray(topics.trigger, excludeTriggers)))
+        : undefined;
+
     const result = await this.db
       .select({
         agentId: topics.agentId,
@@ -399,6 +419,7 @@ export class TopicModel {
             // Agent topics: exclude virtual agents
             and(isNull(topics.groupId), ne(agents.virtual, true)),
           ),
+          excludeTriggerCondition,
         ),
       )
       .orderBy(desc(topics.updatedAt))

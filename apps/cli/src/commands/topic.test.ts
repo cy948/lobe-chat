@@ -65,6 +65,9 @@ describe('topic command', () => {
       await program.parseAsync(['node', 'test', 'topic', 'list']);
 
       expect(consoleSpy).toHaveBeenCalledTimes(2);
+      expect(mockTrpcClient.topic.getTopics.query).toHaveBeenCalledWith(
+        expect.objectContaining({ excludeTriggers: ['eval'] }),
+      );
     });
 
     it('should filter by agent-id', async () => {
@@ -74,7 +77,7 @@ describe('topic command', () => {
       await program.parseAsync(['node', 'test', 'topic', 'list', '--agent-id', 'a1']);
 
       expect(mockTrpcClient.topic.getTopics.query).toHaveBeenCalledWith(
-        expect.objectContaining({ agentId: 'a1' }),
+        expect.objectContaining({ agentId: 'a1', excludeTriggers: ['eval'] }),
       );
     });
   });
@@ -87,7 +90,7 @@ describe('topic command', () => {
       await program.parseAsync(['node', 'test', 'topic', 'search', 'hello']);
 
       expect(mockTrpcClient.topic.searchTopics.query).toHaveBeenCalledWith(
-        expect.objectContaining({ keywords: 'hello' }),
+        expect.objectContaining({ keywords: 'hello', excludeTriggers: ['eval'] }),
       );
     });
   });
@@ -158,7 +161,10 @@ describe('topic command', () => {
       const program = createProgram();
       await program.parseAsync(['node', 'test', 'topic', 'recent']);
 
-      expect(mockTrpcClient.topic.recentTopics.query).toHaveBeenCalledWith({ limit: 10 });
+      expect(mockTrpcClient.topic.recentTopics.query).toHaveBeenCalledWith({
+        excludeTriggers: ['eval'],
+        limit: 10,
+      });
     });
   });
 });

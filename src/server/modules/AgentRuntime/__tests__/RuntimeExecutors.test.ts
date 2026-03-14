@@ -7,11 +7,21 @@ import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
 
 import { createRuntimeExecutors, type RuntimeExecutorContext } from '../RuntimeExecutors';
 
+const mockCreateCompressionGroup = vi.fn();
+const mockFinalizeCompression = vi.fn();
+
 // Mock dependencies
 vi.mock('@/server/modules/ModelRuntime', () => ({
   initModelRuntimeFromDB: vi.fn().mockResolvedValue({
     chat: vi.fn().mockResolvedValue(new Response('done')),
   }),
+}));
+
+vi.mock('@/server/services/message', () => ({
+  MessageService: vi.fn().mockImplementation(() => ({
+    createCompressionGroup: mockCreateCompressionGroup,
+    finalizeCompression: mockFinalizeCompression,
+  })),
 }));
 
 // @lobechat/model-runtime resolves to @cloud/business-model-runtime which has
@@ -44,9 +54,16 @@ describe('RuntimeExecutors', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCreateCompressionGroup.mockResolvedValue({
+      messageGroupId: 'group-123',
+      messagesToSummarize: [],
+      success: true,
+    });
+    mockFinalizeCompression.mockResolvedValue({ success: true });
 
     mockMessageModel = {
       create: vi.fn().mockResolvedValue({ id: 'msg-123' }),
+      query: vi.fn().mockResolvedValue([]),
       update: vi.fn().mockResolvedValue({}),
     };
 
@@ -259,6 +276,158 @@ describe('RuntimeExecutors', () => {
           provider: 'openai',
         }),
       );
+    });
+
+    it('should compress before call_llm in eval mode when context is too large', async () => {
+      const mockChat = vi.fn().mockImplementation(async (_payload, options) => {
+        await options?.callback?.onText?.('summary');
+        await options?.callback?.onCompletion?.({
+          usage: {
+            completionTokens: 5,
+            promptTokens: 10,
+            totalTokens: 15,
+          },
+        });
+        return new Response('done');
+      });
+      vi.mocked(initModelRuntimeFromDB).mockResolvedValue({ chat: mockChat } as any);
+
+      mockMessageModel.query.mockResolvedValue([
+        { content: 'history', id: 'msg-history', role: 'user' },
+        { content: 'loading', id: 'assistant-existing', role: 'assistant' },
+      ]);
+      mockCreateCompressionGroup.mockResolvedValue({
+        messageGroupId: 'group-123',
+        messagesToSummarize: [{ content: 'history', id: 'msg-history', role: 'user' }],
+        success: true,
+      });
+      mockFinalizeCompression.mockResolvedValue({
+        messages: [
+          { content: 'summary', id: 'group-123', role: 'compressedGroup' },
+          { content: 'loading', id: 'assistant-existing', role: 'assistant' },
+        ],
+        success: true,
+      });
+
+      const executors = createRuntimeExecutors({
+        ...ctx,
+        evalContext: { envPrompt: 'eval' } as any,
+      });
+      const state = createMockState({
+        messages: [{ content: 'x '.repeat(70000), role: 'user' }],
+      });
+
+      const instruction = {
+        payload: {
+          assistantMessageId: 'assistant-existing',
+          messages: [{ content: 'x '.repeat(70000), role: 'user' }],
+          model: 'gpt-4',
+          provider: 'openai',
+          tools: [],
+        },
+        type: 'call_llm' as const,
+      };
+
+      await executors.call_llm!(instruction, state);
+
+      expect(mockCreateCompressionGroup).toHaveBeenCalledTimes(1);
+      expect(mockFinalizeCompression).toHaveBeenCalledTimes(1);
+      expect(mockChat).toHaveBeenCalledTimes(2);
+      expect(mockChat.mock.calls[1][0].messages[0]).toEqual({
+        content: 'summary',
+        id: 'group-123',
+        role: 'compressedGroup',
+      });
+    });
+
+    it('should not compress before call_llm outside eval mode', async () => {
+      const mockChat = vi.fn().mockResolvedValue(new Response('done'));
+      vi.mocked(initModelRuntimeFromDB).mockResolvedValue({ chat: mockChat } as any);
+
+      const executors = createRuntimeExecutors(ctx);
+      const state = createMockState({
+        messages: [{ content: 'x '.repeat(70000), role: 'user' }],
+      });
+
+      const instruction = {
+        payload: {
+          messages: [{ content: 'x '.repeat(70000), role: 'user' }],
+          model: 'gpt-4',
+          provider: 'openai',
+          tools: [],
+        },
+        type: 'call_llm' as const,
+      };
+
+      await executors.call_llm!(instruction, state);
+
+      expect(mockCreateCompressionGroup).not.toHaveBeenCalled();
+      expect(mockChat).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not compress in eval mode when chatConfig.enableContextCompression is false', async () => {
+      const mockChat = vi.fn().mockResolvedValue(new Response('done'));
+      vi.mocked(initModelRuntimeFromDB).mockResolvedValue({ chat: mockChat } as any);
+
+      const executors = createRuntimeExecutors({
+        ...ctx,
+        agentConfig: {
+          chatConfig: {
+            enableContextCompression: false,
+          },
+        },
+        evalContext: { envPrompt: 'eval' } as any,
+      });
+      const state = createMockState({
+        messages: [{ content: 'x '.repeat(70000), role: 'user' }],
+      });
+
+      const instruction = {
+        payload: {
+          messages: [{ content: 'x '.repeat(70000), role: 'user' }],
+          model: 'gpt-4',
+          provider: 'openai',
+          tools: [],
+        },
+        type: 'call_llm' as const,
+      };
+
+      await executors.call_llm!(instruction, state);
+
+      expect(mockCreateCompressionGroup).not.toHaveBeenCalled();
+      expect(mockChat).toHaveBeenCalledTimes(1);
+    });
+
+    it('should continue call_llm when eval compression fails', async () => {
+      const mockChat = vi.fn().mockResolvedValue(new Response('done'));
+      vi.mocked(initModelRuntimeFromDB).mockResolvedValue({ chat: mockChat } as any);
+
+      mockMessageModel.query.mockResolvedValue([
+        { content: 'history', id: 'msg-history', role: 'user' },
+      ]);
+      mockCreateCompressionGroup.mockRejectedValueOnce(new Error('compression failed'));
+
+      const executors = createRuntimeExecutors({
+        ...ctx,
+        evalContext: { envPrompt: 'eval' } as any,
+      });
+      const state = createMockState({
+        messages: [{ content: 'x '.repeat(70000), role: 'user' }],
+      });
+
+      const instruction = {
+        payload: {
+          messages: [{ content: 'x '.repeat(70000), role: 'user' }],
+          model: 'gpt-4',
+          provider: 'openai',
+          tools: [],
+        },
+        type: 'call_llm' as const,
+      };
+
+      await expect(executors.call_llm!(instruction, state)).resolves.toBeDefined();
+      expect(mockChat).toHaveBeenCalledTimes(1);
+      expect(mockFinalizeCompression).not.toHaveBeenCalled();
     });
 
     describe('assistantMessageId reuse', () => {

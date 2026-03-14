@@ -1327,7 +1327,7 @@ export class AgentRuntimeService {
     const agent = new GeneralChatAgent({
       agentConfig: metadata?.agentConfig,
       compressionConfig: {
-        enabled: metadata?.agentConfig?.chatConfig?.enableContextCompression ?? true,
+        enabled: false,
       },
       dynamicInterventionAudits,
       modelRuntimeConfig: metadata?.modelRuntimeConfig,

@@ -4,6 +4,7 @@ import {
   type CallLLMPayload,
   type GeneralAgentCallLLMResultPayload,
   type InstructionExecutor,
+  shouldCompress,
   UsageCounter,
 } from '@lobechat/agent-runtime';
 import { LocalSystemManifest } from '@lobechat/builtin-tool-local-system';
@@ -17,6 +18,7 @@ import {
 } from '@lobechat/context-engine';
 import { parse } from '@lobechat/conversation-flow';
 import { consumeStreamUntilDone } from '@lobechat/model-runtime';
+import { chainCompressContext } from '@lobechat/prompts';
 import { type ChatToolPayload, type MessageToolCall, type UIChatMessage } from '@lobechat/types';
 import { serializePartsForStorage } from '@lobechat/utils';
 import debug from 'debug';
@@ -26,6 +28,7 @@ import { type LobeChatDatabase } from '@/database/type';
 import { serverMessagesEngine } from '@/server/modules/Mecha/ContextEngineering';
 import { type EvalContext } from '@/server/modules/Mecha/ContextEngineering/types';
 import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
+import { MessageService } from '@/server/services/message';
 import { type ToolExecutionService } from '@/server/services/toolExecution';
 
 import { type IStreamEventManager } from './types';
@@ -68,6 +71,8 @@ export const createRuntimeExecutors = (
     const llmPayload = payload as CallLLMPayload;
     const { operationId, stepIndex, streamManager } = ctx;
     const events: AgentEvent[] = [];
+    const newState = structuredClone(state);
+    let currentMessages = llmPayload.messages as UIChatMessage[];
 
     // Fallback to state's modelRuntimeConfig if not in payload
     const model = llmPayload.model || state.modelRuntimeConfig?.model;
@@ -118,10 +123,121 @@ export const createRuntimeExecutors = (
 
     // Get parentId from payload (parentId or parentMessageId depending on payload type)
     const parentId = llmPayload.parentId || (llmPayload as any).parentMessageId;
+    const existingAssistantMessageId = (llmPayload as any).assistantMessageId;
+    // Keep the existing product default: undefined means compression is enabled unless
+    // the user explicitly disables it via chatConfig.enableContextCompression = false.
+    const compressionEnabled = ctx.agentConfig?.chatConfig?.enableContextCompression ?? true;
+
+    if (
+      ctx.evalContext &&
+      compressionEnabled &&
+      newState.metadata?.topicId &&
+      shouldCompress(newState.messages).needsCompression &&
+      ctx.userId
+    ) {
+      try {
+        const dbMessages = await ctx.messageModel.query({
+          agentId: newState.metadata?.agentId,
+          threadId: newState.metadata?.threadId,
+          topicId: newState.metadata?.topicId,
+        });
+
+        const messageIds = dbMessages
+          .filter((message) => message.role !== 'compressedGroup')
+          .map((message) => message.id)
+          .filter((id): id is string => Boolean(id) && id !== existingAssistantMessageId);
+
+        if (messageIds.length > 0) {
+          const messageService = new MessageService(ctx.serverDB, ctx.userId);
+          const compressionResult = await messageService.createCompressionGroup(
+            newState.metadata.topicId,
+            messageIds,
+            {
+              agentId: newState.metadata?.agentId,
+              threadId: newState.metadata?.threadId,
+              topicId: newState.metadata?.topicId,
+            },
+          );
+
+          const compressionModel =
+            newState.modelRuntimeConfig?.compressionModel || newState.modelRuntimeConfig;
+
+          if (compressionModel?.model && compressionModel?.provider) {
+            const compressionPayload = chainCompressContext(compressionResult.messagesToSummarize);
+            const compressionRuntime = await initModelRuntimeFromDB(
+              ctx.serverDB,
+              ctx.userId,
+              compressionModel.provider,
+            );
+
+            let summaryContent = '';
+            let summaryUsage: any;
+            let summaryError: any;
+
+            const compressionResponse = await compressionRuntime.chat(
+              {
+                messages: compressionPayload.messages!,
+                model: compressionModel.model,
+                stream: true,
+              },
+              {
+                callback: {
+                  onCompletion: async (data) => {
+                    if (data.usage) summaryUsage = data.usage;
+                  },
+                  onError: async (errorData) => {
+                    summaryError = errorData;
+                  },
+                  onText: async (text) => {
+                    summaryContent += text;
+                  },
+                },
+                user: ctx.userId,
+              },
+            );
+
+            await consumeStreamUntilDone(compressionResponse);
+
+            if (!summaryError) {
+              const finalCompression = await messageService.finalizeCompression(
+                compressionResult.messageGroupId,
+                summaryContent,
+                {
+                  agentId: newState.metadata?.agentId,
+                  threadId: newState.metadata?.threadId,
+                  topicId: newState.metadata?.topicId,
+                },
+              );
+
+              currentMessages =
+                finalCompression.messages?.filter(
+                  (message) => message.id !== existingAssistantMessageId,
+                ) || currentMessages;
+
+              newState.messages = currentMessages;
+
+              if (summaryUsage) {
+                const { usage, cost } = UsageCounter.accumulateLLM({
+                  cost: newState.cost,
+                  model: compressionModel.model,
+                  modelUsage: summaryUsage,
+                  provider: compressionModel.provider,
+                  usage: newState.usage,
+                });
+
+                newState.usage = usage;
+                if (cost) newState.cost = cost;
+              }
+            }
+          }
+        }
+      } catch (error) {
+        log(`${stagePrefix} Skip eval compression on error: %O`, error);
+      }
+    }
 
     // Get or create assistant message
     // If assistantMessageId is provided in payload, use existing message instead of creating new one
-    const existingAssistantMessageId = (llmPayload as any).assistantMessageId;
     let assistantMessageItem: { id: string };
 
     if (existingAssistantMessageId) {
@@ -131,14 +247,14 @@ export const createRuntimeExecutors = (
     } else {
       // Create new assistant message (legacy behavior)
       assistantMessageItem = await ctx.messageModel.create({
-        agentId: state.metadata!.agentId!,
+        agentId: newState.metadata!.agentId!,
         content: '',
         model,
         parentId,
         provider,
         role: 'assistant',
-        threadId: state.metadata?.threadId,
-        topicId: state.metadata?.topicId,
+        threadId: newState.metadata?.threadId,
+        topicId: newState.metadata?.topicId,
       });
       log(`${stagePrefix} Created new assistant message: %s`, assistantMessageItem.id);
     }
@@ -175,7 +291,7 @@ export const createRuntimeExecutors = (
         const { LOBE_DEFAULT_MODEL_LIST } = await import('model-bank');
 
         const contextEngineInput = {
-          additionalVariables: state.metadata?.deviceSystemInfo,
+          additionalVariables: newState.metadata?.deviceSystemInfo,
           userTimezone: ctx.userTimezone,
           capabilities: {
             isCanUseFC: (m: string, p: string) => {
@@ -200,7 +316,7 @@ export const createRuntimeExecutors = (
           discordContext: ctx.discordContext,
           enableHistoryCount: agentConfig.chatConfig?.enableHistoryCount ?? undefined,
           evalContext: ctx.evalContext,
-          forceFinish: state.forceFinish,
+          forceFinish: newState.forceFinish,
           historyCount: agentConfig.chatConfig?.historyCount ?? undefined,
           knowledge: {
             fileContents: agentConfig.files
@@ -217,7 +333,7 @@ export const createRuntimeExecutors = (
                 name: kb.name ?? '',
               })),
           },
-          messages: llmPayload.messages as UIChatMessage[],
+          messages: currentMessages,
           model,
           provider,
           systemRole: agentConfig.systemRole ?? undefined,
@@ -242,7 +358,7 @@ export const createRuntimeExecutors = (
           type: 'context_engine_result',
         } as any);
       } else {
-        processedMessages = llmPayload.messages;
+        processedMessages = currentMessages;
       }
 
       // Initialize ModelRuntime (read user's keyVaults from database)
@@ -527,8 +643,6 @@ export const createRuntimeExecutors = (
       }
 
       // ===== 2. Then accumulate to AgentState =====
-      const newState = structuredClone(state);
-
       newState.messages.push({
         content,
         role: 'assistant',
@@ -539,9 +653,9 @@ export const createRuntimeExecutors = (
         // Use UsageCounter to uniformly accumulate usage and cost
         const { usage, cost } = UsageCounter.accumulateLLM({
           cost: newState.cost,
-          model: llmPayload.model,
+          model,
           modelUsage: currentStepUsage,
-          provider: llmPayload.provider,
+          provider,
           usage: newState.usage,
         });
 

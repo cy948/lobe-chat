@@ -1221,6 +1221,57 @@ export class AgentEvalRunService {
     return metrics;
   }
 
+  /**
+   * Resolve the final run status after all topics reach terminal state.
+   *
+   * Rules:
+   * - For non-external runs:
+   *   - `completed`: there is at least one topic whose runtime completed normally
+   *     (i.e. topic status is `passed` or `failed`)
+   *   - `failed`: no topic completed normally; all topics ended as runtime failures
+   *     such as `error` or `timeout`
+   * - For external-eval runs, runtime completion must never directly produce `completed`.
+   *   It can only end in:
+   *   - `external`: at least one topic is awaiting external scoring
+   *   - `failed`: no topic is awaiting external scoring after runtime finishes
+   *
+   * Examples:
+   * - external run, topics = [external, failed] => run = external
+   * - external run, topics = [failed, failed] => run = failed
+   * - normal run, topics = [failed, failed] => run = completed
+   * - normal run, topics = [error, timeout] => run = failed
+   */
+  async resolveFinalRunStatus(params: {
+    metrics: EvalRunMetrics;
+    run: {
+      datasetId?: string;
+      id: string;
+    };
+    runTopics: Array<{
+      testCase?: { evalMode?: string | null } | null;
+    }>;
+  }): Promise<'completed' | 'external' | 'failed'> {
+    const { metrics, run, runTopics } = params;
+
+    const dataset =
+      !run.datasetId || !run.id ? undefined : await this.datasetModel.findById(run.datasetId);
+    const datasetEvalMode = dataset?.evalMode as RubricType | null | undefined;
+    const isExternalRun =
+      datasetEvalMode === 'external' ||
+      (runTopics.length > 0 &&
+        runTopics.every((topic) => (topic.testCase?.evalMode ?? datasetEvalMode) === 'external'));
+
+    const externalCount = metrics.externalCases || 0;
+
+    if (isExternalRun) {
+      return externalCount > 0 ? 'external' : 'failed';
+    }
+
+    const completedRuntimeCases = (metrics.passedCases || 0) + (metrics.failedCases || 0);
+
+    return completedRuntimeCases > 0 ? 'completed' : 'failed';
+  }
+
   private async evaluateCase(
     runId: string,
     runTopic: {
@@ -1326,6 +1377,7 @@ export class AgentEvalRunService {
    */
   async checkAndHandleRunTimeout(run: {
     config?: EvalRunConfig | null;
+    datasetId?: string;
     id: string;
     metrics?: EvalRunMetrics | null;
     startedAt?: Date | null;
@@ -1379,18 +1431,15 @@ export class AgentEvalRunService {
     if (pendingCount === 0) {
       // All topics in terminal state → finalize with full metrics
       const metrics = await this.evaluateAndFinalizeRun({
-        run: { id: run.id, metrics: run.metrics, startedAt: run.startedAt },
+        run: { config: run.config, id: run.id, metrics: run.metrics, startedAt: run.startedAt },
         runTopics: allTopics,
       });
 
-      const nonSuccessCases = (metrics.errorCases || 0) + (metrics.timeoutCases || 0);
-      const externalCount = metrics.externalCases || 0;
-      const runStatus =
-        externalCount > 0
-          ? 'external'
-          : nonSuccessCases >= metrics.totalCases
-            ? 'failed'
-            : 'completed';
+      const runStatus = await this.resolveFinalRunStatus({
+        metrics,
+        run: { datasetId: run.datasetId, id: run.id },
+        runTopics: allTopics,
+      });
 
       await this.runModel.update(run.id, { metrics, status: runStatus });
     } else {

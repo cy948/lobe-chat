@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentEvalRunService } from '@/server/services/agentEvalRun';
 
-import { cleanupDB, serverDB, userId } from './_setup';
+import { cleanupDB, serverDB, setupMultiCaseRun, userId } from './_setup';
 
 vi.mock('@/server/services/agentRuntime/AgentRuntimeService', () => ({
   AgentRuntimeService: vi.fn().mockImplementation(() => ({
@@ -454,6 +454,89 @@ describe('AgentEvalRunService', () => {
 
       expect(metrics.passAtK).toBe(1); // 2/2
       expect(metrics.passAllK).toBe(1); // 2/2
+    });
+  });
+
+  describe('resolveFinalRunStatus', () => {
+    it('should keep external run in external while external scoring is pending', async () => {
+      const { run, cases } = await setupMultiCaseRun([{ assistantOutput: '42' }], {
+        datasetEvalMode: 'external',
+      });
+
+      const service = new AgentEvalRunService(serverDB, userId);
+      const status = await service.resolveFinalRunStatus({
+        metrics: {
+          averageScore: 0,
+          completedCases: 1,
+          externalCases: 1,
+          failedCases: 0,
+          passRate: 0,
+          passedCases: 0,
+          totalCases: 1,
+        },
+        run,
+        runTopics: [
+          {
+            testCase: cases[0].testCase,
+          },
+        ],
+      });
+
+      expect(status).toBe('external');
+    });
+
+    it('should mark external run as failed when runtime finished without external topics', async () => {
+      const { run, cases } = await setupMultiCaseRun([{ assistantOutput: null }], {
+        datasetEvalMode: 'external',
+      });
+
+      const service = new AgentEvalRunService(serverDB, userId);
+      const status = await service.resolveFinalRunStatus({
+        metrics: {
+          averageScore: 0,
+          completedCases: 1,
+          errorCases: 0,
+          failedCases: 1,
+          passRate: 0,
+          passedCases: 0,
+          timeoutCases: 0,
+          totalCases: 1,
+        },
+        run,
+        runTopics: [
+          {
+            testCase: cases[0].testCase,
+          },
+        ],
+      });
+
+      expect(status).toBe('failed');
+    });
+
+    it('should preserve non-external finalize behavior for normal runs', async () => {
+      const { run, cases } = await setupMultiCaseRun([{ assistantOutput: 'wrong' }], {
+        datasetEvalMode: 'equals',
+      });
+
+      const service = new AgentEvalRunService(serverDB, userId);
+      const status = await service.resolveFinalRunStatus({
+        metrics: {
+          averageScore: 0,
+          completedCases: 1,
+          failedCases: 1,
+          passRate: 0,
+          passedCases: 0,
+          totalCases: 1,
+        },
+        run,
+        runTopics: [
+          {
+            testCase: cases[0].testCase,
+          },
+        ],
+      });
+
+      expect(status).toBe('completed');
     });
   });
 });

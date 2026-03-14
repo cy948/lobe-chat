@@ -56,8 +56,9 @@ export const { POST } = serve<FinalizeRunPayload>(
     log('Total RunTopics: %d', runTopics.length);
 
     // Step 3: Aggregate metrics from already-evaluated RunTopics
+    const service = new AgentEvalRunService(db, userId);
+
     const metrics = await context.run('agent-eval-run:aggregate-metrics', async () => {
-      const service = new AgentEvalRunService(db, userId);
       return service.evaluateAndFinalizeRun({
         run: { config: run.config, id: runId, metrics: run.metrics, startedAt: run.startedAt },
         runTopics,
@@ -66,18 +67,13 @@ export const { POST } = serve<FinalizeRunPayload>(
 
     log('Metrics: %O', metrics);
 
-    // Step 4: Update run status
-    // external: any topic awaits external scoring → whole run waits too
-    // failed: all cases are non-success (error/timeout)
-    // completed: everything else
-    const nonSuccessCases = (metrics.errorCases || 0) + (metrics.timeoutCases || 0);
-    const externalCount = metrics.externalCases || 0;
-    const runStatus =
-      externalCount > 0
-        ? 'external'
-        : nonSuccessCases >= metrics.totalCases
-          ? 'failed'
-          : 'completed';
+    const runStatus = await context.run('agent-eval-run:resolve-status', async () =>
+      service.resolveFinalRunStatus({
+        metrics,
+        run: { datasetId: run.datasetId, id: runId },
+        runTopics,
+      }),
+    );
 
     await context.run('agent-eval-run:update-run', async () => {
       const runModel = new AgentEvalRunModel(db, userId);

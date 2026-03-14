@@ -278,7 +278,7 @@ describe('RuntimeExecutors', () => {
       );
     });
 
-    it('should compress before call_llm in eval mode when context is too large', async () => {
+    it('should execute compress_context and return compression_result', async () => {
       const mockChat = vi.fn().mockImplementation(async (_payload, options) => {
         await options?.callback?.onText?.('summary');
         await options?.callback?.onCompletion?.({
@@ -309,41 +309,6 @@ describe('RuntimeExecutors', () => {
         success: true,
       });
 
-      const executors = createRuntimeExecutors({
-        ...ctx,
-        evalContext: { envPrompt: 'eval' } as any,
-      });
-      const state = createMockState({
-        messages: [{ content: 'x '.repeat(70000), role: 'user' }],
-      });
-
-      const instruction = {
-        payload: {
-          assistantMessageId: 'assistant-existing',
-          messages: [{ content: 'x '.repeat(70000), role: 'user' }],
-          model: 'gpt-4',
-          provider: 'openai',
-          tools: [],
-        },
-        type: 'call_llm' as const,
-      };
-
-      await executors.call_llm!(instruction, state);
-
-      expect(mockCreateCompressionGroup).toHaveBeenCalledTimes(1);
-      expect(mockFinalizeCompression).toHaveBeenCalledTimes(1);
-      expect(mockChat).toHaveBeenCalledTimes(2);
-      expect(mockChat.mock.calls[1][0].messages[0]).toEqual({
-        content: 'summary',
-        id: 'group-123',
-        role: 'compressedGroup',
-      });
-    });
-
-    it('should not compress before call_llm outside eval mode', async () => {
-      const mockChat = vi.fn().mockResolvedValue(new Response('done'));
-      vi.mocked(initModelRuntimeFromDB).mockResolvedValue({ chat: mockChat } as any);
-
       const executors = createRuntimeExecutors(ctx);
       const state = createMockState({
         messages: [{ content: 'x '.repeat(70000), role: 'user' }],
@@ -352,81 +317,73 @@ describe('RuntimeExecutors', () => {
       const instruction = {
         payload: {
           messages: [{ content: 'x '.repeat(70000), role: 'user' }],
-          model: 'gpt-4',
-          provider: 'openai',
-          tools: [],
+          currentTokenCount: 1000,
         },
-        type: 'call_llm' as const,
+        type: 'compress_context' as const,
       };
 
-      await executors.call_llm!(instruction, state);
+      const result = await executors.compress_context!(instruction, state);
 
-      expect(mockCreateCompressionGroup).not.toHaveBeenCalled();
+      expect(mockCreateCompressionGroup).toHaveBeenCalledTimes(1);
+      expect(mockFinalizeCompression).toHaveBeenCalledTimes(1);
       expect(mockChat).toHaveBeenCalledTimes(1);
+      expect(result.nextContext?.phase).toBe('compression_result');
+      expect((result.nextContext?.payload as any).compressedMessages[0]).toEqual({
+        content: 'summary',
+        id: 'group-123',
+        role: 'compressedGroup',
+      });
+      expect((result.nextContext?.payload as any).parentMessageId).toBe('assistant-existing');
     });
 
-    it('should not compress in eval mode when chatConfig.enableContextCompression is false', async () => {
-      const mockChat = vi.fn().mockResolvedValue(new Response('done'));
-      vi.mocked(initModelRuntimeFromDB).mockResolvedValue({ chat: mockChat } as any);
-
+    it('should skip compress_context when topic metadata is missing', async () => {
       const executors = createRuntimeExecutors({
         ...ctx,
-        agentConfig: {
-          chatConfig: {
-            enableContextCompression: false,
-          },
-        },
-        evalContext: { envPrompt: 'eval' } as any,
       });
       const state = createMockState({
-        messages: [{ content: 'x '.repeat(70000), role: 'user' }],
+        messages: [{ content: 'history', role: 'user' }],
+        metadata: {
+          agentId: 'agent-123',
+        },
       });
 
       const instruction = {
         payload: {
-          messages: [{ content: 'x '.repeat(70000), role: 'user' }],
-          model: 'gpt-4',
-          provider: 'openai',
-          tools: [],
+          currentTokenCount: 1000,
+          messages: [{ content: 'history', role: 'user' }],
         },
-        type: 'call_llm' as const,
+        type: 'compress_context' as const,
       };
 
-      await executors.call_llm!(instruction, state);
+      const result = await executors.compress_context!(instruction, state);
 
       expect(mockCreateCompressionGroup).not.toHaveBeenCalled();
-      expect(mockChat).toHaveBeenCalledTimes(1);
+      expect((result.nextContext?.payload as any).skipped).toBe(true);
     });
 
-    it('should continue call_llm when eval compression fails', async () => {
-      const mockChat = vi.fn().mockResolvedValue(new Response('done'));
-      vi.mocked(initModelRuntimeFromDB).mockResolvedValue({ chat: mockChat } as any);
+    it('should continue when compress_context fails', async () => {
+      mockCreateCompressionGroup.mockRejectedValueOnce(new Error('compression failed'));
 
       mockMessageModel.query.mockResolvedValue([
         { content: 'history', id: 'msg-history', role: 'user' },
       ]);
-      mockCreateCompressionGroup.mockRejectedValueOnce(new Error('compression failed'));
-
-      const executors = createRuntimeExecutors({
-        ...ctx,
-        evalContext: { envPrompt: 'eval' } as any,
-      });
+      const executors = createRuntimeExecutors(ctx);
       const state = createMockState({
-        messages: [{ content: 'x '.repeat(70000), role: 'user' }],
+        messages: [{ content: 'history', role: 'user' }],
       });
 
       const instruction = {
         payload: {
-          messages: [{ content: 'x '.repeat(70000), role: 'user' }],
-          model: 'gpt-4',
-          provider: 'openai',
-          tools: [],
+          currentTokenCount: 1000,
+          messages: [{ content: 'history', role: 'user' }],
         },
-        type: 'call_llm' as const,
+        type: 'compress_context' as const,
       };
 
-      await expect(executors.call_llm!(instruction, state)).resolves.toBeDefined();
-      expect(mockChat).toHaveBeenCalledTimes(1);
+      const result = await executors.compress_context!(instruction, state);
+
+      expect(result.nextContext?.phase).toBe('compression_result');
+      expect((result.nextContext?.payload as any).skipped).toBe(true);
       expect(mockFinalizeCompression).not.toHaveBeenCalled();
     });
 

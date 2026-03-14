@@ -1323,8 +1323,6 @@ export class AgentRuntimeService {
     operationId: string;
     stepIndex: number;
   }) {
-    // Keep server/runtime compression behavior aligned with the shared agent:
-    // whether mid-run compression can happen is controlled by chatConfig.enableContextCompression.
     const agent = new GeneralChatAgent({
       agentConfig: metadata?.agentConfig,
       compressionConfig: {

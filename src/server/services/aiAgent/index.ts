@@ -239,7 +239,7 @@ export class AiAgentService {
     }
 
     // Determine the identifier to use (agentId takes precedence)
-    const identifier = agentId || slug;
+    const identifier = agentId || slug!;
 
     log(
       'execAgent: identifier=%s, continuation=%s, prompt=%s',
@@ -249,7 +249,7 @@ export class AiAgentService {
     );
 
     // 1. Get agent configuration with default config merged (supports both id and slug)
-    const agentConfig = await this.agentService.getAgentConfig(identifier!);
+    const agentConfig = await this.agentService.getAgentConfig(identifier);
     if (!agentConfig) {
       throw new Error(`Agent not found: ${identifier}`);
     }

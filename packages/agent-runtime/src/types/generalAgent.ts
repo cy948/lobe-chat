@@ -6,16 +6,10 @@ import {
 } from '@lobechat/types';
 
 export interface GeneralAgentCallLLMInstructionPayload {
-  /** Custom max window token for pre-call_llm compression checks */
-  compressionMaxWindowToken?: number;
-  /** Messages that should be compressed before the next call_llm, if needed */
-  compressionMessages?: any[];
   /** Force create a new assistant message (e.g., after compression) */
   createAssistantMessage?: boolean;
   isFirstMessage?: boolean;
   messages: any[];
-  /** Synthetic messages that count toward the next LLM window but should be appended back after compression */
-  messageSuffix?: any[];
   model: string;
   parentMessageId?: string;
   provider: string;

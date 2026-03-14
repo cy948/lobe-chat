@@ -310,6 +310,60 @@ export class GeneralChatAgent implements Agent {
     return undefined;
   }
 
+  /** Build a compress_context instruction for the next LLM follow-up when needed. */
+  private createPostCompressionInstruction(
+    messages: any[],
+    options?: {
+      messageSuffix?: any[];
+    },
+  ): AgentInstructionCompressContext | undefined {
+    const compressionEnabled = this.config.compressionConfig?.enabled ?? true;
+
+    if (!compressionEnabled) return undefined;
+
+    const messagesToCheck = options?.messageSuffix
+      ? [...messages, ...options.messageSuffix]
+      : messages;
+    const compressionCheck = shouldCompress(messagesToCheck, {
+      maxWindowToken: this.config.compressionConfig?.maxWindowToken,
+    });
+
+    if (!compressionCheck.needsCompression) return undefined;
+
+    return {
+      payload: {
+        currentTokenCount: compressionCheck.currentTokenCount,
+        existingSummary: this.findExistingSummary(messages),
+        messageSuffix: options?.messageSuffix,
+        messages,
+      },
+      type: 'compress_context',
+    };
+  }
+
+  /** Return either the intended call_llm or a compress_context jump first. */
+  private createCallLLMOrCompressionInstruction(
+    payload: GeneralAgentCallLLMInstructionPayload,
+    options?: {
+      compressionMessages?: any[];
+      messageSuffix?: any[];
+    },
+  ): AgentInstruction {
+    const compressionInstruction = this.createPostCompressionInstruction(
+      options?.compressionMessages ?? payload.messages,
+      {
+        messageSuffix: options?.messageSuffix,
+      },
+    );
+
+    if (compressionInstruction) return compressionInstruction;
+
+    return {
+      payload,
+      type: 'call_llm',
+    };
+  }
+
   /**
    * Handle abort scenario - unified abort handling logic
    */
@@ -517,18 +571,13 @@ export class GeneralChatAgent implements Agent {
         }
 
         // No pending tools, continue to call LLM with tool results
-        return {
-          payload: {
-            compressionMaxWindowToken: this.config.compressionConfig?.maxWindowToken,
-            compressionMessages: state.messages,
-            messages: state.messages,
-            model: this.config.modelRuntimeConfig?.model,
-            parentMessageId,
-            provider: this.config.modelRuntimeConfig?.provider,
-            tools: state.tools,
-          } as GeneralAgentCallLLMInstructionPayload,
-          type: 'call_llm',
-        };
+        return this.createCallLLMOrCompressionInstruction({
+          messages: state.messages,
+          model: this.config.modelRuntimeConfig?.model,
+          parentMessageId,
+          provider: this.config.modelRuntimeConfig?.provider,
+          tools: state.tools,
+        } as GeneralAgentCallLLMInstructionPayload);
       }
 
       case 'tools_batch_result': {
@@ -552,18 +601,13 @@ export class GeneralChatAgent implements Agent {
         }
 
         // No pending tools, continue to call LLM with tool results
-        return {
-          payload: {
-            compressionMaxWindowToken: this.config.compressionConfig?.maxWindowToken,
-            compressionMessages: state.messages,
-            messages: state.messages,
-            model: this.config.modelRuntimeConfig?.model,
-            parentMessageId,
-            provider: this.config.modelRuntimeConfig?.provider,
-            tools: state.tools,
-          } as GeneralAgentCallLLMInstructionPayload,
-          type: 'call_llm',
-        };
+        return this.createCallLLMOrCompressionInstruction({
+          messages: state.messages,
+          model: this.config.modelRuntimeConfig?.model,
+          parentMessageId,
+          provider: this.config.modelRuntimeConfig?.provider,
+          tools: state.tools,
+        } as GeneralAgentCallLLMInstructionPayload);
       }
 
       case 'task_result': {
@@ -571,18 +615,13 @@ export class GeneralChatAgent implements Agent {
         const { parentMessageId } = context.payload as TaskResultPayload;
 
         // Continue to call LLM with updated messages (task message is already in state)
-        return {
-          payload: {
-            compressionMaxWindowToken: this.config.compressionConfig?.maxWindowToken,
-            compressionMessages: state.messages,
-            messages: state.messages,
-            model: this.config.modelRuntimeConfig?.model,
-            parentMessageId,
-            provider: this.config.modelRuntimeConfig?.provider,
-            tools: state.tools,
-          } as GeneralAgentCallLLMInstructionPayload,
-          type: 'call_llm',
-        };
+        return this.createCallLLMOrCompressionInstruction({
+          messages: state.messages,
+          model: this.config.modelRuntimeConfig?.model,
+          parentMessageId,
+          provider: this.config.modelRuntimeConfig?.provider,
+          tools: state.tools,
+        } as GeneralAgentCallLLMInstructionPayload);
       }
 
       case 'tasks_batch_result': {
@@ -602,19 +641,19 @@ export class GeneralChatAgent implements Agent {
         ];
 
         // Continue to call LLM with updated messages (task messages are already in state)
-        return {
-          payload: {
-            compressionMaxWindowToken: this.config.compressionConfig?.maxWindowToken,
-            compressionMessages: state.messages,
-            messageSuffix: messagesWithPrompt.slice(state.messages.length),
+        return this.createCallLLMOrCompressionInstruction(
+          {
             messages: messagesWithPrompt,
             model: this.config.modelRuntimeConfig?.model,
             parentMessageId,
             provider: this.config.modelRuntimeConfig?.provider,
             tools: state.tools,
           } as GeneralAgentCallLLMInstructionPayload,
-          type: 'call_llm',
-        };
+          {
+            compressionMessages: state.messages,
+            messageSuffix: messagesWithPrompt.slice(state.messages.length),
+          },
+        );
       }
 
       case 'compression_result': {

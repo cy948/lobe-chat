@@ -64,38 +64,16 @@ describe('GeneralChatAgent', () => {
       modelRuntimeConfig: mockModelRuntimeConfig,
     });
 
-  const expectCallLLMWithCompression = (
+  const expectCompressionInstruction = (
     messages: AgentState['messages'],
-    options?: { messageSuffix?: any[]; payloadMessages?: AgentState['messages'] },
+    options?: { messageSuffix?: any[] },
   ) => ({
-    type: 'call_llm',
+    type: 'compress_context',
     payload: {
-      compressionMaxWindowToken: 1,
-      compressionMessages: messages,
+      currentTokenCount: expect.any(Number),
+      existingSummary: undefined,
       messageSuffix: options?.messageSuffix,
-      messages: options?.payloadMessages ?? messages,
-      model: 'gpt-4o-mini',
-      parentMessageId: expect.any(String),
-      provider: 'openai',
-      tools: undefined,
-    },
-  });
-
-  const expectCallLLMResult = (
-    messages: AgentState['messages'],
-    parentMessageId: string,
-    options?: { messageSuffix?: any[]; payloadMessages?: AgentState['messages'] },
-  ) => ({
-    type: 'call_llm',
-    payload: {
-      compressionMaxWindowToken: undefined,
-      compressionMessages: messages,
-      messageSuffix: options?.messageSuffix,
-      messages: options?.payloadMessages ?? messages,
-      model: 'gpt-4o-mini',
-      parentMessageId,
-      provider: 'openai',
-      tools: undefined,
+      messages,
     },
   });
 
@@ -576,7 +554,16 @@ describe('GeneralChatAgent', () => {
         const result = await agent.runner(context, state);
 
         // Should return call_llm instead of exec_task
-        expect(result).toEqual(expectCallLLMResult(state.messages, 'tool-msg-1'));
+        expect(result).toEqual({
+          type: 'call_llm',
+          payload: {
+            messages: state.messages,
+            model: 'gpt-4o-mini',
+            parentMessageId: 'tool-msg-1',
+            provider: 'openai',
+            tools: undefined,
+          },
+        });
       });
 
       it('should not trigger exec_task when data.state is undefined', async () => {
@@ -602,7 +589,16 @@ describe('GeneralChatAgent', () => {
         const result = await agent.runner(context, state);
 
         // Should return call_llm instead of exec_task
-        expect(result).toEqual(expectCallLLMResult(state.messages, 'tool-msg-1'));
+        expect(result).toEqual({
+          type: 'call_llm',
+          payload: {
+            messages: state.messages,
+            model: 'gpt-4o-mini',
+            parentMessageId: 'tool-msg-1',
+            provider: 'openai',
+            tools: undefined,
+          },
+        });
       });
     });
 
@@ -628,10 +624,19 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      expect(result).toEqual(expectCallLLMResult(state.messages, 'tool-msg-1'));
+      expect(result).toEqual({
+        type: 'call_llm',
+        payload: {
+          messages: state.messages,
+          model: 'gpt-4o-mini',
+          parentMessageId: 'tool-msg-1',
+          provider: 'openai',
+          tools: undefined,
+        },
+      });
     });
 
-    it('should return call_llm with compression metadata when tool results exceed window', async () => {
+    it('should return compress_context before continuing to LLM when tool results exceed window', async () => {
       const agent = createCompressionAgent();
 
       const state = createMockState({
@@ -648,7 +653,7 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      expect(result).toEqual(expectCallLLMWithCompression(state.messages));
+      expect(result).toEqual(expectCompressionInstruction(state.messages));
     });
 
     it('should return request_human_approve when there are pending tools', async () => {
@@ -719,7 +724,16 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      expect(result).toEqual(expectCallLLMResult(state.messages, 'tool-msg-2'));
+      expect(result).toEqual({
+        type: 'call_llm',
+        payload: {
+          messages: state.messages,
+          model: 'gpt-4o-mini',
+          parentMessageId: 'tool-msg-2',
+          provider: 'openai',
+          tools: undefined,
+        },
+      });
     });
 
     it('should return request_human_approve when there are pending tools', async () => {
@@ -767,7 +781,7 @@ describe('GeneralChatAgent', () => {
       });
     });
 
-    it('should return call_llm with compression metadata when batch tool results exceed window', async () => {
+    it('should return compress_context before continuing to LLM when batch tool results exceed window', async () => {
       const agent = createCompressionAgent();
 
       const state = createMockState({
@@ -785,7 +799,7 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      expect(result).toEqual(expectCallLLMWithCompression(state.messages));
+      expect(result).toEqual(expectCompressionInstruction(state.messages));
     });
   });
 
@@ -1182,7 +1196,16 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      expect(result).toEqual(expectCallLLMResult(state.messages, 'task-parent-msg'));
+      expect(result).toEqual({
+        type: 'call_llm',
+        payload: {
+          messages: state.messages,
+          model: 'gpt-4o-mini',
+          parentMessageId: 'task-parent-msg',
+          provider: 'openai',
+          tools: undefined,
+        },
+      });
     });
 
     it('should return call_llm even when task failed', async () => {
@@ -1212,10 +1235,19 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      expect(result).toEqual(expectCallLLMResult(state.messages, 'task-parent-msg'));
+      expect(result).toEqual({
+        type: 'call_llm',
+        payload: {
+          messages: state.messages,
+          model: 'gpt-4o-mini',
+          parentMessageId: 'task-parent-msg',
+          provider: 'openai',
+          tools: undefined,
+        },
+      });
     });
 
-    it('should return call_llm with compression metadata when task results exceed window', async () => {
+    it('should return compress_context before continuing to LLM when task results exceed window', async () => {
       const agent = createCompressionAgent();
 
       const state = createMockState({
@@ -1232,7 +1264,7 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      expect(result).toEqual(expectCallLLMWithCompression(state.messages));
+      expect(result).toEqual(expectCompressionInstruction(state.messages));
     });
   });
 
@@ -1263,25 +1295,23 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      expect(result).toEqual(
-        expectCallLLMResult(state.messages, 'task-parent-msg', {
-          messageSuffix: [
-            {
-              content:
-                'All tasks above have been completed. Please summarize the results or continue with your response following user query language.',
-              role: 'user',
-            },
-          ],
-          payloadMessages: [
+      expect(result).toEqual({
+        type: 'call_llm',
+        payload: {
+          messages: [
             ...state.messages,
             {
               content:
                 'All tasks above have been completed. Please summarize the results or continue with your response following user query language.',
               role: 'user',
             },
-          ] as any,
-        }),
-      );
+          ],
+          model: 'gpt-4o-mini',
+          parentMessageId: 'task-parent-msg',
+          provider: 'openai',
+          tools: undefined,
+        },
+      });
     });
 
     it('should return call_llm even when some tasks failed', async () => {
@@ -1315,28 +1345,26 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      expect(result).toEqual(
-        expectCallLLMResult(state.messages, 'task-parent-msg', {
-          messageSuffix: [
-            {
-              content:
-                'All tasks above have been completed. Please summarize the results or continue with your response following user query language.',
-              role: 'user',
-            },
-          ],
-          payloadMessages: [
+      expect(result).toEqual({
+        type: 'call_llm',
+        payload: {
+          messages: [
             ...state.messages,
             {
               content:
                 'All tasks above have been completed. Please summarize the results or continue with your response following user query language.',
               role: 'user',
             },
-          ] as any,
-        }),
-      );
+          ],
+          model: 'gpt-4o-mini',
+          parentMessageId: 'task-parent-msg',
+          provider: 'openai',
+          tools: undefined,
+        },
+      });
     });
 
-    it('should return call_llm with compression metadata and preserve the follow-up prompt when tasks exceed window', async () => {
+    it('should return compress_context and preserve the follow-up prompt when tasks exceed window', async () => {
       const agent = createCompressionAgent();
 
       const state = createMockState({
@@ -1355,7 +1383,7 @@ describe('GeneralChatAgent', () => {
       const result = await agent.runner(context, state);
 
       expect(result).toEqual(
-        expectCallLLMWithCompression(state.messages, {
+        expectCompressionInstruction(state.messages, {
           messageSuffix: [
             {
               content:
@@ -1363,14 +1391,6 @@ describe('GeneralChatAgent', () => {
               role: 'user',
             },
           ],
-          payloadMessages: [
-            ...state.messages,
-            {
-              content:
-                'All tasks above have been completed. Please summarize the results or continue with your response following user query language.',
-              role: 'user',
-            },
-          ] as any,
         }),
       );
     });

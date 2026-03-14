@@ -7,11 +7,9 @@ import type {
   AgentInstruction,
   AgentInstructionCallTool,
   AgentInstructionCallToolsBatch,
-  AgentInstructionCompressContext,
   AgentRuntimeContext,
   AgentState,
   Cost,
-  GeneralAgentCallLLMInstructionPayload,
   GeneralAgentCallToolsBatchResultPayload,
   InstructionExecutor,
   RuntimeConfig,
@@ -19,7 +17,6 @@ import type {
   ToolsCalling,
   Usage,
 } from '../types';
-import { shouldCompress } from '../utils/tokenCounter';
 
 /**
  * Simplified Agent Runtime - The "Engine" that executes instructions from an "Agent" (Brain).
@@ -72,34 +69,6 @@ export class AgentRuntime {
       return undefined;
     }
     return this.getOperation(this.operationId).abortController;
-  }
-
-  private createCompressionInstructionFromCallLLM(
-    instruction: Extract<AgentInstruction, { type: 'call_llm' }>,
-  ): AgentInstructionCompressContext | undefined {
-    const payload = instruction.payload as GeneralAgentCallLLMInstructionPayload;
-    const messages = payload.compressionMessages;
-
-    if (!messages) return undefined;
-
-    const messagesToCheck = payload.messageSuffix
-      ? [...messages, ...payload.messageSuffix]
-      : messages;
-    const compressionCheck = shouldCompress(messagesToCheck, {
-      maxWindowToken: payload.compressionMaxWindowToken,
-    });
-
-    if (!compressionCheck.needsCompression) return undefined;
-
-    return {
-      payload: {
-        currentTokenCount: compressionCheck.currentTokenCount,
-        existingSummary: undefined,
-        messageSuffix: payload.messageSuffix,
-        messages,
-      },
-      type: 'compress_context',
-    };
   }
 
   /**
@@ -196,31 +165,8 @@ export class AgentRuntime {
 
         let result;
 
-        if (instruction.type === 'call_llm' && runtimeContext.phase !== 'compression_result') {
-          const compressionInstruction = this.createCompressionInstructionFromCallLLM(instruction);
-
-          if (compressionInstruction) {
-            const compressExecutor =
-              this.executors[compressionInstruction.type as keyof typeof this.executors];
-
-            if (!compressExecutor) {
-              throw new Error(
-                `No executor found for instruction type: ${compressionInstruction.type}`,
-              );
-            }
-
-            result = await compressExecutor(compressionInstruction, currentState, runtimeContext);
-          } else {
-            const callLLMExecutor = this.executors.call_llm;
-
-            if (!callLLMExecutor) {
-              throw new Error('No executor found for instruction type: call_llm');
-            }
-
-            result = await callLLMExecutor(instruction, currentState, runtimeContext);
-          }
-        } else if (instruction.type === 'call_tools_batch') {
-          // Special handling for batch tool execution
+        // Special handling for batch tool execution
+        if (instruction.type === 'call_tools_batch') {
           // Check if custom executor is provided (e.g., server-side with DB access)
           const customExecutor = this.executors['call_tools_batch' as keyof typeof this.executors];
           if (customExecutor) {

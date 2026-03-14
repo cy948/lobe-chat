@@ -40,50 +40,6 @@ if (process.env.VERCEL) {
   debug.log = console.log.bind(console);
 }
 
-const EVAL_MID_RUN_COMPRESSION_PHASES = new Set<AgentRuntimeContext['phase']>([
-  'task_result',
-  'tool_result',
-  'tasks_batch_result',
-  'tools_batch_result',
-]);
-
-export const createEvalCompressionAwareRunner = (
-  runner: Agent['runner'],
-  options: {
-    compressionEnabled: boolean;
-  },
-): Agent['runner'] => {
-  return async (context, state) => {
-    const instruction = await runner(context, state);
-
-    if (
-      !options.compressionEnabled ||
-      !EVAL_MID_RUN_COMPRESSION_PHASES.has(context.phase) ||
-      Array.isArray(instruction) ||
-      instruction.type !== 'call_llm'
-    ) {
-      return instruction;
-    }
-
-    const compressionCheck = shouldCompress(state.messages);
-
-    if (!compressionCheck.needsCompression) {
-      return instruction;
-    }
-
-    // For eval-only server runs, convert oversized post-tool follow-ups into an
-    // explicit compress_context step so compression shows up as an independent runtime step
-    // instead of being hidden inside call_llm execution.
-    return {
-      payload: {
-        currentTokenCount: compressionCheck.currentTokenCount,
-        messages: state.messages,
-      },
-      type: 'compress_context',
-    } as AgentInstructionCompressContext;
-  };
-};
-
 const log = debug('lobe-server:agent-runtime-service');
 
 /**
@@ -1367,29 +1323,18 @@ export class AgentRuntimeService {
     operationId: string;
     stepIndex: number;
   }) {
-    const compressionEnabled = metadata?.evalContext
-      ? (metadata?.agentConfig?.chatConfig?.enableContextCompression ?? true)
-      : false;
-
-    // Create Durable Agent instance
-    const baseAgent = new GeneralChatAgent({
+    // Keep server/runtime compression behavior aligned with the shared agent:
+    // whether mid-run compression can happen is controlled by chatConfig.enableContextCompression.
+    const agent = new GeneralChatAgent({
       agentConfig: metadata?.agentConfig,
       compressionConfig: {
-        enabled: compressionEnabled,
+        enabled: metadata?.agentConfig?.chatConfig?.enableContextCompression ?? true,
       },
       dynamicInterventionAudits,
       modelRuntimeConfig: metadata?.modelRuntimeConfig,
       operationId,
       userId: metadata?.userId,
     });
-
-    const agent: Agent = metadata?.evalContext
-      ? {
-          runner: createEvalCompressionAwareRunner(baseAgent.runner.bind(baseAgent), {
-            compressionEnabled,
-          }),
-        }
-      : baseAgent;
 
     // Create streaming executor context
     const executorContext: RuntimeExecutorContext = {

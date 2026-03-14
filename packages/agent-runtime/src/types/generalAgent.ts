@@ -117,6 +117,8 @@ export interface GeneralAgentCompressionResultPayload {
   compressedMessages: any[];
   /** Compression group ID in database */
   groupId: string;
+  /** Synthetic messages to append back after compression before the next LLM call */
+  messageSuffix?: any[];
   /** Parent message ID for subsequent LLM call (last assistant message before compression) */
   parentMessageId?: string;
   /** Whether compression was skipped (no messages to compress) */

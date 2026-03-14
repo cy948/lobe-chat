@@ -217,6 +217,8 @@ export interface AgentInstructionCompressContext {
     currentTokenCount: number;
     /** Existing summary to incorporate (for incremental compression) */
     existingSummary?: string;
+    /** Synthetic messages to append back after compression before the next LLM call */
+    messageSuffix?: any[];
     /** Messages to compress */
     messages: any[];
   };

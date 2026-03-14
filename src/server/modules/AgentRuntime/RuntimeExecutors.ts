@@ -596,7 +596,7 @@ export const createRuntimeExecutors = (
 
   compress_context: async (instruction, state) => {
     const { payload } = instruction as AgentInstructionCompressContext;
-    const { messages, currentTokenCount } = payload;
+    const { messages, currentTokenCount, messageSuffix } = payload;
     const { operationId, stepIndex } = ctx;
     const operationLogId = `${operationId}:${stepIndex}`;
     const stagePrefix = `[${operationLogId}][compress_context]`;
@@ -612,6 +612,7 @@ export const createRuntimeExecutors = (
           payload: {
             compressedMessages: messages,
             groupId: '',
+            messageSuffix,
             parentMessageId: undefined,
             skipped: true,
           } as GeneralAgentCompressionResultPayload,
@@ -646,6 +647,7 @@ export const createRuntimeExecutors = (
             payload: {
               compressedMessages: messages,
               groupId: '',
+              messageSuffix,
               parentMessageId: undefined,
               skipped: true,
             } as GeneralAgentCompressionResultPayload,
@@ -679,6 +681,7 @@ export const createRuntimeExecutors = (
             payload: {
               compressedMessages: messages,
               groupId: '',
+              messageSuffix,
               parentMessageId: latestAssistantMessage?.id,
               skipped: true,
             } as GeneralAgentCompressionResultPayload,
@@ -775,6 +778,7 @@ export const createRuntimeExecutors = (
           payload: {
             compressedMessages,
             groupId: compressionResult.messageGroupId,
+            messageSuffix,
             parentMessageId: latestAssistantMessage?.id,
           } as GeneralAgentCompressionResultPayload,
           phase: 'compression_result',
@@ -802,6 +806,7 @@ export const createRuntimeExecutors = (
           payload: {
             compressedMessages: messages,
             groupId: '',
+            messageSuffix,
             parentMessageId: undefined,
             skipped: true,
           } as GeneralAgentCompressionResultPayload,

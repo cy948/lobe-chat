@@ -53,6 +53,17 @@ describe('GeneralChatAgent', () => {
     },
   });
 
+  const createCompressionAgent = () =>
+    new GeneralChatAgent({
+      agentConfig: { maxSteps: 100 },
+      compressionConfig: {
+        enabled: true,
+        maxWindowToken: 1,
+      },
+      operationId: 'test-session',
+      modelRuntimeConfig: mockModelRuntimeConfig,
+    });
+
   describe('init and user_input phase', () => {
     it('should return call_llm instruction for init phase', async () => {
       const agent = new GeneralChatAgent({
@@ -612,6 +623,34 @@ describe('GeneralChatAgent', () => {
       });
     });
 
+    it('should return compress_context before continuing to LLM when tool results exceed window', async () => {
+      const agent = createCompressionAgent();
+
+      const state = createMockState({
+        messages: [
+          { role: 'user', content: 'Hello' },
+          { role: 'assistant', content: '' },
+          { role: 'tool', content: 'Result', tool_call_id: 'call-1' },
+        ] as any,
+      });
+
+      const context = createMockContext('tool_result', {
+        parentMessageId: 'tool-msg-1',
+      });
+
+      const result = await agent.runner(context, state);
+
+      expect(result).toEqual({
+        type: 'compress_context',
+        payload: {
+          currentTokenCount: expect.any(Number),
+          existingSummary: undefined,
+          messageSuffix: undefined,
+          messages: state.messages,
+        },
+      });
+    });
+
     it('should return request_human_approve when there are pending tools', async () => {
       const agent = new GeneralChatAgent({
         agentConfig: { maxSteps: 100 },
@@ -734,6 +773,35 @@ describe('GeneralChatAgent', () => {
         pendingToolsCalling: [pendingPlugin],
         reason: 'Some tools still pending approval',
         skipCreateToolMessage: true,
+      });
+    });
+
+    it('should return compress_context before continuing to LLM when batch tool results exceed window', async () => {
+      const agent = createCompressionAgent();
+
+      const state = createMockState({
+        messages: [
+          { role: 'user', content: 'Hello' },
+          { role: 'assistant', content: '' },
+          { role: 'tool', content: 'Result 1', tool_call_id: 'call-1' },
+          { role: 'tool', content: 'Result 2', tool_call_id: 'call-2' },
+        ] as any,
+      });
+
+      const context = createMockContext('tools_batch_result', {
+        parentMessageId: 'tool-msg-2',
+      });
+
+      const result = await agent.runner(context, state);
+
+      expect(result).toEqual({
+        type: 'compress_context',
+        payload: {
+          currentTokenCount: expect.any(Number),
+          existingSummary: undefined,
+          messageSuffix: undefined,
+          messages: state.messages,
+        },
       });
     });
   });
@@ -1181,6 +1249,34 @@ describe('GeneralChatAgent', () => {
         },
       });
     });
+
+    it('should return compress_context before continuing to LLM when task results exceed window', async () => {
+      const agent = createCompressionAgent();
+
+      const state = createMockState({
+        messages: [
+          { role: 'user', content: 'Execute task' },
+          { role: 'assistant', content: '' },
+          { role: 'task', content: 'Task result', metadata: { instruction: 'Do task' } },
+        ] as any,
+      });
+
+      const context = createMockContext('task_result', {
+        parentMessageId: 'task-parent-msg',
+      });
+
+      const result = await agent.runner(context, state);
+
+      expect(result).toEqual({
+        type: 'compress_context',
+        payload: {
+          currentTokenCount: expect.any(Number),
+          existingSummary: undefined,
+          messageSuffix: undefined,
+          messages: state.messages,
+        },
+      });
+    });
   });
 
   describe('tasks_batch_result phase (multiple tasks)', () => {
@@ -1275,6 +1371,41 @@ describe('GeneralChatAgent', () => {
           parentMessageId: 'task-parent-msg',
           provider: 'openai',
           tools: undefined,
+        },
+      });
+    });
+
+    it('should return compress_context and preserve the follow-up prompt when tasks exceed window', async () => {
+      const agent = createCompressionAgent();
+
+      const state = createMockState({
+        messages: [
+          { role: 'user', content: 'Execute tasks' },
+          { role: 'assistant', content: '' },
+          { role: 'task', content: 'Task 1 result', metadata: { instruction: 'Do task 1' } },
+          { role: 'task', content: 'Task 2 result', metadata: { instruction: 'Do task 2' } },
+        ] as any,
+      });
+
+      const context = createMockContext('tasks_batch_result', {
+        parentMessageId: 'task-parent-msg',
+      });
+
+      const result = await agent.runner(context, state);
+
+      expect(result).toEqual({
+        type: 'compress_context',
+        payload: {
+          currentTokenCount: expect.any(Number),
+          existingSummary: undefined,
+          messageSuffix: [
+            {
+              content:
+                'All tasks above have been completed. Please summarize the results or continue with your response following user query language.',
+              role: 'user',
+            },
+          ],
+          messages: state.messages,
         },
       });
     });

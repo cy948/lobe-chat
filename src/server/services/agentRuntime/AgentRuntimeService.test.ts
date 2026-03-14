@@ -1,11 +1,10 @@
 /**
  * @vitest-environment node
  */
-import { shouldCompress } from '@lobechat/agent-runtime';
 import type * as ModelBankModule from 'model-bank';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { AgentRuntimeService, createEvalCompressionAwareRunner } from './AgentRuntimeService';
+import { AgentRuntimeService } from './AgentRuntimeService';
 import {
   type AgentExecutionParams,
   type OperationCreationParams,
@@ -97,7 +96,6 @@ vi.mock('@lobechat/agent-runtime', () => ({
   AgentRuntime: vi.fn().mockImplementation((agent, options) => ({
     step: vi.fn(),
   })),
-  shouldCompress: vi.fn(),
 }));
 
 vi.mock('@/server/services/queue', () => ({
@@ -1359,77 +1357,5 @@ describe('AgentRuntimeService', () => {
       expect(result).toBe(false);
       expect(mockCoordinator.saveAgentState).not.toHaveBeenCalled();
     });
-  });
-});
-
-describe('createEvalCompressionAwareRunner', () => {
-  beforeEach(() => {
-    vi.mocked(shouldCompress).mockReturnValue({
-      currentTokenCount: 10,
-      needsCompression: false,
-      threshold: 100,
-    });
-  });
-
-  it('should return compress_context for oversized eval tool_result follow-up', async () => {
-    vi.mocked(shouldCompress).mockReturnValue({
-      currentTokenCount: 200,
-      needsCompression: true,
-      threshold: 100,
-    });
-
-    const runner = createEvalCompressionAwareRunner(
-      vi.fn().mockResolvedValue({
-        payload: {
-          messages: [{ content: 'history', role: 'user' }],
-          model: 'gpt-4',
-          parentMessageId: 'parent-1',
-          provider: 'openai',
-          tools: [],
-        },
-        type: 'call_llm',
-      }),
-      { compressionEnabled: true },
-    );
-
-    const result = await runner(
-      { phase: 'tool_result', payload: {} } as any,
-      { messages: [{ content: 'history', role: 'user' }] } as any,
-    );
-
-    expect(result).toEqual({
-      payload: {
-        currentTokenCount: 200,
-        messages: [{ content: 'history', role: 'user' }],
-      },
-      type: 'compress_context',
-    });
-  });
-
-  it('should keep call_llm when compression is disabled', async () => {
-    vi.mocked(shouldCompress).mockReturnValue({
-      currentTokenCount: 200,
-      needsCompression: true,
-      threshold: 100,
-    });
-
-    const instruction = {
-      payload: {
-        messages: [{ content: 'history', role: 'user' }],
-        model: 'gpt-4',
-        parentMessageId: 'parent-1',
-        provider: 'openai',
-        tools: [],
-      },
-      type: 'call_llm' as const,
-    };
-
-    const runner = createEvalCompressionAwareRunner(vi.fn().mockResolvedValue(instruction), {
-      compressionEnabled: false,
-    });
-
-    await expect(
-      runner({ phase: 'tool_result', payload: {} } as any, { messages: [] } as any),
-    ).resolves.toEqual(instruction);
   });
 });

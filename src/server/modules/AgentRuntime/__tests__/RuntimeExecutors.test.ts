@@ -379,6 +379,50 @@ describe('RuntimeExecutors', () => {
       expect(mockFinalizeCompression).not.toHaveBeenCalled();
     });
 
+    it('should preserve the trailing user message outside compression', async () => {
+      const mockChat = vi.fn().mockImplementation(async (_payload, options) => {
+        await options?.callback?.onText?.('summary');
+        return new Response('done');
+      });
+      vi.mocked(initModelRuntimeFromDB).mockResolvedValue({ chat: mockChat } as any);
+
+      mockMessageModel.query.mockResolvedValue([
+        { content: 'history', id: 'msg-history', role: 'user' },
+        { content: 'loading', id: 'assistant-existing', role: 'assistant' },
+      ]);
+      mockCreateCompressionGroup.mockResolvedValue({
+        messageGroupId: 'group-123',
+        messagesToSummarize: [{ content: 'history', id: 'msg-history', role: 'user' }],
+        success: true,
+      });
+      mockFinalizeCompression.mockResolvedValue({
+        messages: [{ content: 'summary', id: 'group-123', role: 'compressedGroup' }],
+        success: true,
+      });
+
+      const executors = createRuntimeExecutors(ctx);
+      const state = createMockState({
+        messages: [
+          { content: 'history', id: 'msg-history', role: 'user' },
+          { content: 'continue with this exact instruction', role: 'user' },
+        ],
+      });
+
+      const instruction = createCompressContextInstruction(state.messages);
+
+      const result = await executors.compress_context!(instruction, state);
+
+      expect(mockCreateCompressionGroup).toHaveBeenCalledWith(
+        'topic-123',
+        ['msg-history', 'assistant-existing'],
+        expect.any(Object),
+      );
+      expect((result.nextContext?.payload as any).compressedMessages).toEqual([
+        { content: 'summary', id: 'group-123', role: 'compressedGroup' },
+        { content: 'continue with this exact instruction', role: 'user' },
+      ]);
+    });
+
     describe('assistantMessageId reuse', () => {
       it('should reuse existing assistant message when assistantMessageId is provided', async () => {
         const executors = createRuntimeExecutors(ctx);

@@ -311,21 +311,12 @@ export class GeneralChatAgent implements Agent {
   }
 
   /** Proceed to the next LLM call, inserting compression first when needed. */
-  private toLLMCall(
-    payload: GeneralAgentCallLLMInstructionPayload,
-    options?: {
-      compressionMessages?: any[];
-      messageSuffix?: any[];
-    },
-  ): AgentInstruction {
+  private toLLMCall(payload: GeneralAgentCallLLMInstructionPayload): AgentInstruction {
     const compressionEnabled = this.config.compressionConfig?.enabled ?? true;
 
     if (compressionEnabled) {
-      const messages = options?.compressionMessages ?? payload.messages;
-      const messagesToCheck = options?.messageSuffix
-        ? [...messages, ...options.messageSuffix]
-        : messages;
-      const compressionCheck = shouldCompress(messagesToCheck, {
+      const messages = payload.messages;
+      const compressionCheck = shouldCompress(messages, {
         maxWindowToken: this.config.compressionConfig?.maxWindowToken,
       });
 
@@ -334,7 +325,6 @@ export class GeneralChatAgent implements Agent {
           payload: {
             currentTokenCount: compressionCheck.currentTokenCount,
             existingSummary: this.findExistingSummary(messages),
-            messageSuffix: options?.messageSuffix,
             messages,
           },
           type: 'compress_context',
@@ -625,27 +615,19 @@ export class GeneralChatAgent implements Agent {
         ];
 
         // Continue to call LLM with updated messages (task messages are already in state)
-        return this.toLLMCall(
-          {
-            messages: messagesWithPrompt,
-            model: this.config.modelRuntimeConfig?.model,
-            parentMessageId,
-            provider: this.config.modelRuntimeConfig?.provider,
-            tools: state.tools,
-          } as GeneralAgentCallLLMInstructionPayload,
-          {
-            compressionMessages: state.messages,
-            messageSuffix: messagesWithPrompt.slice(state.messages.length),
-          },
-        );
+        return this.toLLMCall({
+          messages: messagesWithPrompt,
+          model: this.config.modelRuntimeConfig?.model,
+          parentMessageId,
+          provider: this.config.modelRuntimeConfig?.provider,
+          tools: state.tools,
+        } as GeneralAgentCallLLMInstructionPayload);
       }
 
       case 'compression_result': {
         // Context compression completed, continue to call LLM
         const compressionPayload = context.payload as GeneralAgentCompressionResultPayload;
-        const messages = compressionPayload.messageSuffix
-          ? [...compressionPayload.compressedMessages, ...compressionPayload.messageSuffix]
-          : compressionPayload.compressedMessages;
+        const messages = compressionPayload.compressedMessages;
 
         // If compression was skipped (no messages to compress), just call LLM
         // Otherwise, messages have been updated with compressed content

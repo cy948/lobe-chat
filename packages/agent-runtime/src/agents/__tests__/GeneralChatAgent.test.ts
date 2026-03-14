@@ -64,15 +64,11 @@ describe('GeneralChatAgent', () => {
       modelRuntimeConfig: mockModelRuntimeConfig,
     });
 
-  const expectCompressionInstruction = (
-    messages: AgentState['messages'],
-    options?: { messageSuffix?: any[] },
-  ) => ({
+  const expectCompressionInstruction = (messages: AgentState['messages']) => ({
     type: 'compress_context',
     payload: {
       currentTokenCount: expect.any(Number),
       existingSummary: undefined,
-      messageSuffix: options?.messageSuffix,
       messages,
     },
   });
@@ -1383,15 +1379,14 @@ describe('GeneralChatAgent', () => {
       const result = await agent.runner(context, state);
 
       expect(result).toEqual(
-        expectCompressionInstruction(state.messages, {
-          messageSuffix: [
-            {
-              content:
-                'All tasks above have been completed. Please summarize the results or continue with your response following user query language.',
-              role: 'user',
-            },
-          ],
-        }),
+        expectCompressionInstruction([
+          ...state.messages,
+          {
+            content:
+              'All tasks above have been completed. Please summarize the results or continue with your response following user query language.',
+            role: 'user',
+          },
+        ]),
       );
     });
   });

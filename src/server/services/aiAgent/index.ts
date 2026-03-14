@@ -220,23 +220,26 @@ export class AiAgentService {
 
     const isContinuationMode = initialContext !== undefined || initialMessages !== undefined;
 
-    if (isContinuationMode && (!initialContext || !initialMessages)) {
-      throw new Error(
-        'Continuation mode requires both initialContext and initialMessages to be provided',
-      );
+    if (!agentId && !slug && !isContinuationMode) {
+      throw new Error('Either agentId or slug must be provided');
     }
 
     if (!isContinuationMode && !prompt) {
       throw new Error('Prompt is required when initialContext/initialMessages are not provided');
     }
 
-    // Validate that either agentId/slug or agentSnapshot is provided
-    if (!agentId && !slug && !agentSnapshot?.model) {
-      throw new Error('Either agentId/slug or agentSnapshot must be provided');
+    if (isContinuationMode && (!initialContext || !initialMessages)) {
+      throw new Error(
+        'Continuation mode requires both initialContext and initialMessages to be provided',
+      );
     }
 
     if (isContinuationMode && !appContext?.topicId) {
       throw new Error('Continuation mode requires appContext.topicId');
+    }
+
+    if (isContinuationMode && !agentId && !slug && !agentSnapshot?.model) {
+      throw new Error('Continuation mode requires agentId/slug or agentSnapshot');
     }
 
     // Determine the identifier to use (agentId takes precedence)

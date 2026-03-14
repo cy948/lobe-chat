@@ -310,7 +310,13 @@ export class GeneralChatAgent implements Agent {
     return undefined;
   }
 
-  /** Proceed to the next LLM call, inserting compression first when needed. */
+  /**
+   * Proceed to the next LLM call, inserting compression first when needed.
+   *
+   * Note for future refactors: if this helper starts coordinating more than just
+   * direct LLM invocation, consider renaming it to `toNextCall` to better reflect
+   * the broader transition semantics.
+   */
   private toLLMCall(payload: GeneralAgentCallLLMInstructionPayload): AgentInstruction {
     const compressionEnabled = this.config.compressionConfig?.enabled ?? true;
 

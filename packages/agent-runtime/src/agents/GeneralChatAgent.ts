@@ -341,8 +341,8 @@ export class GeneralChatAgent implements Agent {
     };
   }
 
-  /** Return either the intended call_llm or a compress_context jump first. */
-  private createCallLLMOrCompressionInstruction(
+  /** Proceed to the next LLM call, inserting compression first when needed. */
+  private toLLMCall(
     payload: GeneralAgentCallLLMInstructionPayload,
     options?: {
       compressionMessages?: any[];
@@ -571,7 +571,7 @@ export class GeneralChatAgent implements Agent {
         }
 
         // No pending tools, continue to call LLM with tool results
-        return this.createCallLLMOrCompressionInstruction({
+        return this.toLLMCall({
           messages: state.messages,
           model: this.config.modelRuntimeConfig?.model,
           parentMessageId,
@@ -601,7 +601,7 @@ export class GeneralChatAgent implements Agent {
         }
 
         // No pending tools, continue to call LLM with tool results
-        return this.createCallLLMOrCompressionInstruction({
+        return this.toLLMCall({
           messages: state.messages,
           model: this.config.modelRuntimeConfig?.model,
           parentMessageId,
@@ -615,7 +615,7 @@ export class GeneralChatAgent implements Agent {
         const { parentMessageId } = context.payload as TaskResultPayload;
 
         // Continue to call LLM with updated messages (task message is already in state)
-        return this.createCallLLMOrCompressionInstruction({
+        return this.toLLMCall({
           messages: state.messages,
           model: this.config.modelRuntimeConfig?.model,
           parentMessageId,
@@ -641,7 +641,7 @@ export class GeneralChatAgent implements Agent {
         ];
 
         // Continue to call LLM with updated messages (task messages are already in state)
-        return this.createCallLLMOrCompressionInstruction(
+        return this.toLLMCall(
           {
             messages: messagesWithPrompt,
             model: this.config.modelRuntimeConfig?.model,

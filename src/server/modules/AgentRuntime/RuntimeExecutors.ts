@@ -72,7 +72,6 @@ export const createRuntimeExecutors = (
     const llmPayload = payload as CallLLMPayload;
     const { operationId, stepIndex, streamManager } = ctx;
     const events: AgentEvent[] = [];
-    const newState = structuredClone(state);
 
     // Fallback to state's modelRuntimeConfig if not in payload
     const model = llmPayload.model || state.modelRuntimeConfig?.model;
@@ -123,10 +122,10 @@ export const createRuntimeExecutors = (
 
     // Get parentId from payload (parentId or parentMessageId depending on payload type)
     const parentId = llmPayload.parentId || (llmPayload as any).parentMessageId;
-    const existingAssistantMessageId = (llmPayload as any).assistantMessageId;
 
     // Get or create assistant message
     // If assistantMessageId is provided in payload, use existing message instead of creating new one
+    const existingAssistantMessageId = (llmPayload as any).assistantMessageId;
     let assistantMessageItem: { id: string };
 
     if (existingAssistantMessageId) {
@@ -532,6 +531,8 @@ export const createRuntimeExecutors = (
       }
 
       // ===== 2. Then accumulate to AgentState =====
+      const newState = structuredClone(state);
+
       newState.messages.push({
         content,
         role: 'assistant',

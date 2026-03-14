@@ -310,6 +310,19 @@ export class GeneralChatAgent implements Agent {
     return undefined;
   }
 
+  /**
+   * Checks whether the next LLM follow-up would exceed the compression window
+   * and, if needed, prepares the explicit compress_context instruction.
+   *
+   * This helper encapsulates both responsibilities for post-tool/post-task
+   * continuation:
+   * 1. determine whether compression should happen before the next LLM call;
+   * 2. build the compression instruction payload that runtime will execute.
+   *
+   * Note that this method only decides and prepares compression. The actual
+   * compression work is still performed by the runtime-side compress_context
+   * executor/service.
+   */
   private createPostCompressionInstruction(
     messages: any[],
     options?: {
@@ -320,6 +333,10 @@ export class GeneralChatAgent implements Agent {
 
     if (!compressionEnabled) return undefined;
 
+    // messageSuffix stores synthetic follow-up messages that will be appended back
+    // after compression, such as the virtual user prompt in tasks_batch_result.
+    // They should count toward the next LLM window when deciding whether to
+    // compress, but they should not be folded into the compression input itself.
     const messagesToCheck = options?.messageSuffix
       ? [...messages, ...options.messageSuffix]
       : messages;

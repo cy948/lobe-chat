@@ -270,7 +270,6 @@ export class AgentEvalRunService {
   }
 
   private async recreateOperationFromTrajectory(params: {
-    agentSnapshot?: EvalRunAgentSnapshot;
     appContext: {
       agentId?: string | null;
       threadId?: string;
@@ -294,7 +293,6 @@ export class AgentEvalRunService {
 
     const created = await aiAgentService.execAgent({
       agentId: params.appContext.agentId ?? undefined,
-      agentSnapshot: params.agentSnapshot,
       appContext: params.appContext,
       autoStart: false,
       completionWebhook: params.completionWebhook,
@@ -310,7 +308,6 @@ export class AgentEvalRunService {
   }
 
   private async resumeOperation(params: {
-    agentSnapshot?: EvalRunAgentSnapshot;
     appContext: {
       agentId?: string | null;
       threadId?: string;
@@ -350,7 +347,6 @@ export class AgentEvalRunService {
     }
 
     const recreated = await this.recreateOperationFromTrajectory({
-      agentSnapshot: params.agentSnapshot,
       appContext: params.appContext,
       completionWebhook: params.completionWebhook,
       evalContext: params.evalContext,
@@ -762,8 +758,6 @@ export class AgentEvalRunService {
       appEnv.APP_URL,
     ).toString();
 
-    const agentSnapshot =
-      (run.config as EvalRunConfig | null | undefined)?.agentSnapshot ?? undefined;
     const envPrompt = (await this.datasetModel.findById(run.datasetId))?.evalConfig?.envPrompt;
 
     let resumedCount = 0;
@@ -784,7 +778,6 @@ export class AgentEvalRunService {
         if (threadMessages.length === 0) continue;
 
         const { operationId } = await this.resumeOperation({
-          agentSnapshot,
           appContext: {
             agentId:
               run.targetAgentId ??
@@ -822,7 +815,6 @@ export class AgentEvalRunService {
       const topicMessages = await this.messageModel.query({ topicId: runTopic.topicId });
 
       const { operationId } = await this.resumeOperation({
-        agentSnapshot,
         appContext: {
           agentId:
             run.targetAgentId ??

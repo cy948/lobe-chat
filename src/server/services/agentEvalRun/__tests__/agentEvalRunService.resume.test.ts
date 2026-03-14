@@ -105,13 +105,6 @@ describe('AgentEvalRunService resume timeout', () => {
     const { run, cases } = await setupMultiCaseRun([{ assistantOutput: null }]);
     const runModel = new AgentEvalRunModel(serverDB, userId);
     await runModel.update(run.id, {
-      config: {
-        agentSnapshot: {
-          model: 'gpt-4o-mini',
-          plugins: [],
-          provider: 'openai',
-        },
-      } as any,
       metrics: { totalCases: 1 } as any,
     });
 
@@ -130,6 +123,7 @@ describe('AgentEvalRunService resume timeout', () => {
     const [userMessage] = await serverDB
       .insert(messages)
       .values({
+        agentId: 'agent-1',
         content: 'Q0',
         role: 'user',
         topicId: runTopic!.topicId,
@@ -172,11 +166,7 @@ describe('AgentEvalRunService resume timeout', () => {
     expect(result).toEqual({ resumedCount: 1 });
     expect(aiAgentMocks.execAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        agentSnapshot: expect.objectContaining({
-          model: 'gpt-4o-mini',
-          provider: 'openai',
-        }),
-        appContext: { agentId: undefined, topicId: runTopic!.topicId },
+        appContext: { agentId: 'agent-1', topicId: runTopic!.topicId },
         autoStart: false,
         initialContext: expect.objectContaining({
           payload: { parentMessageId: toolMessage.id },
@@ -203,11 +193,6 @@ describe('AgentEvalRunService resume timeout', () => {
     const runModel = new AgentEvalRunModel(serverDB, userId);
     await runModel.update(run.id, {
       config: {
-        agentSnapshot: {
-          model: 'gpt-4o-mini',
-          plugins: [],
-          provider: 'openai',
-        },
         k: 2,
       } as any,
       metrics: { totalCases: 1 } as any,
@@ -240,6 +225,7 @@ describe('AgentEvalRunService resume timeout', () => {
     const [threadUserMessage] = await serverDB
       .insert(messages)
       .values({
+        agentId: 'agent-1',
         content: 'Q0',
         role: 'user',
         threadId: pendingThread!.id,
@@ -277,12 +263,8 @@ describe('AgentEvalRunService resume timeout', () => {
     expect(result).toEqual({ resumedCount: 1 });
     expect(aiAgentMocks.execAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        agentSnapshot: expect.objectContaining({
-          model: 'gpt-4o-mini',
-          provider: 'openai',
-        }),
         appContext: {
-          agentId: undefined,
+          agentId: 'agent-1',
           threadId: pendingThread!.id,
           topicId: runTopic!.topicId,
         },

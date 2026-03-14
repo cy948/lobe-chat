@@ -244,12 +244,7 @@ describe('AiAgentService.execAgent - topic history loading', () => {
       ];
 
       const result = await service.execAgent({
-        agentSnapshot: {
-          model: 'gpt-4',
-          plugins: [],
-          provider: 'openai',
-          systemRole: 'You are a helpful assistant',
-        },
+        agentId: 'agent-1',
         appContext: { topicId: 'topic-existing' },
         autoStart: false,
         initialContext,

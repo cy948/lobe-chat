@@ -12,7 +12,6 @@ import type { LobeToolManifest } from '@lobechat/context-engine';
 import type { LobeChatDatabase } from '@lobechat/database';
 import type {
   ChatTopicBotContext,
-  EvalRunAgentSnapshot,
   ExecAgentParams,
   ExecAgentResult,
   ExecGroupAgentParams,
@@ -78,8 +77,6 @@ function formatErrorForMetadata(error: unknown): Record<string, any> | undefined
  * This extends the public ExecAgentParams with server-side only options
  */
 interface InternalExecAgentParams extends Omit<ExecAgentParams, 'prompt'> {
-  /** Agent snapshot for continuation mode when DB config lookup should be skipped */
-  agentSnapshot?: EvalRunAgentSnapshot | null;
   /** Bot context for topic metadata (platform, applicationId, platformThreadId) */
   botContext?: ChatTopicBotContext;
   /**
@@ -193,7 +190,6 @@ export class AiAgentService {
   async execAgent(params: InternalExecAgentParams): Promise<ExecAgentResult> {
     const {
       agentId,
-      agentSnapshot,
       slug,
       prompt,
       appContext,
@@ -238,59 +234,32 @@ export class AiAgentService {
       throw new Error('Continuation mode requires appContext.topicId');
     }
 
-    if (isContinuationMode && !agentId && !slug && !agentSnapshot?.model) {
-      throw new Error('Continuation mode requires agentId/slug or agentSnapshot');
-    }
-
     // Determine the identifier to use (agentId takes precedence)
     const identifier = agentId || slug;
 
     log(
       'execAgent: identifier=%s, continuation=%s, prompt=%s',
-      identifier || 'snapshot',
+      identifier,
       isContinuationMode,
       prompt?.slice(0, 50) || '',
     );
 
-    let agentConfig: any;
-    let resolvedAgentId = agentId || 'resume';
-
-    if (identifier) {
-      // 1. Get agent configuration with default config merged (supports both id and slug)
-      agentConfig = await this.agentService.getAgentConfig(identifier);
-      if (!agentConfig) {
-        throw new Error(`Agent not found: ${identifier}`);
-      }
-
-      // Use actual agent ID from config for subsequent operations
-      resolvedAgentId = agentConfig.id;
-
-      log(
-        'execAgent: got agent config for %s (id: %s), model: %s, provider: %s',
-        identifier,
-        resolvedAgentId,
-        agentConfig.model,
-        agentConfig.provider,
-      );
-    } else {
-      if (!agentSnapshot?.model || !agentSnapshot.provider) {
-        throw new Error('Agent snapshot with model/provider is required for continuation mode');
-      }
-
-      agentConfig = {
-        avatar: agentSnapshot.avatar ?? undefined,
-        chatConfig: agentSnapshot.chatConfig ?? undefined,
-        fewShots: agentSnapshot.fewShots ?? undefined,
-        id: resolvedAgentId,
-        knowledgeBases: [],
-        model: agentSnapshot.model,
-        params: agentSnapshot.params ?? undefined,
-        plugins: agentSnapshot.plugins ?? [],
-        provider: agentSnapshot.provider,
-        systemRole: agentSnapshot.systemRole ?? undefined,
-        title: agentSnapshot.title ?? undefined,
-      };
+    // 1. Get agent configuration with default config merged (supports both id and slug)
+    const agentConfig = await this.agentService.getAgentConfig(identifier!);
+    if (!agentConfig) {
+      throw new Error(`Agent not found: ${identifier}`);
     }
+
+    // Use actual agent ID from config for subsequent operations
+    const resolvedAgentId = agentConfig.id;
+
+    log(
+      'execAgent: got agent config for %s (id: %s), model: %s, provider: %s',
+      identifier,
+      resolvedAgentId,
+      agentConfig.model,
+      agentConfig.provider,
+    );
 
     // 2. Merge builtin agent runtime config (systemRole, plugins)
     // The DB only stores persist config. Runtime config (e.g. inbox systemRole) is generated dynamically.

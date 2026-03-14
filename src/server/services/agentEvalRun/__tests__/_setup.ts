@@ -10,6 +10,7 @@ import {
   agentEvalRuns,
   agentEvalRunTopics,
   agentEvalTestCases,
+  agents,
   messages,
   threads,
   topics,
@@ -29,9 +30,11 @@ export async function cleanupDB() {
   await serverDB.delete(agentEvalDatasets);
   await serverDB.delete(agentEvalBenchmarks);
   await serverDB.delete(topics);
+  await serverDB.delete(agents);
   await serverDB.delete(users);
 
   await serverDB.insert(users).values({ id: userId });
+  await serverDB.insert(agents).values({ id: 'agent-1', userId });
 }
 
 /**

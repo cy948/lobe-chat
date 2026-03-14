@@ -117,6 +117,10 @@ interface InternalExecAgentParams extends Omit<ExecAgentParams, 'prompt'> {
     body?: Record<string, unknown>;
     url: string;
   };
+  /**
+   * Whether the LLM call should use streaming.
+   * Defaults to true. Set to false for non-streaming scenarios (e.g., bot integrations).
+   */
   stream?: boolean;
   /**
    * Custom title for the topic.

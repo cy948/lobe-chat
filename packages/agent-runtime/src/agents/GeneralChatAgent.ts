@@ -310,37 +310,6 @@ export class GeneralChatAgent implements Agent {
     return undefined;
   }
 
-  /** Build a compress_context instruction for the next LLM follow-up when needed. */
-  private createPostCompressionInstruction(
-    messages: any[],
-    options?: {
-      messageSuffix?: any[];
-    },
-  ): AgentInstructionCompressContext | undefined {
-    const compressionEnabled = this.config.compressionConfig?.enabled ?? true;
-
-    if (!compressionEnabled) return undefined;
-
-    const messagesToCheck = options?.messageSuffix
-      ? [...messages, ...options.messageSuffix]
-      : messages;
-    const compressionCheck = shouldCompress(messagesToCheck, {
-      maxWindowToken: this.config.compressionConfig?.maxWindowToken,
-    });
-
-    if (!compressionCheck.needsCompression) return undefined;
-
-    return {
-      payload: {
-        currentTokenCount: compressionCheck.currentTokenCount,
-        existingSummary: this.findExistingSummary(messages),
-        messageSuffix: options?.messageSuffix,
-        messages,
-      },
-      type: 'compress_context',
-    };
-  }
-
   /**
    * Handle abort scenario - unified abort handling logic
    */

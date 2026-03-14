@@ -195,32 +195,47 @@ export class AgentRuntime {
         if (instruction.type === 'finish') hasFinishInstruction = true;
 
         let result;
-        const instructionToExecute =
-          instruction.type === 'call_llm' && runtimeContext.phase !== 'compression_result'
-            ? (this.createCompressionInstructionFromCallLLM(instruction) ?? instruction)
-            : instruction;
 
-        // Special handling for batch tool execution
-        if (instructionToExecute.type === 'call_tools_batch') {
+        if (instruction.type === 'call_llm' && runtimeContext.phase !== 'compression_result') {
+          const compressionInstruction = this.createCompressionInstructionFromCallLLM(instruction);
+
+          if (compressionInstruction) {
+            const compressExecutor =
+              this.executors[compressionInstruction.type as keyof typeof this.executors];
+
+            if (!compressExecutor) {
+              throw new Error(
+                `No executor found for instruction type: ${compressionInstruction.type}`,
+              );
+            }
+
+            result = await compressExecutor(compressionInstruction, currentState, runtimeContext);
+          } else {
+            const callLLMExecutor = this.executors.call_llm;
+
+            if (!callLLMExecutor) {
+              throw new Error('No executor found for instruction type: call_llm');
+            }
+
+            result = await callLLMExecutor(instruction, currentState, runtimeContext);
+          }
+        } else if (instruction.type === 'call_tools_batch') {
+          // Special handling for batch tool execution
           // Check if custom executor is provided (e.g., server-side with DB access)
           const customExecutor = this.executors['call_tools_batch' as keyof typeof this.executors];
           if (customExecutor) {
-            result = await customExecutor(instructionToExecute, currentState, runtimeContext);
+            result = await customExecutor(instruction, currentState, runtimeContext);
           } else {
             // Fallback to built-in executeToolsBatch
-            result = await this.executeToolsBatch(
-              instructionToExecute as any,
-              currentState,
-              runtimeContext,
-            );
+            result = await this.executeToolsBatch(instruction as any, currentState, runtimeContext);
           }
         } else {
-          const executor = this.executors[instructionToExecute.type as keyof typeof this.executors];
+          const executor = this.executors[instruction.type as keyof typeof this.executors];
           if (!executor) {
-            throw new Error(`No executor found for instruction type: ${instructionToExecute.type}`);
+            throw new Error(`No executor found for instruction type: ${instruction.type}`);
           }
           // Pass runtimeContext to executor so it can access stepContext
-          result = await executor(instructionToExecute, currentState, runtimeContext);
+          result = await executor(instruction, currentState, runtimeContext);
         }
 
         // Accumulate events

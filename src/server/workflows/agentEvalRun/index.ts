@@ -103,7 +103,7 @@ export interface OnThreadCompletePayload {
 /**
  * Get workflow URL using APP_URL
  */
-const getWorkflowUrl = (path: string): string => {
+export const getWorkflowUrl = (path: string): string => {
   const baseUrl = process.env.APP_URL;
   if (!baseUrl) throw new Error('APP_URL is required to trigger workflows');
   return new URL(path, baseUrl).toString();

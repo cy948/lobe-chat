@@ -7,9 +7,11 @@ import type {
   AgentInstruction,
   AgentInstructionCallTool,
   AgentInstructionCallToolsBatch,
+  AgentInstructionCompressContext,
   AgentRuntimeContext,
   AgentState,
   Cost,
+  GeneralAgentCallLLMInstructionPayload,
   GeneralAgentCallToolsBatchResultPayload,
   InstructionExecutor,
   RuntimeConfig,
@@ -17,6 +19,7 @@ import type {
   ToolsCalling,
   Usage,
 } from '../types';
+import { shouldCompress } from '../utils/tokenCounter';
 
 /**
  * Simplified Agent Runtime - The "Engine" that executes instructions from an "Agent" (Brain).
@@ -69,6 +72,34 @@ export class AgentRuntime {
       return undefined;
     }
     return this.getOperation(this.operationId).abortController;
+  }
+
+  private createCompressionInstructionFromCallLLM(
+    instruction: Extract<AgentInstruction, { type: 'call_llm' }>,
+  ): AgentInstructionCompressContext | undefined {
+    const payload = instruction.payload as GeneralAgentCallLLMInstructionPayload;
+    const messages = payload.compressionMessages;
+
+    if (!messages) return undefined;
+
+    const messagesToCheck = payload.messageSuffix
+      ? [...messages, ...payload.messageSuffix]
+      : messages;
+    const compressionCheck = shouldCompress(messagesToCheck, {
+      maxWindowToken: payload.compressionMaxWindowToken,
+    });
+
+    if (!compressionCheck.needsCompression) return undefined;
+
+    return {
+      payload: {
+        currentTokenCount: compressionCheck.currentTokenCount,
+        existingSummary: undefined,
+        messageSuffix: payload.messageSuffix,
+        messages,
+      },
+      type: 'compress_context',
+    };
   }
 
   /**
@@ -164,24 +195,32 @@ export class AgentRuntime {
         if (instruction.type === 'finish') hasFinishInstruction = true;
 
         let result;
+        const instructionToExecute =
+          instruction.type === 'call_llm' && runtimeContext.phase !== 'compression_result'
+            ? (this.createCompressionInstructionFromCallLLM(instruction) ?? instruction)
+            : instruction;
 
         // Special handling for batch tool execution
-        if (instruction.type === 'call_tools_batch') {
+        if (instructionToExecute.type === 'call_tools_batch') {
           // Check if custom executor is provided (e.g., server-side with DB access)
           const customExecutor = this.executors['call_tools_batch' as keyof typeof this.executors];
           if (customExecutor) {
-            result = await customExecutor(instruction, currentState, runtimeContext);
+            result = await customExecutor(instructionToExecute, currentState, runtimeContext);
           } else {
             // Fallback to built-in executeToolsBatch
-            result = await this.executeToolsBatch(instruction as any, currentState, runtimeContext);
+            result = await this.executeToolsBatch(
+              instructionToExecute as any,
+              currentState,
+              runtimeContext,
+            );
           }
         } else {
-          const executor = this.executors[instruction.type as keyof typeof this.executors];
+          const executor = this.executors[instructionToExecute.type as keyof typeof this.executors];
           if (!executor) {
-            throw new Error(`No executor found for instruction type: ${instruction.type}`);
+            throw new Error(`No executor found for instruction type: ${instructionToExecute.type}`);
           }
           // Pass runtimeContext to executor so it can access stepContext
-          result = await executor(instruction, currentState, runtimeContext);
+          result = await executor(instructionToExecute, currentState, runtimeContext);
         }
 
         // Accumulate events

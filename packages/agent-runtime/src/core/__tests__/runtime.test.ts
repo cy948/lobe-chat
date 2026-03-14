@@ -175,6 +175,50 @@ describe('AgentRuntime', () => {
       expect(result.newState.status).toBe('error');
       expect(result.newState.error).toBeInstanceOf(Error);
     });
+
+    it('should gate call_llm through compress_context before execution when compression metadata is provided', async () => {
+      const agent = new MockAgent();
+      agent.runner = vi.fn().mockResolvedValue({
+        payload: {
+          compressionMaxWindowToken: 1,
+          compressionMessages: [{ role: 'user', content: 'hello world' }],
+          messages: [{ role: 'user', content: 'hello world' }],
+        },
+        type: 'call_llm' as const,
+      });
+
+      const callLLMExecutor = vi.fn().mockResolvedValue({
+        events: [],
+        newState: AgentRuntime.createInitialState({ operationId: 'test-session' }),
+      });
+      const compressExecutor = vi.fn().mockResolvedValue({
+        events: [],
+        newState: AgentRuntime.createInitialState({ operationId: 'test-session' }),
+        nextContext: createTestContext('compression_result'),
+      });
+
+      const runtime = new AgentRuntime(agent, {
+        executors: {
+          call_llm: callLLMExecutor,
+          compress_context: compressExecutor,
+        } as RuntimeConfig['executors'],
+      });
+
+      const state = AgentRuntime.createInitialState({
+        operationId: 'test-session',
+        messages: [{ role: 'user', content: 'hello world' }],
+      });
+
+      const result = await runtime.step(state, createTestContext('tool_result'));
+
+      expect(compressExecutor).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'compress_context' }),
+        expect.anything(),
+        expect.anything(),
+      );
+      expect(callLLMExecutor).not.toHaveBeenCalled();
+      expect(result.nextContext?.phase).toBe('compression_result');
+    });
   });
 
   describe('Built-in Executors', () => {

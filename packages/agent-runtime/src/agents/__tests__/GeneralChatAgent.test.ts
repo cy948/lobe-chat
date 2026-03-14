@@ -64,6 +64,19 @@ describe('GeneralChatAgent', () => {
       modelRuntimeConfig: mockModelRuntimeConfig,
     });
 
+  const expectCompressionInstruction = (
+    messages: AgentState['messages'],
+    options?: { messageSuffix?: any[] },
+  ) => ({
+    type: 'compress_context',
+    payload: {
+      currentTokenCount: expect.any(Number),
+      existingSummary: undefined,
+      messageSuffix: options?.messageSuffix,
+      messages,
+    },
+  });
+
   describe('init and user_input phase', () => {
     it('should return call_llm instruction for init phase', async () => {
       const agent = new GeneralChatAgent({
@@ -640,15 +653,7 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      expect(result).toEqual({
-        type: 'compress_context',
-        payload: {
-          currentTokenCount: expect.any(Number),
-          existingSummary: undefined,
-          messageSuffix: undefined,
-          messages: state.messages,
-        },
-      });
+      expect(result).toEqual(expectCompressionInstruction(state.messages));
     });
 
     it('should return request_human_approve when there are pending tools', async () => {
@@ -794,15 +799,7 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      expect(result).toEqual({
-        type: 'compress_context',
-        payload: {
-          currentTokenCount: expect.any(Number),
-          existingSummary: undefined,
-          messageSuffix: undefined,
-          messages: state.messages,
-        },
-      });
+      expect(result).toEqual(expectCompressionInstruction(state.messages));
     });
   });
 
@@ -1267,15 +1264,7 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      expect(result).toEqual({
-        type: 'compress_context',
-        payload: {
-          currentTokenCount: expect.any(Number),
-          existingSummary: undefined,
-          messageSuffix: undefined,
-          messages: state.messages,
-        },
-      });
+      expect(result).toEqual(expectCompressionInstruction(state.messages));
     });
   });
 
@@ -1393,11 +1382,8 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      expect(result).toEqual({
-        type: 'compress_context',
-        payload: {
-          currentTokenCount: expect.any(Number),
-          existingSummary: undefined,
+      expect(result).toEqual(
+        expectCompressionInstruction(state.messages, {
           messageSuffix: [
             {
               content:
@@ -1405,9 +1391,8 @@ describe('GeneralChatAgent', () => {
               role: 'user',
             },
           ],
-          messages: state.messages,
-        },
-      });
+        }),
+      );
     });
   });
 

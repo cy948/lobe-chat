@@ -130,6 +130,14 @@ describe('RuntimeExecutors', () => {
     total: 0,
   });
 
+  const createCompressContextInstruction = (messages: any[]) => ({
+    payload: {
+      currentTokenCount: 1000,
+      messages,
+    },
+    type: 'compress_context' as const,
+  });
+
   describe('call_llm executor', () => {
     const createMockState = (overrides?: Partial<AgentState>): AgentState => ({
       cost: createMockCost(),
@@ -314,13 +322,9 @@ describe('RuntimeExecutors', () => {
         messages: [{ content: 'x '.repeat(70000), role: 'user' }],
       });
 
-      const instruction = {
-        payload: {
-          messages: [{ content: 'x '.repeat(70000), role: 'user' }],
-          currentTokenCount: 1000,
-        },
-        type: 'compress_context' as const,
-      };
+      const instruction = createCompressContextInstruction([
+        { content: 'x '.repeat(70000), role: 'user' },
+      ]);
 
       const result = await executors.compress_context!(instruction, state);
 
@@ -347,13 +351,7 @@ describe('RuntimeExecutors', () => {
         },
       });
 
-      const instruction = {
-        payload: {
-          currentTokenCount: 1000,
-          messages: [{ content: 'history', role: 'user' }],
-        },
-        type: 'compress_context' as const,
-      };
+      const instruction = createCompressContextInstruction([{ content: 'history', role: 'user' }]);
 
       const result = await executors.compress_context!(instruction, state);
 
@@ -372,13 +370,7 @@ describe('RuntimeExecutors', () => {
         messages: [{ content: 'history', role: 'user' }],
       });
 
-      const instruction = {
-        payload: {
-          currentTokenCount: 1000,
-          messages: [{ content: 'history', role: 'user' }],
-        },
-        type: 'compress_context' as const,
-      };
+      const instruction = createCompressContextInstruction([{ content: 'history', role: 'user' }]);
 
       const result = await executors.compress_context!(instruction, state);
 

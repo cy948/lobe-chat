@@ -1323,6 +1323,7 @@ export class AgentRuntimeService {
     operationId: string;
     stepIndex: number;
   }) {
+    // Create Durable Agent instance
     const agent = new GeneralChatAgent({
       agentConfig: metadata?.agentConfig,
       compressionConfig: {

@@ -310,37 +310,6 @@ export class GeneralChatAgent implements Agent {
     return undefined;
   }
 
-  /** Build a compress_context instruction for the next LLM follow-up when needed. */
-  private createPostCompressionInstruction(
-    messages: any[],
-    options?: {
-      messageSuffix?: any[];
-    },
-  ): AgentInstructionCompressContext | undefined {
-    const compressionEnabled = this.config.compressionConfig?.enabled ?? true;
-
-    if (!compressionEnabled) return undefined;
-
-    const messagesToCheck = options?.messageSuffix
-      ? [...messages, ...options.messageSuffix]
-      : messages;
-    const compressionCheck = shouldCompress(messagesToCheck, {
-      maxWindowToken: this.config.compressionConfig?.maxWindowToken,
-    });
-
-    if (!compressionCheck.needsCompression) return undefined;
-
-    return {
-      payload: {
-        currentTokenCount: compressionCheck.currentTokenCount,
-        existingSummary: this.findExistingSummary(messages),
-        messageSuffix: options?.messageSuffix,
-        messages,
-      },
-      type: 'compress_context',
-    };
-  }
-
   /** Proceed to the next LLM call, inserting compression first when needed. */
   private toLLMCall(
     payload: GeneralAgentCallLLMInstructionPayload,
@@ -349,14 +318,29 @@ export class GeneralChatAgent implements Agent {
       messageSuffix?: any[];
     },
   ): AgentInstruction {
-    const compressionInstruction = this.createPostCompressionInstruction(
-      options?.compressionMessages ?? payload.messages,
-      {
-        messageSuffix: options?.messageSuffix,
-      },
-    );
+    const compressionEnabled = this.config.compressionConfig?.enabled ?? true;
 
-    if (compressionInstruction) return compressionInstruction;
+    if (compressionEnabled) {
+      const messages = options?.compressionMessages ?? payload.messages;
+      const messagesToCheck = options?.messageSuffix
+        ? [...messages, ...options.messageSuffix]
+        : messages;
+      const compressionCheck = shouldCompress(messagesToCheck, {
+        maxWindowToken: this.config.compressionConfig?.maxWindowToken,
+      });
+
+      if (compressionCheck.needsCompression) {
+        return {
+          payload: {
+            currentTokenCount: compressionCheck.currentTokenCount,
+            existingSummary: this.findExistingSummary(messages),
+            messageSuffix: options?.messageSuffix,
+            messages,
+          },
+          type: 'compress_context',
+        };
+      }
+    }
 
     return {
       payload,

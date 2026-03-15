@@ -15,9 +15,9 @@ const parseFilter = (filter?: string) => {
   if (!trimmed) return { excludeTriggers: DEFAULT_EXCLUDE_TRIGGERS };
   if (trimmed.toLowerCase() === 'none') return { excludeTriggers: undefined };
   const lower = trimmed.toLowerCase();
-  const prefix = 'trigger!=';
+  const prefix = 'trigger=';
   if (!lower.startsWith(prefix)) {
-    log.error("Invalid --filter. Use 'trigger!=eval,cron' or 'none'.");
+    log.error("Invalid --filter. Use 'trigger=eval,cron' or 'none'.");
     process.exit(1);
   }
 
@@ -27,7 +27,7 @@ const parseFilter = (filter?: string) => {
     .map((item) => item.trim().toLowerCase())
     .filter(Boolean);
   if (excludeTriggers.length === 0) {
-    log.error("Invalid --filter. Use 'trigger!=eval,cron' or 'none'.");
+    log.error("Invalid --filter. Use 'trigger=eval,cron' or 'none'.");
     process.exit(1);
   }
 
@@ -45,7 +45,7 @@ export function registerTopicCommand(program: Command) {
     .option('--agent-id <id>', 'Filter by agent ID')
     .option('-L, --limit <n>', 'Page size', '30')
     .option('--page <n>', 'Page number', '1')
-    .option('--filter <expr>', 'Filter by trigger (e.g. trigger!=eval,cron or none)')
+    .option('--filter <expr>', 'Filter by trigger (e.g. trigger=eval,cron or none)')
     .option('--json [fields]', 'Output JSON, optionally specify fields (comma-separated)')
     .action(
       async (options: {
@@ -95,7 +95,7 @@ export function registerTopicCommand(program: Command) {
     .command('search <keywords>')
     .description('Search topics')
     .option('--agent-id <id>', 'Filter by agent ID')
-    .option('--filter <expr>', 'Filter by trigger (e.g. trigger!=eval,cron or none)')
+    .option('--filter <expr>', 'Filter by trigger (e.g. trigger=eval,cron or none)')
     .option('--json [fields]', 'Output JSON, optionally specify fields (comma-separated)')
     .action(
       async (
@@ -343,7 +343,7 @@ export function registerTopicCommand(program: Command) {
     .command('recent')
     .description('List recent topics')
     .option('-L, --limit <n>', 'Number of items', '10')
-    .option('--filter <expr>', 'Filter by trigger (e.g. trigger!=eval,cron or none)')
+    .option('--filter <expr>', 'Filter by trigger (e.g. trigger=eval,cron or none)')
     .option('--json [fields]', 'Output JSON, optionally specify fields (comma-separated)')
     .action(async (options: { filter?: string; json?: string | boolean; limit?: string }) => {
       const client = await getTrpcClient();

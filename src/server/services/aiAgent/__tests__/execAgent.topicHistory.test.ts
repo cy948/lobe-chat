@@ -64,6 +64,11 @@ vi.mock('@/database/models/plugin', () => ({
 vi.mock('@/database/models/topic', () => ({
   TopicModel: vi.fn().mockImplementation(() => ({
     create: vi.fn().mockResolvedValue({ id: 'topic-new' }),
+    findById: vi.fn().mockResolvedValue({
+      agentId: 'agent-1',
+      id: 'topic-existing',
+      sessionId: null,
+    }),
   })),
 }));
 
@@ -262,6 +267,54 @@ describe('AiAgentService.execAgent - topic history loading', () => {
             payload: expect.objectContaining({ parentMessageId: 'msg-assistant-prev' }),
           }),
           initialMessages,
+        }),
+      );
+
+      expect(result.assistantMessageId).toBe('');
+      expect(result.userMessageId).toBe('msg-assistant-prev');
+    });
+  });
+
+  describe('when resume=true', () => {
+    it('should rebuild continuation context from the latest topic boundary', async () => {
+      mockMessageQuery.mockResolvedValue([
+        { content: 'Question', id: 'msg-user-prev', role: 'user' },
+        {
+          content: '',
+          id: 'msg-assistant-prev',
+          role: 'assistant',
+          tools: [
+            {
+              apiName: 'search',
+              arguments: '{"q":"weather"}',
+              id: 'tool-call-1',
+            },
+          ],
+        },
+      ]);
+
+      const result = await service.execAgent({
+        autoStart: false,
+        resume: true,
+        topicId: 'topic-existing',
+      });
+
+      expect(mockMessageCreate).not.toHaveBeenCalled();
+      expect(mockMessageQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ topicId: 'topic-existing', threadId: undefined }),
+      );
+      expect(mockCreateOperation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          appContext: expect.objectContaining({ topicId: 'topic-existing' }),
+          autoStart: false,
+          initialContext: expect.objectContaining({
+            phase: 'llm_result',
+            payload: expect.objectContaining({ parentMessageId: 'msg-assistant-prev' }),
+          }),
+          initialMessages: expect.arrayContaining([
+            expect.objectContaining({ id: 'msg-user-prev' }),
+            expect.objectContaining({ id: 'msg-assistant-prev' }),
+          ]),
         }),
       );
 

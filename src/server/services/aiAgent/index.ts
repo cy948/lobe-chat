@@ -45,6 +45,7 @@ import { FileService } from '@/server/services/file';
 import { KlavisService } from '@/server/services/klavis';
 import { MarketService } from '@/server/services/market';
 import { deviceProxy } from '@/server/services/toolExecution/deviceProxy';
+import { buildResumeContextFromMessages } from './resumeContext';
 
 const log = debug('lobe-server:ai-agent-service');
 
@@ -178,6 +179,23 @@ export class AiAgentService {
     this.klavisService = new KlavisService({ db, userId });
   }
 
+  private async resolveAgentIdentifierFromTopic(topicId: string): Promise<string> {
+    const topic = await this.topicModel.findById(topicId);
+
+    if (!topic) {
+      throw new Error(`Topic not found: ${topicId}`);
+    }
+
+    if (topic.agentId) return topic.agentId;
+
+    if (topic.sessionId) {
+      const agent = await this.agentModel.findBySessionId(topic.sessionId);
+      if (agent?.id) return agent.id;
+    }
+
+    throw new Error(`Unable to resolve agent from topic: ${topicId}`);
+  }
+
   /**
    * Execute agent with just a prompt
    *
@@ -197,6 +215,9 @@ export class AiAgentService {
       slug,
       prompt,
       appContext,
+      resume,
+      threadId,
+      topicId: resumeTopicId,
       autoStart = true,
       botContext,
       discordContext,
@@ -218,13 +239,32 @@ export class AiAgentService {
       webhookDelivery,
     } = params;
 
+    const resumeAppContext =
+      resume === true
+        ? ({
+            groupId: null,
+            sessionId: undefined,
+            threadId: threadId ?? null,
+            topicId: resumeTopicId,
+          } satisfies NonNullable<typeof appContext>)
+        : undefined;
+    const effectiveAppContext = resumeAppContext ?? appContext;
     const isContinuationMode = initialContext !== undefined || initialMessages !== undefined;
+    const isResumeLatestMode = resume === true;
 
-    if (!agentId && !slug && !isContinuationMode) {
+    if (!agentId && !slug && !isContinuationMode && !isResumeLatestMode) {
       throw new Error('Either agentId or slug must be provided');
     }
 
-    if (!isContinuationMode && !prompt) {
+    if (isResumeLatestMode && !resumeTopicId) {
+      throw new Error('topicId is required when resume=true');
+    }
+
+    if (isResumeLatestMode && prompt) {
+      throw new Error('Prompt is not allowed when resume=true');
+    }
+
+    if (!isContinuationMode && !isResumeLatestMode && !prompt) {
       throw new Error('Prompt is required when initialContext/initialMessages are not provided');
     }
 
@@ -234,17 +274,37 @@ export class AiAgentService {
       );
     }
 
-    if (isContinuationMode && !appContext?.topicId) {
+    if (isContinuationMode && !effectiveAppContext?.topicId) {
       throw new Error('Continuation mode requires appContext.topicId');
     }
 
+    let continuationContext = isContinuationMode
+      ? { initialContext: initialContext!, initialMessages: initialMessages! }
+      : undefined;
+
+    if (isResumeLatestMode) {
+      const resumeMessages = await this.messageModel.query({
+        threadId: effectiveAppContext?.threadId ?? undefined,
+        topicId: effectiveAppContext!.topicId!,
+      });
+
+      continuationContext = buildResumeContextFromMessages(
+        resumeMessages,
+        `resume_${effectiveAppContext!.topicId}${effectiveAppContext?.threadId ? `_${effectiveAppContext.threadId}` : ''}`,
+      );
+    }
+
     // Determine the identifier to use (agentId takes precedence)
-    const identifier = agentId || slug!;
+    const identifier =
+      agentId ||
+      slug ||
+      (await this.resolveAgentIdentifierFromTopic(effectiveAppContext?.topicId!));
 
     log(
-      'execAgent: identifier=%s, continuation=%s, prompt=%s',
+      'execAgent: identifier=%s, continuation=%s, resumeLatest=%s, prompt=%s',
       identifier,
       isContinuationMode,
+      isResumeLatestMode,
       prompt?.slice(0, 50) || '',
     );
 
@@ -297,7 +357,7 @@ export class AiAgentService {
     }
 
     // 3. Handle topic creation: if no topicId provided, create a new topic; otherwise reuse existing
-    let topicId = appContext?.topicId;
+    let topicId = effectiveAppContext?.topicId;
     if (!topicId) {
       // Prepare metadata with cronJobId and botContext if provided
       const metadata =
@@ -630,19 +690,21 @@ export class AiAgentService {
     }
 
     // 11. Get existing messages if provided
-    let allMessages: any[] = initialMessages ? [...initialMessages] : [];
-    if (!isContinuationMode && existingMessageIds.length > 0) {
+    let allMessages: any[] = continuationContext?.initialMessages
+      ? [...continuationContext.initialMessages]
+      : [];
+    if (!isContinuationMode && !isResumeLatestMode && existingMessageIds.length > 0) {
       const historyMessages = await this.messageModel.query({
-        sessionId: appContext?.sessionId,
-        topicId: appContext?.topicId ?? undefined,
+        sessionId: effectiveAppContext?.sessionId,
+        topicId: effectiveAppContext?.topicId ?? undefined,
       });
       const idSet = new Set(existingMessageIds);
       allMessages = historyMessages.filter((msg) => idSet.has(msg.id));
-    } else if (!isContinuationMode && appContext?.topicId) {
+    } else if (!isContinuationMode && !isResumeLatestMode && effectiveAppContext?.topicId) {
       // Follow-up message in existing topic: load all history for context
       allMessages = await this.messageModel.query({
-        sessionId: appContext?.sessionId,
-        topicId: appContext.topicId,
+        sessionId: effectiveAppContext?.sessionId,
+        topicId: effectiveAppContext.topicId,
       });
     }
 
@@ -692,13 +754,13 @@ export class AiAgentService {
         }
       | undefined;
 
-    if (!isContinuationMode) {
+    if (!isContinuationMode && !isResumeLatestMode) {
       userMessageRecord = await this.messageModel.create({
         agentId: resolvedAgentId,
         content: prompt!,
         files: fileIds,
         role: 'user',
-        threadId: appContext?.threadId ?? undefined,
+        threadId: effectiveAppContext?.threadId ?? undefined,
         topicId,
       });
       log('execAgent: created user message %s', userMessageRecord.id);
@@ -710,7 +772,7 @@ export class AiAgentService {
         parentId: userMessageRecord.id,
         provider,
         role: 'assistant',
-        threadId: appContext?.threadId ?? undefined,
+        threadId: effectiveAppContext?.threadId ?? undefined,
         topicId,
       });
       log('execAgent: created assistant message %s', assistantMessageRecord.id);
@@ -724,11 +786,11 @@ export class AiAgentService {
     const timestamp = Date.now();
     const operationId = `op_${timestamp}_${resolvedAgentId}_${topicId}_${nanoid(8)}`;
 
-    const runtimeInitialContext: AgentRuntimeContext = isContinuationMode
+    const runtimeInitialContext: AgentRuntimeContext = continuationContext
       ? {
-          ...initialContext!,
+          ...continuationContext.initialContext,
           session: {
-            ...initialContext!.session,
+            ...continuationContext.initialContext.session,
             messageCount: allMessages.length,
             sessionId: operationId,
             status: 'idle' as const,
@@ -774,8 +836,8 @@ export class AiAgentService {
         userTimezone,
         appContext: {
           agentId: resolvedAgentId,
-          groupId: appContext?.groupId,
-          threadId: appContext?.threadId,
+          groupId: effectiveAppContext?.groupId,
+          threadId: effectiveAppContext?.threadId,
           topicId,
         },
         autoStart,

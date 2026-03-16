@@ -165,9 +165,15 @@ export interface ExecAgentParams {
   /** Additional system instructions appended after the agent's own system role */
   instructions?: string;
   /** The user input/prompt */
-  prompt: string;
+  prompt?: string;
+  /** Resume the latest executable boundary from an existing topic/thread */
+  resume?: boolean;
   /** The agent slug to run (either agentId or slug is required) */
   slug?: string;
+  /** Thread ID when resume=true */
+  threadId?: string | null;
+  /** Topic ID when resume=true */
+  topicId?: string;
 }
 
 /**

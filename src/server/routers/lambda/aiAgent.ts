@@ -94,12 +94,52 @@ const ExecAgentSchema = z
     /** Optional existing message IDs to include in context */
     existingMessageIds: z.array(z.string()).optional().default([]),
     /** The user input/prompt */
-    prompt: z.string(),
+    prompt: z.string().optional(),
+    /** Resume the latest executable boundary from an existing topic/thread */
+    resume: z.literal(true).optional(),
     /** The agent slug to run (either agentId or slug is required) */
     slug: z.string().optional(),
+    /** Thread ID when resume=true */
+    threadId: z.string().optional().nullable(),
+    /** Topic ID when resume=true */
+    topicId: z.string().optional(),
   })
-  .refine((data) => data.agentId || data.slug, {
-    message: 'Either agentId or slug must be provided',
+  .superRefine((data, ctx) => {
+    if (data.resume === true) {
+      if (!data.topicId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'topicId is required when resume=true',
+          path: ['topicId'],
+        });
+      }
+
+      if (data.prompt) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'prompt is not allowed when resume=true',
+          path: ['prompt'],
+        });
+      }
+
+      return;
+    }
+
+    if (!data.agentId && !data.slug) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Either agentId or slug must be provided',
+        path: ['agentId'],
+      });
+    }
+
+    if (!data.prompt) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'prompt is required',
+        path: ['prompt'],
+      });
+    }
   });
 
 /**
@@ -518,9 +558,26 @@ export const aiAgentRouter = router({
     }),
 
   execAgent: aiAgentProcedure.input(ExecAgentSchema).mutation(async ({ input, ctx }) => {
-    const { agentId, slug, prompt, appContext, autoStart = true, existingMessageIds = [] } = input;
+    const {
+      agentId,
+      slug,
+      prompt,
+      appContext,
+      autoStart = true,
+      existingMessageIds = [],
+      resume,
+      threadId,
+      topicId,
+    } = input;
 
-    log('execAgent: identifier=%s, prompt=%s', agentId || slug, prompt.slice(0, 50));
+    log(
+      'execAgent: identifier=%s, resume=%s, prompt=%s, topicId=%s, threadId=%s',
+      agentId || slug || 'auto',
+      !!resume,
+      prompt?.slice(0, 50) || '',
+      topicId || appContext?.topicId || '',
+      threadId || appContext?.threadId || '',
+    );
 
     try {
       return await ctx.aiAgentService.execAgent({
@@ -529,7 +586,10 @@ export const aiAgentRouter = router({
         autoStart,
         existingMessageIds,
         prompt,
+        resume,
         slug,
+        threadId,
+        topicId,
       });
     } catch (error: any) {
       console.error('execAgent failed: %O', error);
@@ -567,7 +627,17 @@ export const aiAgentRouter = router({
       task: (typeof tasks)[number],
       taskIndex: number,
     ): Promise<TaskResult> => {
-      const { agentId, slug, prompt, appContext, autoStart = true, existingMessageIds = [] } = task;
+      const {
+        agentId,
+        slug,
+        prompt,
+        appContext,
+        autoStart = true,
+        existingMessageIds = [],
+        resume,
+        threadId,
+        topicId,
+      } = task;
 
       try {
         const result = await ctx.aiAgentService.execAgent({
@@ -576,7 +646,10 @@ export const aiAgentRouter = router({
           autoStart,
           existingMessageIds,
           prompt,
+          resume,
           slug,
+          threadId,
+          topicId,
         });
 
         return {

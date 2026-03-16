@@ -1,5 +1,3 @@
-import { type AgentRuntimeContext } from '@lobechat/agent-runtime';
-import { LOADING_FLAT } from '@lobechat/const';
 import { type LobeChatDatabase } from '@lobechat/database';
 import { evaluate } from '@lobechat/eval-rubric';
 import type {
@@ -26,6 +24,7 @@ import { appEnv } from '@/envs/app';
 import { AgentService } from '@/server/services/agent';
 import { AgentRuntimeService } from '@/server/services/agentRuntime/AgentRuntimeService';
 import { AiAgentService } from '@/server/services/aiAgent';
+import { buildResumeContextFromMessages } from '@/server/services/aiAgent/resumeContext';
 import { AgentEvalRunWorkflow } from '@/server/workflows/agentEvalRun';
 
 /** Round cost to at most 6 decimal places to avoid floating-point noise */
@@ -154,121 +153,6 @@ export class AgentEvalRunService {
     };
   }
 
-  private buildResumeContext(
-    messages: any[],
-    operationId: string,
-  ): {
-    initialContext: AgentRuntimeContext;
-    initialMessages: any[];
-  } {
-    const initialMessages = [...messages];
-    let existingAssistantMessageId: string | undefined;
-
-    while (initialMessages.length > 0) {
-      const lastMessage = initialMessages.at(-1);
-
-      if (
-        lastMessage?.role === 'assistant' &&
-        lastMessage.content === LOADING_FLAT &&
-        (!lastMessage.tools || lastMessage.tools.length === 0)
-      ) {
-        existingAssistantMessageId = lastMessage.id;
-        initialMessages.pop();
-        continue;
-      }
-
-      break;
-    }
-
-    const lastMessage = initialMessages.at(-1);
-    if (!lastMessage) {
-      throw new Error('Unable to infer resume context from empty trajectory');
-    }
-
-    if (lastMessage.role === 'tool') {
-      let toolCount = 0;
-
-      for (let i = initialMessages.length - 1; i >= 0; i--) {
-        if (initialMessages[i]?.role !== 'tool') break;
-        toolCount++;
-      }
-
-      return {
-        initialContext: {
-          payload: { parentMessageId: lastMessage.id },
-          phase: toolCount > 1 ? 'tools_batch_result' : 'tool_result',
-          session: {
-            messageCount: initialMessages.length,
-            sessionId: operationId,
-            status: 'idle',
-            stepCount: 0,
-          },
-        },
-        initialMessages,
-      };
-    }
-
-    if (lastMessage.role === 'assistant') {
-      const toolsCalling = Array.isArray(lastMessage.tools) ? lastMessage.tools : [];
-      const toolCalls = toolsCalling.map((tool: any) => ({
-        function: {
-          arguments: tool.arguments || '{}',
-          name: tool.apiName,
-        },
-        id: tool.id,
-        ...(tool.thoughtSignature ? { thoughtSignature: tool.thoughtSignature } : {}),
-        type: 'function',
-      }));
-
-      return {
-        initialContext: {
-          payload: {
-            hasToolsCalling: toolsCalling.length > 0,
-            parentMessageId: lastMessage.id,
-            result: {
-              content: lastMessage.content || '',
-              tool_calls: toolCalls,
-            },
-            toolsCalling,
-          },
-          phase: 'llm_result',
-          session: {
-            messageCount: initialMessages.length,
-            sessionId: operationId,
-            status: 'idle',
-            stepCount: 0,
-          },
-        },
-        initialMessages,
-      };
-    }
-
-    if (lastMessage.role === 'user') {
-      return {
-        initialContext: {
-          payload: {
-            ...(existingAssistantMessageId
-              ? { assistantMessageId: existingAssistantMessageId }
-              : {}),
-            isFirstMessage: true,
-            message: [{ content: lastMessage.content || '' }],
-            parentMessageId: lastMessage.id,
-          },
-          phase: 'user_input',
-          session: {
-            messageCount: initialMessages.length,
-            sessionId: operationId,
-            status: 'idle',
-            stepCount: 0,
-          },
-        },
-        initialMessages,
-      };
-    }
-
-    throw new Error(`Unsupported resume boundary: ${lastMessage.role}`);
-  }
-
   private async recreateOperationFromTrajectory(params: {
     appContext: {
       agentId?: string | null;
@@ -286,7 +170,7 @@ export class AgentEvalRunService {
     messages: any[];
   }) {
     const aiAgentService = new AiAgentService(this.db, this.userId);
-    const resumeContext = this.buildResumeContext(
+    const resumeContext = buildResumeContextFromMessages(
       params.messages,
       `resume_${params.appContext.topicId}`,
     );

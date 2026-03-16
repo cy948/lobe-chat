@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { type LobeChatDatabase } from '@lobechat/database';
-import { agents, agentsToSessions, sessions, threads, topics } from '@lobechat/database/schemas';
+import { agents, agentsToSessions, messages, sessions, threads, topics } from '@lobechat/database/schemas';
+import { LOADING_FLAT } from '@lobechat/const';
 import { getTestDB } from '@lobechat/database/test-utils';
 import { eq } from 'drizzle-orm';
 import type * as ModelBankModule from 'model-bank';
@@ -309,6 +310,51 @@ describe('AI Agent Router Integration Tests', () => {
           }),
         }),
       );
+    });
+
+    it('should resume latest from topic without prompt', async () => {
+      const caller = aiAgentRouter.createCaller(createTestContext());
+
+      const [topic] = await serverDB
+        .insert(topics)
+        .values({
+          title: 'Resume Topic',
+          agentId: testAgentId,
+          sessionId: testSessionId,
+          userId,
+        })
+        .returning();
+
+      const [userMessage] = await serverDB
+        .insert(messages)
+        .values({
+          agentId: testAgentId,
+          content: 'Resume me',
+          role: 'user',
+          topicId: topic.id,
+          userId,
+        })
+        .returning();
+
+      await serverDB.insert(messages).values({
+        agentId: testAgentId,
+        content: LOADING_FLAT,
+        model: 'gpt-4o-mini',
+        parentId: userMessage.id,
+        provider: 'openai',
+        role: 'assistant',
+        topicId: topic.id,
+        userId,
+      });
+
+      await caller.execAgent({
+        resume: true,
+        topicId: topic.id,
+      });
+
+      const allTopics = await serverDB.select().from(topics).where(eq(topics.agentId, testAgentId));
+      expect(allTopics).toHaveLength(1);
+      expect(allTopics[0].id).toBe(topic.id);
     });
   });
 });

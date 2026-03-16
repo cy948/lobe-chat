@@ -1391,6 +1391,45 @@ describe('GeneralChatAgent', () => {
     });
   });
 
+  describe('compression_result phase', () => {
+    it('should return call_llm with compressed messages and force a new assistant message', async () => {
+      const agent = new GeneralChatAgent({
+        agentConfig: { maxSteps: 100 },
+        operationId: 'test-session',
+        modelRuntimeConfig: mockModelRuntimeConfig,
+      });
+
+      const compressedMessages = [
+        { content: 'Compressed summary', id: 'group-1', role: 'compressedGroup' },
+        { content: 'Latest user follow-up', role: 'user' },
+      ] as any;
+
+      const state = createMockState({
+        tools: [{ name: 'search' }] as any,
+      });
+
+      const context = createMockContext('compression_result', {
+        compressedMessages,
+        parentMessageId: 'assistant-msg-after-compression',
+        skipped: false,
+      });
+
+      const result = await agent.runner(context, state);
+
+      expect(result).toEqual({
+        type: 'call_llm',
+        payload: {
+          createAssistantMessage: true,
+          messages: compressedMessages,
+          model: 'gpt-4o-mini',
+          parentMessageId: 'assistant-msg-after-compression',
+          provider: 'openai',
+          tools: state.tools,
+        },
+      });
+    });
+  });
+
   describe('unknown phase', () => {
     it('should return finish instruction for unknown phase', async () => {
       const agent = new GeneralChatAgent({

@@ -312,10 +312,6 @@ export class GeneralChatAgent implements Agent {
 
   /**
    * Proceed to the next LLM call, inserting compression first when needed.
-   *
-   * Note for future refactors: if this helper starts coordinating more than just
-   * direct LLM invocation, consider renaming it to `toNextCall` to better reflect
-   * the broader transition semantics.
    */
   private toLLMCall(payload: GeneralAgentCallLLMInstructionPayload): AgentInstruction {
     const compressionEnabled = this.config.compressionConfig?.enabled ?? true;
@@ -633,7 +629,6 @@ export class GeneralChatAgent implements Agent {
       case 'compression_result': {
         // Context compression completed, continue to call LLM
         const compressionPayload = context.payload as GeneralAgentCompressionResultPayload;
-        const messages = compressionPayload.compressedMessages;
 
         // If compression was skipped (no messages to compress), just call LLM
         // Otherwise, messages have been updated with compressed content
@@ -642,7 +637,7 @@ export class GeneralChatAgent implements Agent {
           payload: {
             // Force create new assistant message after compression
             createAssistantMessage: true,
-            messages,
+            messages: compressionPayload.compressedMessages,
             model: this.config.modelRuntimeConfig?.model,
             parentMessageId: compressionPayload.parentMessageId,
             provider: this.config.modelRuntimeConfig?.provider,

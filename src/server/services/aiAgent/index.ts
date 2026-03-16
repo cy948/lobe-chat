@@ -255,6 +255,8 @@ export class AiAgentService {
       queueRetryDelay,
       stepWebhook,
       webhookDelivery,
+      parentMessageId,
+      resume,
     } = params;
 
     // Validate that either agentId or slug is provided
@@ -265,7 +267,13 @@ export class AiAgentService {
     // Determine the identifier to use (agentId takes precedence)
     const identifier = agentId || slug!;
 
-    log('execAgent: identifier=%s, prompt=%s', identifier, prompt.slice(0, 50));
+    log(
+      'execAgent: identifier=%s, prompt=%s, resume=%s, parentMessageId=%s',
+      identifier,
+      prompt.slice(0, 50),
+      !!resume,
+      parentMessageId || 'none',
+    );
 
     const assistantMessageRef: { current?: string } = {};
     const updateAbortedAssistantMessage = async (errorMessage: string) => {
@@ -354,10 +362,38 @@ export class AiAgentService {
       log('execAgent: appended additional instructions to systemRole');
     }
 
+    let resumeParentMessage;
+    let resumePrompt = prompt;
+    let resumeAppContext = appContext;
+
+    if (resume) {
+      if (!parentMessageId) {
+        throw new Error('parentMessageId is required when resume is true');
+      }
+
+      resumeParentMessage = await this.messageModel.findById(parentMessageId);
+
+      if (!resumeParentMessage) {
+        throw new Error(`Parent message not found: ${parentMessageId}`);
+      }
+
+      resumePrompt = resumeParentMessage.content || '';
+      resumeAppContext = {
+        ...appContext,
+        sessionId: resumeParentMessage.sessionId || appContext?.sessionId,
+        threadId: resumeParentMessage.threadId || appContext?.threadId,
+        topicId: resumeParentMessage.topicId || appContext?.topicId,
+      };
+    }
+
     // 3. Handle topic creation: if no topicId provided, create a new topic; otherwise reuse existing
-    let topicId = appContext?.topicId;
+    let topicId = resumeAppContext?.topicId;
     if (!topicId) {
-      // Prepare metadata with cronJobId, taskId, and botContext if provided
+      if (resume) {
+        throw new Error('Resume mode requires the parent message to belong to a topic');
+      }
+
+      // Prepare metadata with cronJobId and botContext if provided
       const metadata =
         cronJobId || taskId || botContext
           ? { bot: botContext, cronJobId: cronJobId || undefined, taskId: taskId || undefined }
@@ -367,7 +403,9 @@ export class AiAgentService {
         agentId: resolvedAgentId,
         metadata,
         title:
-          title !== undefined ? title : prompt.slice(0, 50) + (prompt.length > 50 ? '...' : ''),
+          title !== undefined
+            ? title
+            : resumePrompt.slice(0, 50) + (resumePrompt.length > 50 ? '...' : ''),
         trigger,
       });
       topicId = newTopic.id;
@@ -781,12 +819,12 @@ export class AiAgentService {
       );
       const idSet = new Set(existingMessageIds);
       historyMessages = historyMessages.filter((msg) => idSet.has(msg.id));
-    } else if (appContext?.topicId) {
+    } else if (resumeAppContext?.topicId) {
       // Follow-up message in existing topic: load all history for context
       historyMessages = await this.messageModel.query(
         {
           sessionId: appContext?.sessionId,
-          topicId: appContext.topicId,
+          topicId: appContext?.topicId,
         },
         { postProcessUrl },
       );
@@ -831,14 +869,16 @@ export class AiAgentService {
 
     // 13. Create user message in database
     // Include threadId if provided (for SubAgent task execution in isolated Thread)
-    const userMessageRecord = await this.messageModel.create({
-      agentId: resolvedAgentId,
-      content: prompt,
-      files: fileIds,
-      role: 'user',
-      threadId: appContext?.threadId ?? undefined,
-      topicId,
-    });
+    const userMessageRecord = resumeParentMessage
+      ? resumeParentMessage
+      : await this.messageModel.create({
+          agentId: resolvedAgentId,
+          content: resumePrompt,
+          files: fileIds,
+          role: 'user',
+          threadId: resumeAppContext?.threadId ?? undefined,
+          topicId,
+        });
     log('execAgent: created user message %s', userMessageRecord.id);
 
     // 14. Create assistant message placeholder in database
@@ -850,17 +890,17 @@ export class AiAgentService {
       parentId: userMessageRecord.id,
       provider,
       role: 'assistant',
-      threadId: appContext?.threadId ?? undefined,
+      threadId: resumeAppContext?.threadId ?? undefined,
       topicId,
     });
     log('execAgent: created assistant message %s', assistantMessageRecord.id);
     assistantMessageRef.current = assistantMessageRecord.id;
 
     // Create user message object for processing (include imageList for vision models)
-    const userMessage = { content: prompt, imageList, role: 'user' as const };
+    const userMessage = { content: resumePrompt, imageList, role: 'user' as const };
 
     // Combine history messages with user message
-    const allMessages = [...historyMessages, userMessage];
+    const allMessages = resume ? historyMessages : [...historyMessages, userMessage];
 
     log('execAgent: prepared evalContext for executor');
 
@@ -876,7 +916,7 @@ export class AiAgentService {
         // Pass assistant message ID so agent runtime knows which message to update
         assistantMessageId: assistantMessageRecord.id,
         isFirstMessage: true,
-        message: [{ content: prompt }],
+        message: [{ content: resumePrompt }],
         // Pass user message ID as parentMessageId for reference
         parentMessageId: userMessageRecord.id,
         // Include tools for initial LLM call
@@ -950,9 +990,8 @@ export class AiAgentService {
         userTimezone,
         appContext: {
           agentId: resolvedAgentId,
-          groupId: appContext?.groupId,
-          taskId,
-          threadId: appContext?.threadId,
+          groupId: resumeAppContext?.groupId,
+          threadId: resumeAppContext?.threadId,
           topicId,
           trigger,
         },

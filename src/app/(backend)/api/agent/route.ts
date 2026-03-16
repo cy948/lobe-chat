@@ -65,6 +65,8 @@ export async function POST(request: NextRequest) {
       appContext,
       autoStart = true,
       existingMessageIds,
+      parentMessageId,
+      resume,
     } = body;
 
     // Validate required parameters
@@ -92,7 +94,9 @@ export async function POST(request: NextRequest) {
       appContext,
       autoStart,
       existingMessageIds,
+      parentMessageId,
       prompt,
+      resume,
       slug,
     });
 

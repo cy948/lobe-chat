@@ -137,7 +137,7 @@ describe('AgentRuntimeCoordinator', () => {
       );
     });
 
-    it('should not publish end event when previous status was already terminal', async () => {
+    it('should not publish end event when status was already done', async () => {
       const operationId = 'test-operation-id';
       const previousState = { status: 'done', stepCount: 5 };
       const newState = { status: 'error', stepCount: 5 };
@@ -150,7 +150,7 @@ describe('AgentRuntimeCoordinator', () => {
       expect(mockStreamManager.publishAgentRuntimeEnd).not.toHaveBeenCalled();
     });
 
-    it('should not publish end event when status is not terminal', async () => {
+    it('should not publish end event when status is not done', async () => {
       const operationId = 'test-operation-id';
       const previousState = { status: 'idle', stepCount: 0 };
       const newState = { status: 'running', stepCount: 1 };
@@ -228,7 +228,7 @@ describe('AgentRuntimeCoordinator', () => {
       );
     });
 
-    it('should not publish end event when status is not terminal', async () => {
+    it('should not publish end event when status is not done', async () => {
       const operationId = 'test-operation-id';
       const stepResult = {
         executionTime: 500,
@@ -244,7 +244,7 @@ describe('AgentRuntimeCoordinator', () => {
       expect(mockStreamManager.publishAgentRuntimeEnd).not.toHaveBeenCalled();
     });
 
-    it('should not publish end event when previous status was already terminal', async () => {
+    it('should not publish end event when status was already done', async () => {
       const operationId = 'test-operation-id';
       const stepResult = {
         executionTime: 1000,
@@ -258,7 +258,7 @@ describe('AgentRuntimeCoordinator', () => {
       await coordinator.saveStepResult(operationId, stepResult as any);
 
       expect(mockStateManager.saveStepResult).toHaveBeenCalledWith(operationId, stepResult);
-      // Should not publish again since status was already terminal
+      // Should not publish again since status was already done
       expect(mockStreamManager.publishAgentRuntimeEnd).not.toHaveBeenCalled();
     });
   });

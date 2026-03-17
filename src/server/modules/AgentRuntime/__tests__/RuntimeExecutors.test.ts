@@ -836,6 +836,35 @@ describe('RuntimeExecutors', () => {
       );
     });
 
+    it('should persist tool execution time in metadata when creating tool message', async () => {
+      const executors = createRuntimeExecutors(ctx);
+      const state = createMockState();
+
+      const instruction = {
+        payload: {
+          parentMessageId: 'assistant-msg-456',
+          toolCalling: {
+            apiName: 'crawl',
+            arguments: '{"url": "https://example.com"}',
+            id: 'tool-call-2',
+            identifier: 'web-browsing',
+            type: 'default' as const,
+          },
+        },
+        type: 'call_tool' as const,
+      };
+
+      await executors.call_tool!(instruction, state);
+
+      expect(mockMessageModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: {
+            toolExecutionTimeMs: 100,
+          },
+        }),
+      );
+    });
+
     it('should return tool message ID as parentMessageId in nextContext for parentId chain', async () => {
       // Setup: mock messageModel.create to return a specific tool message ID
       const toolMessageId = 'tool-msg-789';
@@ -1551,6 +1580,69 @@ describe('RuntimeExecutors', () => {
 
       // Original state must not be mutated
       expect(state.usage.tools.totalCalls).toBe(0);
+    });
+
+    it('should persist execution time metadata for each tool message in batch execution', async () => {
+      mockToolExecutionService.executeTool
+        .mockResolvedValueOnce({
+          content: 'Search result',
+          error: null,
+          executionTime: 150,
+          state: {},
+          success: true,
+        })
+        .mockResolvedValueOnce({
+          content: 'Crawl result',
+          error: null,
+          executionTime: 250,
+          state: {},
+          success: true,
+        });
+
+      const executors = createRuntimeExecutors(ctx);
+      const state = createMockState();
+
+      const instruction = {
+        payload: {
+          parentMessageId: 'assistant-msg-123',
+          toolsCalling: [
+            {
+              apiName: 'search',
+              arguments: '{"query": "test"}',
+              id: 'tool-call-1',
+              identifier: 'web-search',
+              type: 'default' as const,
+            },
+            {
+              apiName: 'crawl',
+              arguments: '{"url": "https://example.com"}',
+              id: 'tool-call-2',
+              identifier: 'web-browsing',
+              type: 'default' as const,
+            },
+          ],
+        },
+        type: 'call_tools_batch' as const,
+      };
+
+      await executors.call_tools_batch!(instruction, state);
+
+      expect(mockMessageModel.create).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          metadata: {
+            toolExecutionTimeMs: 150,
+          },
+        }),
+      );
+      expect(mockMessageModel.create).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          metadata: {
+            toolExecutionTimeMs: 250,
+          },
+        }),
+      );
     });
 
     it('should pass toolResultMaxLength from agentConfig to executeTool', async () => {

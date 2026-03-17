@@ -1,5 +1,5 @@
-import type { Agent, AgentInstructionCompressContext, AgentRuntimeContext, AgentState } from '@lobechat/agent-runtime';
-import { AgentRuntime, findInMessages, GeneralChatAgent, shouldCompress } from '@lobechat/agent-runtime';
+import type { AgentRuntimeContext, AgentState } from '@lobechat/agent-runtime';
+import { AgentRuntime, findInMessages, GeneralChatAgent } from '@lobechat/agent-runtime';
 import type { ISnapshotStore } from '@lobechat/agent-tracing';
 import { dynamicInterventionAudits } from '@lobechat/builtin-tools/dynamicInterventionAudits';
 import { AgentRuntimeErrorType, ChatErrorType, type ChatMessageError } from '@lobechat/types';

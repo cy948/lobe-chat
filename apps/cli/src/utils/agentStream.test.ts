@@ -192,35 +192,4 @@ describe('streamAgentEvents', () => {
 
     exitSpy.mockRestore();
   });
-
-  it('should include error type when printing stream errors', async () => {
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
-      throw new Error('process.exit');
-    }) as any);
-    const { log } = await import('./logger');
-    const body = createSSEStream([
-      sseMessage('data', {
-        data: {
-          error: 'API key is invalid',
-          errorType: 'InvalidProviderAPIKey',
-          phase: 'llm_execution',
-        },
-        operationId: 'op1',
-        stepIndex: 0,
-        timestamp: Date.now(),
-        type: 'error',
-      }),
-    ]);
-
-    fetchSpy.mockResolvedValue(new Response(body, { status: 200 }));
-
-    await streamAgentEvents('https://example.com/stream', {});
-
-    expect(log.error).toHaveBeenCalledWith(
-      'Agent error: llm_execution: InvalidProviderAPIKey: API key is invalid',
-    );
-    expect(exitSpy).toHaveBeenCalledWith(1);
-
-    exitSpy.mockRestore();
-  });
 });

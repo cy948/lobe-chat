@@ -6,9 +6,6 @@ import { memo, useCallback, useMemo } from 'react';
 import { ChatList, ConversationProvider } from '@/features/Conversation';
 import MessageItem from '@/features/Conversation/Messages';
 import { useInitAgentConfig } from '@/hooks/useInitAgentConfig';
-import { useOperationState } from '@/hooks/useOperationState';
-import { useChatStore } from '@/store/chat';
-import { messageMapKey } from '@/store/chat/utils/messageMapKey';
 
 interface ChatAreaProps {
   agentId: string;
@@ -21,11 +18,6 @@ const ChatArea = memo<ChatAreaProps>(({ agentId, isActive = false, topicId, thre
   useInitAgentConfig(agentId);
 
   const context = useMemo(() => ({ agentId, threadId, topicId }), [agentId, threadId, topicId]);
-
-  const chatKey = useMemo(() => messageMapKey(context), [context]);
-  const replaceMessages = useChatStore((s) => s.replaceMessages);
-  const messages = useChatStore((s) => s.dbMessagesMap[chatKey]);
-  const operationState = useOperationState(context);
   const messageFetchConfig = useMemo(() => ({ refreshInterval: isActive ? 3000 : 0 }), [isActive]);
 
   const itemContent = useCallback(
@@ -39,14 +31,8 @@ const ChatArea = memo<ChatAreaProps>(({ agentId, isActive = false, topicId, thre
   return (
     <ConversationProvider
       context={context}
-      hasInitMessages={!!messages}
       key={contextKey}
       messageFetchConfig={messageFetchConfig}
-      messages={messages}
-      operationState={operationState}
-      onMessagesChange={(nextMessages, ctx) => {
-        replaceMessages(nextMessages, { context: ctx });
-      }}
     >
       <Flexbox
         flex={1}

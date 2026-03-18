@@ -52,7 +52,6 @@ export interface DataAction {
   useFetchMessages: (
     context: ConversationContext,
     skipFetch?: boolean,
-    config?: { refreshInterval?: number },
   ) => SWRResponse<UIChatMessage[]>;
 }
 
@@ -158,7 +157,7 @@ export const dataSlice: StateCreator<
     await state.updateMessageMetadata(message.parentId, { activeBranchIndex: branchIndex });
   },
 
-  useFetchMessages: (context, skipFetch, config) => {
+  useFetchMessages: (context, skipFetch) => {
     // When skipFetch is true, SWR key is null - no fetch occurs
     // This is used when external messages are provided (e.g., creating new thread)
     // Also skip fetch when topicId is null (new conversation state) - there's no server data,
@@ -180,7 +179,6 @@ export const dataSlice: StateCreator<
 
       () => messageService.getMessages(context),
       {
-        ...config,
         onData: (data) => {
           if (!data) return;
           if (!context.topicId) return;

@@ -29,7 +29,6 @@ const CaseDetail = memo(() => {
 
   const runDetail = useEvalStore(runSelectors.getRunDetailById(runId!));
   const runResults = useEvalStore(runSelectors.getRunResultsById(runId!));
-  const isActive = useEvalStore(runSelectors.isRunActive(runId!));
   const [caseResult, setCaseResult] = useState<any>(null);
 
   useEffect(() => {
@@ -105,12 +104,7 @@ const CaseDetail = memo(() => {
       )}
       <Flexbox horizontal flex={1} style={{ overflow: 'hidden' }}>
         {topicId && agentId ? (
-          <ChatArea
-            agentId={agentId}
-            isActive={isActive}
-            threadId={activeThreadId ?? undefined}
-            topicId={topicId}
-          />
+          <ChatArea agentId={agentId} threadId={activeThreadId ?? undefined} topicId={topicId} />
         ) : (
           <Flexbox flex={1} />
         )}

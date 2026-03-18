@@ -93,7 +93,7 @@ export class AgentRuntimeCoordinator {
       if (hasEnteredTerminalState(previousState?.status, state.status)) {
         await this.streamEventManager.publishAgentRuntimeEnd(
           operationId,
-          state.stepCount,
+          state.stepCount ?? previousState?.stepCount ?? 0,
           state,
           state.status,
         );
@@ -120,7 +120,7 @@ export class AgentRuntimeCoordinator {
       if (hasEnteredTerminalState(previousState?.status, stepResult.newState.status)) {
         await this.streamEventManager.publishAgentRuntimeEnd(
           operationId,
-          stepResult.newState.stepCount,
+          stepResult.newState.stepCount ?? stepResult.stepIndex ?? previousState?.stepCount ?? 0,
           stepResult.newState,
           stepResult.newState.status,
         );

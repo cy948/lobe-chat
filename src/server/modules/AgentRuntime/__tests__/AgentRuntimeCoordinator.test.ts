@@ -120,6 +120,23 @@ describe('AgentRuntimeCoordinator', () => {
       );
     });
 
+    it('should fallback to previous stepCount when terminal state is missing stepCount', async () => {
+      const operationId = 'test-operation-id';
+      const previousState = { status: 'running', stepCount: 3 };
+      const newState = { error: { message: 'boom' }, status: 'error' };
+
+      mockStateManager.loadAgentState.mockResolvedValue(previousState);
+
+      await coordinator.saveAgentState(operationId, newState as any);
+
+      expect(mockStreamManager.publishAgentRuntimeEnd).toHaveBeenCalledWith(
+        operationId,
+        previousState.stepCount,
+        newState,
+        'error',
+      );
+    });
+
     it('should publish end event when status changes to interrupted', async () => {
       const operationId = 'test-operation-id';
       const previousState = { status: 'running', stepCount: 3 };
@@ -203,6 +220,26 @@ describe('AgentRuntimeCoordinator', () => {
       expect(mockStreamManager.publishAgentRuntimeEnd).toHaveBeenCalledWith(
         operationId,
         5,
+        stepResult.newState,
+        'error',
+      );
+    });
+
+    it('should fallback to stepResult.stepIndex when terminal step result state is missing stepCount', async () => {
+      const operationId = 'test-operation-id';
+      const stepResult = {
+        executionTime: 1000,
+        newState: { error: { message: 'boom' }, status: 'error' },
+        stepIndex: 5,
+      };
+
+      mockStateManager.loadAgentState.mockResolvedValue({ status: 'running', stepCount: 4 });
+
+      await coordinator.saveStepResult(operationId, stepResult as any);
+
+      expect(mockStreamManager.publishAgentRuntimeEnd).toHaveBeenCalledWith(
+        operationId,
+        stepResult.stepIndex,
         stepResult.newState,
         'error',
       );

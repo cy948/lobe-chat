@@ -947,6 +947,7 @@ export class AgentRuntimeService {
           ...errorState!,
           error: formattedError,
           status: 'error' as const,
+          stepCount: errorState?.stepCount ?? stepIndex,
         };
       } catch (loadError) {
         log('[%s] Failed to load error state (infra may be down): %O', operationId, loadError);
@@ -954,6 +955,7 @@ export class AgentRuntimeService {
         finalStateWithError = {
           error: formattedError,
           status: 'error' as const,
+          stepCount: stepIndex,
         };
       }
 

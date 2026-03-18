@@ -37,9 +37,6 @@ export type ConversationStore = Store;
 export interface CreateStoreParams {
   context: ConversationContext;
   hooks?: ConversationHooks;
-  messageFetchConfig?: {
-    refreshInterval?: number;
-  };
   skipFetch?: boolean;
 }
 
@@ -48,12 +45,11 @@ type CreateStore = (
 ) => StateCreator<Store, [['zustand/devtools', never]]>;
 
 export const createStoreAction: CreateStore =
-  ({ context, hooks = {}, messageFetchConfig, skipFetch }) =>
+  ({ context, hooks = {}, skipFetch }) =>
   (...params) => ({
     ...initialState,
     context,
     hooks,
-    messageFetchConfig,
     skipFetch,
     // ===== Slices =====
     ...dataSlice(...params),

@@ -24,6 +24,7 @@ import { resolveAgentConfig } from '@/services/chat/mecha';
 import { messageService } from '@/services/message';
 import { getAgentStoreState } from '@/store/agent';
 import { agentSelectors } from '@/store/agent/selectors';
+import { aiModelSelectors, getAiInfraStoreState } from '@/store/aiInfra';
 import { createAgentExecutors } from '@/store/chat/agents/createAgentExecutors';
 import { type ChatStore } from '@/store/chat/store';
 import { pageAgentRuntime } from '@/store/tool/slices/builtin/executors/lobe-page-agent';
@@ -118,6 +119,7 @@ export class StreamingExecutorActionImpl {
     // - paramSubAgentId: Used for agent config (behavior depends on scope)
     // - agentId: Default
     const effectiveAgentId = paramSubAgentId || agentId;
+    const aiInfraStore = getAiInfraStoreState();
 
     // Get scope and groupId from operation context if available
     const operation = operationId ? this.#get().operations[operationId] : undefined;
@@ -174,7 +176,6 @@ export class StreamingExecutorActionImpl {
     // When skillActivateMode is 'manual', skipDefaultTools gives user precise control
     const isManualMode = agentConfig.chatConfig?.skillActivateMode === 'manual';
 
-
     const toolsDetailed = toolsEngine.generateToolsDetailed({
       model: agentConfigData.model,
       provider: agentConfigData.provider!,
@@ -215,6 +216,10 @@ export class StreamingExecutorActionImpl {
         model: agentConfigData.model,
         provider: agentConfigData.provider!,
       },
+      contextWindowTokens: aiModelSelectors.modelContextWindowTokens(
+        agentConfigData.model,
+        agentConfigData.provider!,
+      )(aiInfraStore),
       model: agentConfigData.model,
       provider: agentConfigData.provider!,
     };
@@ -411,8 +416,14 @@ export class StreamingExecutorActionImpl {
     const { agentConfig: agentConfigData } = agentConfig;
     const model = agentConfigData.model;
     const provider = agentConfigData.provider;
+    const aiInfraStore = getAiInfraStoreState();
+    const contextWindowTokens = aiModelSelectors.modelContextWindowTokens(
+      model,
+      provider!,
+    )(aiInfraStore);
 
     const modelRuntimeConfig = {
+      contextWindowTokens,
       model,
       provider: provider!,
       // TODO: Support dedicated compression model from chatConfig.compressionModelId
@@ -427,6 +438,7 @@ export class StreamingExecutorActionImpl {
       agentConfig: { maxSteps: 1000 },
       compressionConfig: {
         enabled: agentConfigData.chatConfig?.enableContextCompression ?? true, // Default to enabled
+        maxWindowToken: contextWindowTokens,
       },
       dynamicInterventionAudits,
       operationId: `${messageKey}/${params.parentMessageId}`,

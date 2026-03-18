@@ -38,6 +38,9 @@ export interface ConversationProviderProps {
    * Lifecycle hooks for external behavior injection
    */
   hooks?: ConversationHooks;
+  messageFetchConfig?: {
+    refreshInterval?: number;
+  };
   /**
    * External messages to sync into the store
    * When provided, these messages will be used as the source of truth
@@ -75,6 +78,7 @@ export const ConversationProvider = memo<ConversationProviderProps>(
     children,
     context,
     hooks = {},
+    messageFetchConfig,
     hasInitMessages,
     messages,
     onMessagesChange,
@@ -92,12 +96,13 @@ export const ConversationProvider = memo<ConversationProviderProps>(
     );
 
     return (
-      <Provider createStore={() => createStore({ context, hooks, skipFetch })}>
+      <Provider createStore={() => createStore({ context, hooks, messageFetchConfig, skipFetch })}>
         <StoreUpdater
           actionsBar={actionsBar}
           context={context}
           hasInitMessages={hasInitMessages}
           hooks={hooks}
+          messageFetchConfig={messageFetchConfig}
           messages={messages}
           operationState={operationState}
           skipFetch={skipFetch}

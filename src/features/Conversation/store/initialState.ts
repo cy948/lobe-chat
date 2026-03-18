@@ -33,6 +33,13 @@ export interface State extends DataState, InputState, MessageStateState, VirtuaL
   hooks: ConversationHooks;
 
   /**
+   * Message fetching config for Conversation-level SWR
+   */
+  messageFetchConfig?: {
+    refreshInterval?: number;
+  };
+
+  /**
    * Callback when messages are fetched or changed internally
    * @param messages - The updated messages array
    * @param context - The context that this data belongs to (prevents race conditions)
@@ -59,6 +66,7 @@ export const initialState: State = {
     topicId: null,
   },
   hooks: {},
+  messageFetchConfig: undefined,
   onMessagesChange: undefined,
   operationState: DEFAULT_OPERATION_STATE,
 };

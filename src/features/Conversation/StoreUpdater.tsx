@@ -28,6 +28,9 @@ export interface StoreUpdaterProps {
    */
   hasInitMessages?: boolean;
   hooks?: ConversationHooks;
+  messageFetchConfig?: {
+    refreshInterval?: number;
+  };
   /**
    * External messages to sync into the store
    */
@@ -52,6 +55,7 @@ const StoreUpdater = memo<StoreUpdaterProps>(
     context,
     hasInitMessages,
     hooks,
+    messageFetchConfig,
     messages,
     onMessagesChange,
     operationState,
@@ -65,6 +69,7 @@ const StoreUpdater = memo<StoreUpdaterProps>(
     useStoreUpdater('actionsBar', actionsBar);
     useStoreUpdater('context', context);
     useStoreUpdater('hooks', hooks!);
+    useStoreUpdater('messageFetchConfig', messageFetchConfig);
     useStoreUpdater('onMessagesChange', onMessagesChange);
     useStoreUpdater('operationState', operationState!);
     useStoreUpdater('skipFetch', skipFetch!);

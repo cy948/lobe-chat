@@ -1,30 +1,31 @@
 import type { HelperMaps, Message, MessageGroupMetadata } from './types';
 
+interface CompressedDisplayNode {
+  children?: CompressedDisplayNode[];
+  compressedMessages?: CompressedDisplayNode[];
+  id?: string;
+  lastMessageId?: string;
+  tools?: Array<{ result_msg_id?: string }>;
+}
+
 const getLastMessageIdFromCompressedDisplay = (
-  message: Message | undefined,
+  message: CompressedDisplayNode | undefined,
 ): string | undefined => {
   if (!message) return;
 
-  const messageWithChildren = message as Message & {
-    children?: Message[];
-    compressedMessages?: Message[];
-    lastMessageId?: string;
-    tools?: Array<{ result_msg_id?: string }>;
-  };
+  if (message.lastMessageId) return message.lastMessageId;
 
-  if (messageWithChildren.lastMessageId) return messageWithChildren.lastMessageId;
-
-  const compressedMessages = messageWithChildren.compressedMessages;
+  const compressedMessages = message.compressedMessages;
   if (compressedMessages && compressedMessages.length > 0) {
     return getLastMessageIdFromCompressedDisplay(compressedMessages.at(-1));
   }
 
-  if (messageWithChildren.children && messageWithChildren.children.length > 0) {
-    return getLastMessageIdFromCompressedDisplay(messageWithChildren.children.at(-1));
+  if (message.children && message.children.length > 0) {
+    return getLastMessageIdFromCompressedDisplay(message.children.at(-1));
   }
 
-  if (messageWithChildren.tools && messageWithChildren.tools.length > 0) {
-    return messageWithChildren.tools.at(-1)?.result_msg_id ?? message.id;
+  if (message.tools && message.tools.length > 0) {
+    return message.tools.at(-1)?.result_msg_id ?? message.id;
   }
 
   return message.id;

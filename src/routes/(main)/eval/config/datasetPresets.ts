@@ -44,7 +44,7 @@ export const DATASET_PRESETS: Record<string, DatasetPreset> = {
     icon: Globe,
     formatDescription: 'format: Topic (category/tags), Question (input), Answer (expected)',
     requiredFields: ['question', 'answer', 'problem_topic', 'canary'],
-    optionalFields: [],
+    optionalFields: ['id'],
     fieldInference: {
       input: ['question'],
       expected: ['answer'],
@@ -65,7 +65,7 @@ export const DATASET_PRESETS: Record<string, DatasetPreset> = {
     icon: Globe,
     formatDescription: 'format: Topic (category/tags), Question (input), Answer (expected)',
     requiredFields: ['Question', 'Answer'],
-    optionalFields: ['Topic', 'canary'],
+    optionalFields: ['Topic', 'canary', 'id'],
     fieldInference: {
       input: ['Question', 'question', 'prompt'],
       expected: ['Answer', 'answer'],
@@ -87,7 +87,7 @@ export const DATASET_PRESETS: Record<string, DatasetPreset> = {
     icon: Globe,
     formatDescription: 'format: instance_id, query (input), evaluation (expected), language',
     requiredFields: ['instance_id', 'query', 'evaluation', 'language'],
-    optionalFields: [],
+    optionalFields: ['id'],
     fieldInference: {
       input: ['query'],
       expected: ['evaluation'],
@@ -165,7 +165,7 @@ export const DATASET_PRESETS: Record<string, DatasetPreset> = {
     icon: Globe,
     formatDescription: 'problem, problem_category, answer, answer_type',
     requiredFields: ['problem', 'answer', 'problem_category', 'answer_type'],
-    optionalFields: [],
+    optionalFields: ['id'],
     fieldInference: {
       input: ['problem'],
       expected: ['answer'],
@@ -188,7 +188,7 @@ export const DATASET_PRESETS: Record<string, DatasetPreset> = {
     icon: Globe,
     formatDescription: 'format: question (input), answer (expected), topic (category)',
     requiredFields: ['question', 'answer', 'topic', 'canary'],
-    optionalFields: [],
+    optionalFields: ['id'],
     fieldInference: {
       input: ['question'],
       expected: ['answer'],
@@ -234,7 +234,7 @@ export const DATASET_PRESETS: Record<string, DatasetPreset> = {
     formatDescription:
       'format: question, choices array (or A/B/C/D columns), answer (index/letter)',
     requiredFields: ['question', 'choices', 'answer'],
-    optionalFields: ['subject', 'difficulty'],
+    optionalFields: ['subject', 'difficulty', 'id'],
     fieldInference: {
       input: ['question', 'prompt', 'query'],
       expected: ['answer', 'correct_answer', 'label'],

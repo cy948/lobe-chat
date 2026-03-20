@@ -26,6 +26,7 @@ const CreateAgentOperationSchema = z.object({
   autoStart: z.boolean().optional().default(true),
   messages: z.array(z.any()).optional().default([]),
   modelRuntimeConfig: z.object({
+    contextWindowTokens: z.number().int().positive().optional(),
     model: z.string(),
     provider: z.string(),
   }),

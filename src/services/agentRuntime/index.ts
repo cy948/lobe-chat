@@ -6,6 +6,7 @@ import { type HumanInterventionRequest } from '@/services/agentRuntime/type';
 import { contextEngineering } from '@/services/chat/mecha';
 import { getAgentStoreState } from '@/store/agent';
 import { agentChatConfigSelectors, agentSelectors } from '@/store/agent/selectors';
+import { aiModelSelectors, getAiInfraStoreState } from '@/store/aiInfra';
 
 export { agentRuntimeClient } from './client';
 export * from './type';
@@ -22,10 +23,16 @@ interface AgentOperationRequest {
 class AgentRuntimeService {
   createOperation = async (data: AgentOperationRequest) => {
     const agentStoreState = getAgentStoreState();
+    const aiInfraStoreState = getAiInfraStoreState();
     const agentConfig = agentSelectors.currentAgentConfig(agentStoreState);
     const chatConfig = agentChatConfigSelectors.currentChatConfig(agentStoreState);
+    const contextWindowTokens = aiModelSelectors.modelContextWindowTokens(
+      agentConfig.model,
+      agentConfig.provider!,
+    )(aiInfraStoreState);
 
     const modelRuntimeConfig = {
+      contextWindowTokens,
       model: agentConfig.model,
       provider: agentConfig.provider!,
     };

@@ -94,6 +94,7 @@ export interface GeneralAgentConfig {
    */
   globalInterventionAudits?: GlobalInterventionAuditConfig[];
   modelRuntimeConfig?: {
+    contextWindowTokens?: number;
     /**
      * Compression model configuration
      * Used for context compression tasks

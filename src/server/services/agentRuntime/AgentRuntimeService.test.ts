@@ -312,6 +312,33 @@ describe('AgentRuntimeService', () => {
     });
   });
 
+  describe('createAgentRuntime', () => {
+    it('should pass contextWindowTokens to compressionConfig.maxWindowToken', async () => {
+      const { agent } = await (service as any).createAgentRuntime({
+        metadata: {
+          agentConfig: {
+            chatConfig: {
+              enableContextCompression: true,
+            },
+          },
+          modelRuntimeConfig: {
+            contextWindowTokens: 65_536,
+            model: 'gpt-4o-mini',
+            provider: 'openai',
+          },
+          userId: mockUserId,
+        },
+        operationId: 'test-operation-1',
+        stepIndex: 0,
+      });
+
+      expect((agent as any).config.compressionConfig).toEqual({
+        enabled: true,
+        maxWindowToken: 65_536,
+      });
+    });
+  });
+
   describe('executeStep', () => {
     const mockParams: AgentExecutionParams = {
       operationId: 'test-operation-1',

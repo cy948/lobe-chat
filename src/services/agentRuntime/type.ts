@@ -45,6 +45,7 @@ export interface AgentOperationRequest {
   messages: OpenAIChatMessage[];
   modelRuntimeConfig: {
     [key: string]: any;
+    contextWindowTokens?: number;
     model: string;
     provider: string;
   };

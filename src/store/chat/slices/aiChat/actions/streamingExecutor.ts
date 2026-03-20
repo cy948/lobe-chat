@@ -24,6 +24,7 @@ import { resolveAgentConfig } from '@/services/chat/mecha';
 import { messageService } from '@/services/message';
 import { getAgentStoreState } from '@/store/agent';
 import { agentSelectors } from '@/store/agent/selectors';
+import { aiModelSelectors, getAiInfraStoreState } from '@/store/aiInfra';
 import { createAgentExecutors } from '@/store/chat/agents/createAgentExecutors';
 import { type ChatStore } from '@/store/chat/store';
 import { pageAgentRuntime } from '@/store/tool/slices/builtin/executors/lobe-page-agent';
@@ -174,7 +175,6 @@ export class StreamingExecutorActionImpl {
     // When skillActivateMode is 'manual', skipDefaultTools gives user precise control
     const isManualMode = agentConfig.chatConfig?.skillActivateMode === 'manual';
 
-
     const toolsDetailed = toolsEngine.generateToolsDetailed({
       model: agentConfigData.model,
       provider: agentConfigData.provider!,
@@ -210,11 +210,16 @@ export class StreamingExecutorActionImpl {
     };
 
     // Build modelRuntimeConfig for compression and other runtime features
+    const contextWindowTokens = aiModelSelectors.modelContextWindowTokens(
+      agentConfigData.model,
+      agentConfigData.provider!,
+    )(getAiInfraStoreState());
     const modelRuntimeConfig = {
       compressionModel: {
         model: agentConfigData.model,
         provider: agentConfigData.provider!,
       },
+      contextWindowTokens,
       model: agentConfigData.model,
       provider: agentConfigData.provider!,
     };
@@ -427,6 +432,7 @@ export class StreamingExecutorActionImpl {
       agentConfig: { maxSteps: 1000 },
       compressionConfig: {
         enabled: agentConfigData.chatConfig?.enableContextCompression ?? true, // Default to enabled
+        maxWindowToken: contextWindowTokens,
       },
       dynamicInterventionAudits,
       operationId: `${messageKey}/${params.parentMessageId}`,

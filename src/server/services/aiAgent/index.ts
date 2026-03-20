@@ -308,10 +308,27 @@ export class AiAgentService {
 
     // 5. Get model abilities from model-bank for function calling support check
     const { LOBE_DEFAULT_MODEL_LIST } = await import('model-bank');
+    const builtinModelInfo = LOBE_DEFAULT_MODEL_LIST.find(
+      (item) => item.id === model && item.providerId === provider,
+    );
     const isModelSupportToolUse = (m: string, p: string) => {
       const info = LOBE_DEFAULT_MODEL_LIST.find((item) => item.id === m && item.providerId === p);
       return info?.abilities?.functionCall ?? true;
     };
+    let contextWindowTokens = builtinModelInfo?.contextWindowTokens;
+
+    if (contextWindowTokens === undefined) {
+      try {
+        const aiModelModel = new AiModelModel(this.db, this.userId);
+        const userModel = (await aiModelModel.getAllModels()).find(
+          (item) => item.id === model && item.providerId === provider,
+        );
+
+        contextWindowTokens = userModel?.contextWindowTokens;
+      } catch (error) {
+        log('execAgent: failed to resolve context window tokens: %O', error);
+      }
+    }
 
     // 6. Fetch LobeHub Skills manifests (temporary solution until LOBE-3517 is implemented)
     let lobehubSkillManifests: LobeToolManifest[] = [];
@@ -787,7 +804,7 @@ export class AiAgentService {
         initialContext,
         initialMessages: allMessages,
         maxSteps,
-        modelRuntimeConfig: { model, provider },
+        modelRuntimeConfig: { contextWindowTokens, model, provider },
         operationId,
         stepCallbacks,
         stepWebhook,

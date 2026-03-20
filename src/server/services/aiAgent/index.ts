@@ -13,6 +13,7 @@ import type { LobeToolManifest } from '@lobechat/context-engine';
 import type { LobeChatDatabase } from '@lobechat/database';
 import type {
   ChatTopicBotContext,
+  ChatTopicMetadata,
   ExecAgentParams,
   ExecAgentResult,
   ExecGroupAgentParams,
@@ -207,6 +208,7 @@ export class AiAgentService {
       appContext,
       autoStart = true,
       botContext,
+      deviceId: requestedDeviceId,
       discordContext,
       existingMessageIds = [],
       files,
@@ -321,21 +323,26 @@ export class AiAgentService {
 
     // 3. Handle topic creation: if no topicId provided, create a new topic; otherwise reuse existing
     let topicId = appContext?.topicId;
+    let topicMetadata: ChatTopicMetadata | undefined;
     if (!topicId) {
-      // Prepare metadata with cronJobId and botContext if provided
-      const metadata =
-        cronJobId || botContext
-          ? { bot: botContext, cronJobId: cronJobId || undefined }
+      topicMetadata =
+        cronJobId || botContext || requestedDeviceId
+          ? {
+              bot: botContext,
+              cronJobId: cronJobId || undefined,
+              boundDeviceId: requestedDeviceId,
+            }
           : undefined;
 
       const newTopic = await this.topicModel.create({
         agentId: resolvedAgentId,
-        metadata,
+        metadata: topicMetadata,
         title:
           title !== undefined ? title : prompt.slice(0, 50) + (prompt.length > 50 ? '...' : ''),
         trigger,
       });
       topicId = newTopic.id;
+      topicMetadata = newTopic.metadata ?? undefined;
       log(
         'execAgent: created new topic %s with trigger %s, cronJobId %s',
         topicId,
@@ -344,9 +351,17 @@ export class AiAgentService {
       );
     } else {
       log('execAgent: reusing existing topic %s', topicId);
+      const topic = await this.topicModel.findById(topicId);
+      topicMetadata = topic?.metadata ?? undefined;
+
+      if (requestedDeviceId) {
+        await this.topicModel.updateMetadata(topicId, { boundDeviceId: requestedDeviceId });
+        topicMetadata = { ...topicMetadata, boundDeviceId: requestedDeviceId };
+      }
     }
 
     await throwIfExecutionAborted('topic setup');
+    const topicBoundDeviceId = requestedDeviceId ?? topicMetadata?.boundDeviceId;
 
     // Extract model and provider from agent config
     const model = agentConfig.model!;
@@ -413,7 +428,8 @@ export class AiAgentService {
 
     // Build device context for ToolsEngine enableChecker
     const gatewayConfigured = deviceProxy.isConfigured;
-    const boundDeviceId = agentConfig.agencyConfig?.boundDeviceId;
+    const agentBoundDeviceId = agentConfig.agencyConfig?.boundDeviceId;
+    const boundDeviceId = topicBoundDeviceId || agentBoundDeviceId;
     let onlineDevices: DeviceAttachment[] = [];
     if (gatewayConfigured) {
       try {
@@ -438,10 +454,15 @@ export class AiAgentService {
     ];
 
     // Derive activeDeviceId from device context:
-    // 1. If agent has a bound device and it's online, use it
-    // 2. In IM/Bot scenarios, auto-activate when exactly one device is online
+    // 1. Explicit run deviceId
+    // 2. Topic-bound device
+    // 3. Agent-bound device
+    // 4. In IM/Bot scenarios, auto-activate when exactly one device is online
+    const hasBoundDeviceOnline = boundDeviceId
+      ? onlineDevices.some((device) => device.deviceId === boundDeviceId)
+      : false;
     const activeDeviceId = boundDeviceId
-      ? deviceOnline
+      ? hasBoundDeviceOnline
         ? boundDeviceId
         : undefined
       : (discordContext || botContext) && onlineDevices.length === 1

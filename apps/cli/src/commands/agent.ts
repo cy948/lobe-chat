@@ -6,6 +6,7 @@ import pc from 'picocolors';
 import { getTrpcClient } from '../api/client';
 import { getAuthInfo } from '../api/http';
 import { replayAgentEvents, streamAgentEvents } from '../utils/agentStream';
+import { resolveLocalDeviceId } from '../utils/device';
 import { confirm, outputJson, printTable, truncate } from '../utils/format';
 import { log, setVerbose } from '../utils/logger';
 
@@ -248,6 +249,7 @@ export function registerAgentCommand(program: Command) {
     .option('-p, --prompt <text>', 'User prompt')
     .option('-t, --topic-id <id>', 'Reuse an existing topic')
     .option('--no-auto-start', 'Do not auto-start the agent')
+    .option('--device <target>', 'Device target (local)')
     .option('--json', 'Output full JSON event stream')
     .option('-v, --verbose', 'Show detailed tool call info')
     .option('--replay <file>', 'Replay events from a saved JSON file (offline)')
@@ -255,6 +257,7 @@ export function registerAgentCommand(program: Command) {
       async (options: {
         agentId?: string;
         autoStart?: boolean;
+        device?: string;
         json?: boolean;
         prompt?: string;
         replay?: string;
@@ -285,9 +288,40 @@ export function registerAgentCommand(program: Command) {
 
         const client = await getTrpcClient();
 
+        let deviceId: string | undefined;
+        if (options.device !== undefined) {
+          if (options.device !== 'local') {
+            log.error("Invalid --device value. Only 'local' is supported.");
+            process.exit(1);
+            return;
+          }
+
+          deviceId = resolveLocalDeviceId();
+          if (!deviceId) {
+            log.error(
+              "No local device found. Run 'lh connect' first, then retry with --device local.",
+            );
+            process.exit(1);
+            return;
+          }
+
+          const devices = await client.device.listDevices.query();
+          const matchedDevice = devices.find(
+            (device: { deviceId?: string; online?: boolean }) => device.deviceId === deviceId,
+          );
+          if (!matchedDevice?.online) {
+            log.error(
+              `Local device "${deviceId}" is not online. Reconnect with 'lh connect' and try again.`,
+            );
+            process.exit(1);
+            return;
+          }
+        }
+
         // 1. Exec agent to get operationId
         const input: Record<string, any> = { prompt: options.prompt };
         if (options.agentId) input.agentId = options.agentId;
+        if (deviceId) input.deviceId = deviceId;
         if (options.slug) input.slug = options.slug;
         if (options.topicId) input.appContext = { topicId: options.topicId };
         if (options.autoStart === false) input.autoStart = false;

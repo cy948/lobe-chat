@@ -7,7 +7,6 @@ Device Gateway is a local service for development and debugging.
 ## Gateway Startup
 
 ```bash
-cd apps/device-gateway
 pnpm --ignore-workspace install
 cat > .dev.vars << EOF
 JWKS_PUBLIC_KEY='$(node --env-file=../../.env scripts/extract-public-key.mjs)'

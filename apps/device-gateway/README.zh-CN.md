@@ -5,7 +5,6 @@
 ## Gateway 启动
 
 ```bash
-cd apps/device-gateway
 pnpm --ignore-workspace install
 cat > .dev.vars << EOF
 JWKS_PUBLIC_KEY='$(node --env-file=../../.env scripts/extract-public-key.mjs)'

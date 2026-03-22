@@ -136,17 +136,23 @@ export const createLambdaContext = async (request: NextRequest): Promise<LambdaC
   if (apiKeyToken) {
     const apiKeyUserId = await validateApiKeyUserId(apiKeyToken);
 
-    if (apiKeyUserId) {
-      log('API key authentication successful, userId: %s', apiKeyUserId);
+    if (!apiKeyUserId) {
+      log('API key authentication failed; rejecting request without fallback auth');
 
       return createContextInner({
         ...commonContext,
         traceContext,
-        userId: apiKeyUserId,
+        userId: null,
       });
     }
 
-    log('API key authentication failed, falling back to OIDC/session auth');
+    log('API key authentication successful, userId: %s', apiKeyUserId);
+
+    return createContextInner({
+      ...commonContext,
+      traceContext,
+      userId: apiKeyUserId,
+    });
   }
 
   if (authEnv.ENABLE_OIDC) {

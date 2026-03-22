@@ -40,7 +40,6 @@ export async function getValidToken(): Promise<{ credentials: StoredCredentials 
       : undefined,
     refreshToken: refreshed.refresh_token || credentials.refreshToken,
     tokenType: 'jwt',
-    userId: credentials.userId,
   };
 
   saveCredentials(updated);

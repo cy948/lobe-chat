@@ -7,15 +7,16 @@ interface ResolveTokenOptions {
   userId?: string;
 }
 
-interface ResolvedAuth {
+export interface ResolvedAuth {
   token: string;
+  tokenType: 'apiKey' | 'jwt' | 'serviceToken';
   userId: string;
 }
 
 /**
  * Parse the `sub` claim from a JWT without verifying the signature.
  */
-function parseJwtSub(token: string): string | undefined {
+export function parseJwtSub(token: string): string | undefined {
   try {
     const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
     return payload.sub;
@@ -38,7 +39,7 @@ export async function resolveToken(options: ResolveTokenOptions): Promise<Resolv
       process.exit(1);
     }
     log.debug('Using LOBEHUB_JWT from environment');
-    return { token: envJwt, userId };
+    return { token: envJwt, tokenType: 'jwt', userId };
   }
 
   // Explicit token takes priority
@@ -48,7 +49,7 @@ export async function resolveToken(options: ResolveTokenOptions): Promise<Resolv
       log.error('Could not extract userId from token. Provide --user-id explicitly.');
       process.exit(1);
     }
-    return { token: options.token, userId };
+    return { token: options.token, tokenType: 'jwt', userId };
   }
 
   if (options.serviceToken) {
@@ -56,20 +57,26 @@ export async function resolveToken(options: ResolveTokenOptions): Promise<Resolv
       log.error('--user-id is required when using --service-token');
       process.exit(1);
     }
-    return { token: options.serviceToken, userId: options.userId };
+    return { token: options.serviceToken, tokenType: 'serviceToken', userId: options.userId };
   }
 
   // Try stored credentials
   const result = await getValidToken();
   if (result) {
     log.debug('Using stored credentials');
-    const token = result.credentials.accessToken;
-    const userId = parseJwtSub(token);
+    const { credentials } = result;
+
+    if (credentials.tokenType === 'apiKey') {
+      return { token: credentials.token, tokenType: 'apiKey', userId: credentials.userId };
+    }
+
+    const userId = parseJwtSub(credentials.token);
     if (!userId) {
       log.error("Stored token is invalid. Run 'lh login' again.");
       process.exit(1);
     }
-    return { token, userId };
+
+    return { token: credentials.token, tokenType: 'jwt', userId };
   }
 
   log.error("No authentication found. Run 'lh login' first, or provide --token.");

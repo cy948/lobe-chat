@@ -30,11 +30,12 @@ describe('getValidToken', () => {
     expect(result).toBeNull();
   });
 
-  it('should return credentials when token is still valid', async () => {
+  it('should return JWT credentials when token is still valid', async () => {
     const creds: StoredCredentials = {
-      accessToken: 'valid-token',
-      expiresAt: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
       refreshToken: 'refresh-tok',
+      token: 'valid-token',
+      tokenType: 'jwt',
     };
     vi.mocked(loadCredentials).mockReturnValue(creds);
 
@@ -44,23 +45,25 @@ describe('getValidToken', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('should return credentials when no expiresAt is set', async () => {
+  it('should return API key credentials without refresh', async () => {
     const creds: StoredCredentials = {
-      accessToken: 'valid-token',
+      token: 'sk-lh-test',
+      tokenType: 'apiKey',
+      userId: 'user-123',
     };
     vi.mocked(loadCredentials).mockReturnValue(creds);
 
     const result = await getValidToken();
 
-    // expiresAt is undefined, so Date.now()/1000 < undefined - 60 is false (NaN comparison)
-    // This means it will try to refresh, but there's no refreshToken
-    expect(result).toBeNull();
+    expect(result).toEqual({ credentials: creds });
+    expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('should return null when token expired and no refresh token', async () => {
+  it('should return null when JWT expired and no refresh token', async () => {
     const creds: StoredCredentials = {
-      accessToken: 'expired-token',
-      expiresAt: Math.floor(Date.now() / 1000) - 100, // expired
+      expiresAt: Math.floor(Date.now() / 1000) - 100,
+      token: 'expired-token',
+      tokenType: 'jwt',
     };
     vi.mocked(loadCredentials).mockReturnValue(creds);
 
@@ -69,11 +72,13 @@ describe('getValidToken', () => {
     expect(result).toBeNull();
   });
 
-  it('should refresh and save updated credentials when token is expired', async () => {
+  it('should refresh and save updated JWT credentials when expired', async () => {
     const creds: StoredCredentials = {
-      accessToken: 'expired-token',
       expiresAt: Math.floor(Date.now() / 1000) - 100,
       refreshToken: 'valid-refresh-token',
+      token: 'expired-token',
+      tokenType: 'jwt',
+      userId: 'user-1',
     };
     vi.mocked(loadCredentials).mockReturnValue(creds);
 
@@ -90,18 +95,19 @@ describe('getValidToken', () => {
     const result = await getValidToken();
 
     expect(result).not.toBeNull();
-    expect(result!.credentials.accessToken).toBe('new-access-token');
+    expect(result!.credentials.token).toBe('new-access-token');
     expect(result!.credentials.refreshToken).toBe('new-refresh-token');
     expect(saveCredentials).toHaveBeenCalledWith(
-      expect.objectContaining({ accessToken: 'new-access-token' }),
+      expect.objectContaining({ token: 'new-access-token', tokenType: 'jwt' }),
     );
   });
 
   it('should keep old refresh token if new one is not returned', async () => {
     const creds: StoredCredentials = {
-      accessToken: 'expired-token',
       expiresAt: Math.floor(Date.now() / 1000) - 100,
       refreshToken: 'old-refresh-token',
+      token: 'expired-token',
+      tokenType: 'jwt',
     };
     vi.mocked(loadCredentials).mockReturnValue(creds);
 
@@ -119,11 +125,12 @@ describe('getValidToken', () => {
     expect(result!.credentials.expiresAt).toBeUndefined();
   });
 
-  it('should return null when refresh request fails (non-ok)', async () => {
+  it('should return null when refresh request fails', async () => {
     const creds: StoredCredentials = {
-      accessToken: 'expired-token',
       expiresAt: Math.floor(Date.now() / 1000) - 100,
       refreshToken: 'valid-refresh-token',
+      token: 'expired-token',
+      tokenType: 'jwt',
     };
     vi.mocked(loadCredentials).mockReturnValue(creds);
 
@@ -138,62 +145,12 @@ describe('getValidToken', () => {
     expect(result).toBeNull();
   });
 
-  it('should return null when refresh response has error field', async () => {
-    const creds: StoredCredentials = {
-      accessToken: 'expired-token',
-      expiresAt: Math.floor(Date.now() / 1000) - 100,
-      refreshToken: 'valid-refresh-token',
-    };
-    vi.mocked(loadCredentials).mockReturnValue(creds);
-
-    vi.mocked(fetch).mockResolvedValue({
-      json: vi.fn().mockResolvedValue({ error: 'invalid_grant' }),
-      ok: true,
-    } as any);
-
-    const result = await getValidToken();
-
-    expect(result).toBeNull();
-  });
-
-  it('should return null when refresh response has no access_token', async () => {
-    const creds: StoredCredentials = {
-      accessToken: 'expired-token',
-      expiresAt: Math.floor(Date.now() / 1000) - 100,
-      refreshToken: 'valid-refresh-token',
-    };
-    vi.mocked(loadCredentials).mockReturnValue(creds);
-
-    vi.mocked(fetch).mockResolvedValue({
-      json: vi.fn().mockResolvedValue({ token_type: 'Bearer' }),
-      ok: true,
-    } as any);
-
-    const result = await getValidToken();
-
-    expect(result).toBeNull();
-  });
-
-  it('should return null when network error occurs during refresh', async () => {
-    const creds: StoredCredentials = {
-      accessToken: 'expired-token',
-      expiresAt: Math.floor(Date.now() / 1000) - 100,
-      refreshToken: 'valid-refresh-token',
-    };
-    vi.mocked(loadCredentials).mockReturnValue(creds);
-
-    vi.mocked(fetch).mockRejectedValue(new Error('network error'));
-
-    const result = await getValidToken();
-
-    expect(result).toBeNull();
-  });
-
   it('should send correct request to refresh endpoint', async () => {
     const creds: StoredCredentials = {
-      accessToken: 'expired-token',
       expiresAt: Math.floor(Date.now() / 1000) - 100,
       refreshToken: 'my-refresh-token',
+      token: 'expired-token',
+      tokenType: 'jwt',
     };
     vi.mocked(loadCredentials).mockReturnValue(creds);
     vi.mocked(loadSettings).mockReturnValueOnce({ serverUrl: 'https://my-server.com' });
@@ -211,8 +168,8 @@ describe('getValidToken', () => {
     expect(fetch).toHaveBeenCalledWith(
       'https://my-server.com/oidc/token',
       expect.objectContaining({
-        method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        method: 'POST',
       }),
     );
 

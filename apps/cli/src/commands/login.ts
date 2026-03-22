@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import type { Command } from 'commander';
 
+import { getUserIdFromApiKey } from '../auth/apiKey';
 import { saveCredentials } from '../auth/credentials';
 import { OFFICIAL_SERVER_URL } from '../constants/urls';
 import { loadSettings, saveSettings } from '../settings';
@@ -13,6 +14,7 @@ const CLIENT_ID = 'lobehub-cli';
 const SCOPES = 'openid profile email offline_access';
 
 interface LoginOptions {
+  apiKey?: string;
   server: string;
 }
 
@@ -48,17 +50,64 @@ async function parseJsonResponse<T>(res: Response, endpoint: string): Promise<T>
   }
 }
 
+function persistServerSettings(serverUrl: string) {
+  const existingSettings = loadSettings();
+  const shouldPreserveGateway = existingSettings?.serverUrl === serverUrl;
+
+  saveSettings(
+    shouldPreserveGateway
+      ? {
+          gatewayUrl: existingSettings.gatewayUrl,
+          serverUrl,
+        }
+      : {
+          serverUrl,
+        },
+  );
+}
+
+function parseJwtSub(token: string): string | undefined {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+
+    return payload.sub;
+  } catch {
+    return undefined;
+  }
+}
+
 export function registerLoginCommand(program: Command) {
   program
     .command('login')
-    .description('Log in to LobeHub via browser (Device Code Flow)')
+    .description('Log in to LobeHub via browser (Device Code Flow) or API key')
     .option('--server <url>', 'LobeHub server URL', OFFICIAL_SERVER_URL)
+    .option('--api-key <key>', 'API key from /settings/apikey')
     .action(async (options: LoginOptions) => {
       const serverUrl = options.server.replace(/\/$/, '');
 
       log.info('Starting login...');
 
-      // Step 1: Request device code
+      if (options.apiKey) {
+        try {
+          const userId = await getUserIdFromApiKey(options.apiKey, serverUrl);
+
+          saveCredentials({
+            token: options.apiKey,
+            tokenType: 'apiKey',
+            userId,
+          });
+
+          persistServerSettings(serverUrl);
+          log.info('Login successful! API key credentials saved.');
+          return;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          log.error(`API key login failed: ${message}`);
+          process.exit(1);
+          return;
+        }
+      }
+
       let deviceAuth: DeviceAuthResponse;
       try {
         const res = await fetch(`${serverUrl}/oidc/device/auth`, {
@@ -79,14 +128,14 @@ export function registerLoginCommand(program: Command) {
         }
 
         deviceAuth = await parseJsonResponse<DeviceAuthResponse>(res, '/oidc/device/auth');
-      } catch (error: any) {
-        log.error(`Failed to reach server: ${error.message}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        log.error(`Failed to reach server: ${message}`);
         log.error(`Make sure ${serverUrl} is reachable.`);
         process.exit(1);
         return;
       }
 
-      // Step 2: Show user code and open browser
       const verifyUrl = deviceAuth.verification_uri_complete || deviceAuth.verification_uri;
 
       log.info('');
@@ -96,7 +145,6 @@ export function registerLoginCommand(program: Command) {
       log.info(`  Enter code: ${deviceAuth.user_code}`);
       log.info('');
 
-      // Try to open browser automatically
       const opened = await openBrowser(verifyUrl);
       if (!opened) {
         log.warn('Could not open browser automatically.');
@@ -104,7 +152,6 @@ export function registerLoginCommand(program: Command) {
 
       log.info('Waiting for authorization...');
 
-      // Step 3: Poll for token
       const interval = (deviceAuth.interval || 5) * 1000;
       const expiresAt = Date.now() + deviceAuth.expires_in * 1000;
 
@@ -129,11 +176,9 @@ export function registerLoginCommand(program: Command) {
             '/oidc/token',
           );
 
-          // Check body for error field — some proxies may return 200 for error responses
           if (body.error) {
             switch (body.error) {
               case 'authorization_pending': {
-                // Keep polling
                 break;
               }
               case 'slow_down': {
@@ -158,33 +203,21 @@ export function registerLoginCommand(program: Command) {
             }
           } else if (body.access_token) {
             saveCredentials({
-              accessToken: body.access_token,
               expiresAt: body.expires_in
                 ? Math.floor(Date.now() / 1000) + body.expires_in
                 : undefined,
               refreshToken: body.refresh_token,
+              token: body.access_token,
+              tokenType: 'jwt',
+              userId: parseJwtSub(body.access_token),
             });
-            const existingSettings = loadSettings();
-            const shouldPreserveGateway = existingSettings?.serverUrl === serverUrl;
 
-            saveSettings(
-              shouldPreserveGateway
-                ? {
-                    gatewayUrl: existingSettings.gatewayUrl,
-                    serverUrl,
-                  }
-                : {
-                    // Gateway auth is tied to the login server's token issuer/JWKS.
-                    // When server changes, clear old gateway to avoid stale cross-environment config.
-                    serverUrl,
-                  },
-            );
-
+            persistServerSettings(serverUrl);
             log.info('Login successful! Credentials saved.');
             return;
           }
         } catch {
-          // Network error — keep retrying
+          // keep retrying on polling errors
         }
       }
 
@@ -203,7 +236,6 @@ export function resolveCommandExecutable(
 ): string | undefined {
   if (!cmd) return undefined;
 
-  // If command already contains a path, only check that exact location.
   if (cmd.includes('/') || cmd.includes('\\')) {
     return fs.existsSync(cmd) ? cmd : undefined;
   }
@@ -216,9 +248,8 @@ export function resolveCommandExecutable(
     const pathext = (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean);
     const hasExtension = path.win32.extname(cmd).length > 0;
     const candidateNames = hasExtension ? [cmd] : [cmd, ...pathext.map((ext) => `${cmd}${ext}`)];
-
-    // Prefer PATH lookup, then fall back to System32 for built-in tools like rundll32.
     const systemRoot = process.env.SystemRoot || process.env.WINDIR;
+
     if (systemRoot) {
       pathEntries.push(path.win32.join(systemRoot, 'System32'));
     }
@@ -259,16 +290,17 @@ async function openBrowser(url: string): Promise<boolean> {
             resolve(false);
             return;
           }
+
           resolve(true);
         });
-      } catch (error: any) {
-        log.debug(`Could not open browser automatically: ${error?.message || String(error)}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        log.debug(`Could not open browser automatically: ${message}`);
         resolve(false);
       }
     });
 
   if (process.platform === 'win32') {
-    // On Windows, use rundll32 to invoke the default URL handler without a shell.
     return runCommand('rundll32', ['url.dll,FileProtocolHandler', url]);
   }
 

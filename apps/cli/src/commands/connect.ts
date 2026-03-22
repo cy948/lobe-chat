@@ -33,7 +33,9 @@ interface ConnectOptions {
   daemonChild?: boolean;
   deviceId?: string;
   gateway?: string;
+  serviceToken?: string;
   token?: string;
+  userId?: string;
   verbose?: boolean;
 }
 
@@ -42,6 +44,8 @@ export function registerConnectCommand(program: Command) {
     .command('connect')
     .description('Connect to the device gateway and listen for tool calls')
     .option('--token <jwt>', 'JWT access token')
+    .option('--service-token <token>', 'Service token (requires --user-id)')
+    .option('--user-id <id>', 'User ID (required with --service-token)')
     .option('--gateway <url>', 'Device gateway URL')
     .option('--device-id <id>', 'Device ID (auto-generated if not provided)')
     .option('-v, --verbose', 'Enable verbose logging')
@@ -50,18 +54,14 @@ export function registerConnectCommand(program: Command) {
     .action(async (options: ConnectOptions) => {
       if (options.verbose) setVerbose(true);
 
-      // --daemon: spawn detached child and exit
       if (options.daemon) {
         return handleDaemonStart(options);
       }
 
-      // --daemon-child: running inside daemon, redirect logging
       const isDaemonChild = options.daemonChild || process.env.LOBEHUB_DAEMON === '1';
-
       await runConnect(options, isDaemonChild);
     });
 
-  // Subcommands
   connectCmd
     .command('stop')
     .description('Stop the background daemon process')
@@ -110,15 +110,14 @@ export function registerConnectCommand(program: Command) {
       }
 
       const lines = opts.lines || '50';
-      const args = [`-n`, lines];
+      const args = ['-n', lines];
       if (opts.follow) args.push('-f');
 
-      // Use tail directly — this hands control to the child process
       try {
         const { execFileSync } = await import('node:child_process');
         execFileSync('tail', [...args, logPath], { stdio: 'inherit' });
       } catch {
-        // tail -f exits via SIGINT, which throws — that's fine
+        // tail -f exits via SIGINT
       }
     });
 
@@ -126,6 +125,8 @@ export function registerConnectCommand(program: Command) {
     .command('restart')
     .description('Restart the background daemon process')
     .option('--token <jwt>', 'JWT access token')
+    .option('--service-token <token>', 'Service token (requires --user-id)')
+    .option('--user-id <id>', 'User ID (required with --service-token)')
     .option('--gateway <url>', 'Device gateway URL')
     .option('--device-id <id>', 'Device ID')
     .option('-v, --verbose', 'Enable verbose logging')
@@ -138,8 +139,6 @@ export function registerConnectCommand(program: Command) {
     });
 }
 
-// --- Internal helpers ---
-
 function handleDaemonStart(options: ConnectOptions) {
   const existingPid = getRunningDaemonPid();
   if (existingPid !== null) {
@@ -148,7 +147,6 @@ function handleDaemonStart(options: ConnectOptions) {
     process.exit(1);
   }
 
-  // Build args to re-run with --daemon-child
   const args = buildDaemonArgs(options);
   const pid = spawnDaemon(args);
 
@@ -159,11 +157,12 @@ function handleDaemonStart(options: ConnectOptions) {
 }
 
 function buildDaemonArgs(options: ConnectOptions): string[] {
-  // Find the entry script (process.argv[1])
   const script = process.argv[1];
   const args = [script, 'connect'];
 
   if (options.token) args.push('--token', options.token);
+  if (options.serviceToken) args.push('--service-token', options.serviceToken);
+  if (options.userId) args.push('--user-id', options.userId);
   if (options.gateway) args.push('--gateway', options.gateway);
   if (options.deviceId) args.push('--device-id', options.deviceId);
   if (options.verbose) args.push('--verbose');
@@ -178,7 +177,7 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
 
   if (!gatewayUrl && settings?.serverUrl) {
     log.error(
-      `Current login uses custom --server ${settings?.serverUrl}. Please also provide '--gateway <url>' for the device gateway.`,
+      `Current login uses custom --server ${settings.serverUrl}. Please also provide '--gateway <url>' for the device gateway.`,
     );
     process.exit(1);
     throw new Error('process.exit');
@@ -189,7 +188,6 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
   }
 
   const resolvedGatewayUrl = gatewayUrl || OFFICIAL_GATEWAY_URL;
-
   const client = new GatewayClient({
     deviceId: options.deviceId,
     gatewayUrl: resolvedGatewayUrl,
@@ -202,38 +200,34 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     if (isDaemonChild) appendLog(msg);
     else log.info(msg);
   };
-
   const error = (msg: string) => {
     if (isDaemonChild) appendLog(`[ERROR] ${msg}`);
     else log.error(msg);
   };
 
-  // Print device info
   info('─── LobeHub CLI ───');
   info(`  Device ID : ${client.currentDeviceId}`);
   info(`  Hostname  : ${os.hostname()}`);
   info(`  Platform  : ${process.platform}`);
   info(`  Gateway   : ${resolvedGatewayUrl}`);
-  info(`  Auth      : jwt`);
+  info(`  Auth      : ${auth.tokenType}`);
   info(`  Mode      : ${isDaemonChild ? 'daemon' : 'foreground'}`);
   info('───────────────────');
 
-  // Update status file for daemon mode
+  const startedAt = new Date();
   const updateStatus = (connectionStatus: string) => {
-    if (isDaemonChild) {
-      writeStatus({
-        connectionStatus,
-        gatewayUrl: resolvedGatewayUrl,
-        pid: process.pid,
-        startedAt: startedAt.toISOString(),
-      });
-    }
+    if (!isDaemonChild) return;
+
+    writeStatus({
+      connectionStatus,
+      gatewayUrl: resolvedGatewayUrl,
+      pid: process.pid,
+      startedAt: startedAt.toISOString(),
+    });
   };
 
-  const startedAt = new Date();
   updateStatus('connecting');
 
-  // Handle system info requests
   client.on('system_info_request', (request: SystemInfoRequestMessage) => {
     info(`Received system_info_request: requestId=${request.requestId}`);
     const systemInfo = collectSystemInfo();
@@ -243,7 +237,6 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     });
   });
 
-  // Handle tool call requests
   client.on('tool_call_request', async (request: ToolCallRequestMessage) => {
     const { requestId, toolCall } = request;
     if (isDaemonChild) {
@@ -273,46 +266,51 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
   client.on('connected', () => {
     updateStatus('connected');
   });
-
   client.on('disconnected', () => {
     updateStatus('disconnected');
   });
-
   client.on('reconnecting', () => {
     updateStatus('reconnecting');
   });
 
-  // Handle auth failed
   client.on('auth_failed', (reason) => {
     error(`Authentication failed: ${reason}`);
-    error("Run 'lh login' to re-authenticate.");
+    error("Run 'lh login' or 'lh login --api-key <key>' to re-authenticate.");
     cleanup();
     process.exit(1);
   });
 
-  // Handle auth expired
   client.on('auth_expired', async () => {
+    if (auth.tokenType !== 'jwt') {
+      error('Authentication expired.');
+      error("Run 'lh login --api-key <key>' or 'lh login' to re-authenticate.");
+      cleanup();
+      process.exit(1);
+      return;
+    }
+
     error('Authentication expired. Attempting to refresh...');
-    const refreshed = await resolveToken({});
-    if (refreshed) {
+
+    try {
+      await resolveToken({});
       info('Token refreshed. Please reconnect.');
-    } else {
+    } catch {
       error("Could not refresh token. Run 'lh login' to re-authenticate.");
     }
+
     cleanup();
     process.exit(1);
   });
 
-  // Handle errors
   client.on('error', (err) => {
     error(`Connection error: ${err.message}`);
   });
 
-  // Graceful shutdown
   const cleanup = () => {
     info('Shutting down...');
     cleanupAllProcesses();
     client.disconnect();
+
     if (isDaemonChild) {
       removeStatus();
       removePid();
@@ -323,13 +321,11 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     cleanup();
     process.exit(0);
   });
-
   process.on('SIGTERM', () => {
     cleanup();
     process.exit(0);
   });
 
-  // Connect
   await client.connect();
 }
 

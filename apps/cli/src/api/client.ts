@@ -12,15 +12,23 @@ import { log } from '../utils/logger';
 export type TrpcClient = ReturnType<typeof createTRPCClient<LambdaRouter>>;
 export type ToolsTrpcClient = ReturnType<typeof createTRPCClient<ToolsRouter>>;
 
-let _client: TrpcClient | undefined;
-let _toolsClient: ToolsTrpcClient | undefined;
+interface AuthAndServer {
+  headers: Record<string, string>;
+  serverUrl: string;
+}
 
-async function getAuthAndServer() {
-  // LOBEHUB_JWT + LOBEHUB_SERVER env vars (used by server-side sandbox execution)
+let clientInstance: TrpcClient | undefined;
+let toolsClientInstance: ToolsTrpcClient | undefined;
+
+async function getAuthAndServer(): Promise<AuthAndServer> {
   const envJwt = process.env.LOBEHUB_JWT;
   if (envJwt) {
     const serverUrl = process.env.LOBEHUB_SERVER || OFFICIAL_SERVER_URL;
-    return { accessToken: envJwt, serverUrl: serverUrl.replace(/\/$/, '') };
+
+    return {
+      headers: { 'Oidc-Auth': envJwt },
+      serverUrl: serverUrl.replace(/\/$/, ''),
+    };
   }
 
   const result = await getValidToken();
@@ -29,44 +37,45 @@ async function getAuthAndServer() {
     process.exit(1);
   }
 
-  const accessToken = result.credentials.accessToken;
+  const headers =
+    result.credentials.tokenType === 'apiKey'
+      ? { 'X-API-Key': result.credentials.token }
+      : { 'Oidc-Auth': result.credentials.token };
   const serverUrl = loadSettings()?.serverUrl || OFFICIAL_SERVER_URL;
 
-  return { accessToken, serverUrl: serverUrl.replace(/\/$/, '') };
+  return { headers, serverUrl: serverUrl.replace(/\/$/, '') };
 }
 
 export async function getTrpcClient(): Promise<TrpcClient> {
-  if (_client) return _client;
+  if (clientInstance) return clientInstance;
 
-  const { accessToken, serverUrl } = await getAuthAndServer();
-
-  _client = createTRPCClient<LambdaRouter>({
+  const { headers, serverUrl } = await getAuthAndServer();
+  clientInstance = createTRPCClient<LambdaRouter>({
     links: [
       httpLink({
-        headers: { 'Oidc-Auth': accessToken },
+        headers,
         transformer: superjson,
         url: `${serverUrl}/trpc/lambda`,
       }),
     ],
   });
 
-  return _client;
+  return clientInstance;
 }
 
 export async function getToolsTrpcClient(): Promise<ToolsTrpcClient> {
-  if (_toolsClient) return _toolsClient;
+  if (toolsClientInstance) return toolsClientInstance;
 
-  const { accessToken, serverUrl } = await getAuthAndServer();
-
-  _toolsClient = createTRPCClient<ToolsRouter>({
+  const { headers, serverUrl } = await getAuthAndServer();
+  toolsClientInstance = createTRPCClient<ToolsRouter>({
     links: [
       httpLink({
-        headers: { 'Oidc-Auth': accessToken },
+        headers,
         transformer: superjson,
         url: `${serverUrl}/trpc/tools`,
       }),
     ],
   });
 
-  return _toolsClient;
+  return toolsClientInstance;
 }

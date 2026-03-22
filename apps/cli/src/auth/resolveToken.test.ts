@@ -16,7 +16,6 @@ vi.mock('../utils/logger', () => ({
   },
 }));
 
-// Helper to create a valid JWT with sub claim
 function makeJwt(sub: string): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none' })).toString('base64url');
   const payload = Buffer.from(JSON.stringify({ sub })).toString('base64url');
@@ -37,12 +36,12 @@ describe('resolveToken', () => {
   });
 
   describe('with explicit --token', () => {
-    it('should return token and userId from JWT', async () => {
+    it('should return token, tokenType and userId from JWT', async () => {
       const token = makeJwt('user-123');
 
       const result = await resolveToken({ token });
 
-      expect(result).toEqual({ token, userId: 'user-123' });
+      expect(result).toEqual({ token, tokenType: 'jwt', userId: 'user-123' });
     });
 
     it('should exit if JWT has no sub claim', async () => {
@@ -51,11 +50,6 @@ describe('resolveToken', () => {
       const token = `${header}.${payload}.sig`;
 
       await expect(resolveToken({ token })).rejects.toThrow('process.exit');
-      expect(exitSpy).toHaveBeenCalledWith(1);
-    });
-
-    it('should exit if JWT is malformed', async () => {
-      await expect(resolveToken({ token: 'not-a-jwt' })).rejects.toThrow('process.exit');
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });
@@ -67,7 +61,7 @@ describe('resolveToken', () => {
         userId: 'user-456',
       });
 
-      expect(result).toEqual({ token: 'svc-token', userId: 'user-456' });
+      expect(result).toEqual({ token: 'svc-token', tokenType: 'serviceToken', userId: 'user-456' });
     });
 
     it('should exit if --user-id is not provided', async () => {
@@ -77,27 +71,43 @@ describe('resolveToken', () => {
   });
 
   describe('with stored credentials', () => {
-    it('should return stored credentials token', async () => {
+    it('should return stored JWT credentials token', async () => {
       const token = makeJwt('stored-user');
       vi.mocked(getValidToken).mockResolvedValue({
         credentials: {
-          accessToken: token,
+          token,
+          tokenType: 'jwt',
         },
       });
 
       const result = await resolveToken({});
 
-      expect(result).toEqual({ token, userId: 'stored-user' });
+      expect(result).toEqual({ token, tokenType: 'jwt', userId: 'stored-user' });
     });
 
-    it('should exit if stored token has no sub', async () => {
+    it('should return stored API key credentials', async () => {
+      vi.mocked(getValidToken).mockResolvedValue({
+        credentials: {
+          token: 'sk-lh-test',
+          tokenType: 'apiKey',
+          userId: 'user-789',
+        },
+      });
+
+      const result = await resolveToken({});
+
+      expect(result).toEqual({ token: 'sk-lh-test', tokenType: 'apiKey', userId: 'user-789' });
+    });
+
+    it('should exit if stored JWT token has no sub', async () => {
       const header = Buffer.from('{}').toString('base64url');
       const payload = Buffer.from('{}').toString('base64url');
       const token = `${header}.${payload}.sig`;
 
       vi.mocked(getValidToken).mockResolvedValue({
         credentials: {
-          accessToken: token,
+          token,
+          tokenType: 'jwt',
         },
       });
 

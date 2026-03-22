@@ -2,7 +2,9 @@ import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../auth/resolveToken', () => ({
-  resolveToken: vi.fn().mockResolvedValue({ token: 'test-token', userId: 'test-user' }),
+  resolveToken: vi
+    .fn()
+    .mockResolvedValue({ token: 'test-token', tokenType: 'jwt', userId: 'test-user' }),
 }));
 vi.mock('../settings', () => ({
   loadSettings: vi.fn().mockReturnValue(null),
@@ -110,6 +112,11 @@ describe('connect command', () => {
     mockRunningPid = null;
     mockSpawnedPid = 0;
     mockStatus = null;
+    vi.mocked(resolveToken).mockResolvedValue({
+      token: 'test-token',
+      tokenType: 'jwt',
+      userId: 'test-user',
+    });
   });
 
   afterEach(() => {
@@ -259,8 +266,8 @@ describe('connect command', () => {
     const program = createProgram();
     await program.parseAsync(['node', 'test', 'connect']);
 
-    // After initial connect, mock resolveToken to return falsy for the refresh attempt
-    vi.mocked(resolveToken).mockResolvedValueOnce(undefined as any);
+    // After initial connect, make the refresh attempt fail
+    vi.mocked(resolveToken).mockRejectedValueOnce(new Error('refresh failed'));
 
     await clientEventHandlers['auth_expired']?.();
 

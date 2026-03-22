@@ -17,8 +17,8 @@ interface AuthAndServer {
   serverUrl: string;
 }
 
-let clientInstance: TrpcClient | undefined;
-let toolsClientInstance: ToolsTrpcClient | undefined;
+let _client: TrpcClient | undefined;
+let _toolsClient: ToolsTrpcClient | undefined;
 
 async function getAuthAndServer(): Promise<AuthAndServer> {
   const envJwt = process.env.LOBEHUB_JWT;
@@ -47,10 +47,10 @@ async function getAuthAndServer(): Promise<AuthAndServer> {
 }
 
 export async function getTrpcClient(): Promise<TrpcClient> {
-  if (clientInstance) return clientInstance;
+  if (_client) return _client;
 
   const { headers, serverUrl } = await getAuthAndServer();
-  clientInstance = createTRPCClient<LambdaRouter>({
+  _client = createTRPCClient<LambdaRouter>({
     links: [
       httpLink({
         headers,
@@ -60,14 +60,14 @@ export async function getTrpcClient(): Promise<TrpcClient> {
     ],
   });
 
-  return clientInstance;
+  return _client;
 }
 
 export async function getToolsTrpcClient(): Promise<ToolsTrpcClient> {
-  if (toolsClientInstance) return toolsClientInstance;
+  if (_toolsClient) return _toolsClient;
 
   const { headers, serverUrl } = await getAuthAndServer();
-  toolsClientInstance = createTRPCClient<ToolsRouter>({
+  _toolsClient = createTRPCClient<ToolsRouter>({
     links: [
       httpLink({
         headers,
@@ -77,5 +77,5 @@ export async function getToolsTrpcClient(): Promise<ToolsTrpcClient> {
     ],
   });
 
-  return toolsClientInstance;
+  return _toolsClient;
 }

@@ -118,23 +118,23 @@ describe('createContextInner', () => {
   it('should create context with all parameters combined', async () => {
     const params = {
       authorizationHeader: 'Bearer token',
+      userId: 'user-123',
+      userAgent: 'Test Agent',
       marketAccessToken: 'mp-token',
       oidcAuth: {
         sub: 'oidc-sub',
         payload: { data: 'test' },
       },
-      userAgent: 'Test Agent',
-      userId: 'user-123',
     };
 
     const context = await createContextInner(params);
 
     expect(context).toMatchObject({
       authorizationHeader: 'Bearer token',
+      userId: 'user-123',
+      userAgent: 'Test Agent',
       marketAccessToken: 'mp-token',
       oidcAuth: { sub: 'oidc-sub', payload: { data: 'test' } },
-      userAgent: 'Test Agent',
-      userId: 'user-123',
     });
   });
 

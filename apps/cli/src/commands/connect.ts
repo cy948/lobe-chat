@@ -54,14 +54,17 @@ export function registerConnectCommand(program: Command) {
     .action(async (options: ConnectOptions) => {
       if (options.verbose) setVerbose(true);
 
+      // --daemon: spawn detached child and exit
       if (options.daemon) {
         return handleDaemonStart(options);
       }
 
+      // --daemon-child: running inside daemon, redirect logging
       const isDaemonChild = options.daemonChild || process.env.LOBEHUB_DAEMON === '1';
       await runConnect(options, isDaemonChild);
     });
 
+  // Subcommands
   connectCmd
     .command('stop')
     .description('Stop the background daemon process')
@@ -113,11 +116,12 @@ export function registerConnectCommand(program: Command) {
       const args = ['-n', lines];
       if (opts.follow) args.push('-f');
 
+      // Use tail directly — this hands control to the child process
       try {
         const { execFileSync } = await import('node:child_process');
         execFileSync('tail', [...args, logPath], { stdio: 'inherit' });
       } catch {
-        // tail -f exits via SIGINT
+        // tail -f exits via SIGINT, which throws — that's fine
       }
     });
 
@@ -139,6 +143,8 @@ export function registerConnectCommand(program: Command) {
     });
 }
 
+// --- Internal helpers ---
+
 function handleDaemonStart(options: ConnectOptions) {
   const existingPid = getRunningDaemonPid();
   if (existingPid !== null) {
@@ -147,6 +153,7 @@ function handleDaemonStart(options: ConnectOptions) {
     process.exit(1);
   }
 
+  // Build args to re-run with --daemon-child
   const args = buildDaemonArgs(options);
   const pid = spawnDaemon(args);
 
@@ -157,6 +164,7 @@ function handleDaemonStart(options: ConnectOptions) {
 }
 
 function buildDaemonArgs(options: ConnectOptions): string[] {
+  // Find the entry script (process.argv[1])
   const script = process.argv[1];
   const args = [script, 'connect'];
 
@@ -205,6 +213,7 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     else log.error(msg);
   };
 
+  // Print device info
   info('─── LobeHub CLI ───');
   info(`  Device ID : ${client.currentDeviceId}`);
   info(`  Hostname  : ${os.hostname()}`);
@@ -214,6 +223,7 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
   info(`  Mode      : ${isDaemonChild ? 'daemon' : 'foreground'}`);
   info('───────────────────');
 
+  // Update status file for daemon mode
   const startedAt = new Date();
   const updateStatus = (connectionStatus: string) => {
     if (!isDaemonChild) return;
@@ -228,6 +238,7 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
 
   updateStatus('connecting');
 
+  // Handle system info requests
   client.on('system_info_request', (request: SystemInfoRequestMessage) => {
     info(`Received system_info_request: requestId=${request.requestId}`);
     const systemInfo = collectSystemInfo();
@@ -237,6 +248,7 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     });
   });
 
+  // Handle tool call requests
   client.on('tool_call_request', async (request: ToolCallRequestMessage) => {
     const { requestId, toolCall } = request;
     if (isDaemonChild) {
@@ -273,6 +285,7 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     updateStatus('reconnecting');
   });
 
+  // Handle auth failed
   client.on('auth_failed', (reason) => {
     error(`Authentication failed: ${reason}`);
     error("Run 'lh login' or 'lh login --api-key <key>' to re-authenticate.");
@@ -280,6 +293,7 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     process.exit(1);
   });
 
+  // Handle auth expired
   client.on('auth_expired', async () => {
     if (auth.tokenType !== 'jwt') {
       error('Authentication expired.');
@@ -302,10 +316,12 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     process.exit(1);
   });
 
+  // Handle errors
   client.on('error', (err) => {
     error(`Connection error: ${err.message}`);
   });
 
+  // Graceful shutdown
   const cleanup = () => {
     info('Shutting down...');
     cleanupAllProcesses();
@@ -326,6 +342,7 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     process.exit(0);
   });
 
+  // Connect
   await client.connect();
 }
 

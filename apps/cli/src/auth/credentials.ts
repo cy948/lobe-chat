@@ -10,7 +10,7 @@ export interface StoredApiKeyCredentials {
 }
 
 export interface StoredJwtCredentials {
-  expiresAt?: number;
+  expiresAt?: number; // Unix timestamp (seconds)
   refreshToken?: string;
   token: string;
   tokenType: 'jwt';
@@ -23,9 +23,10 @@ const LOBEHUB_DIR_NAME = process.env.LOBEHUB_CLI_HOME || '.lobehub';
 const CREDENTIALS_DIR = path.join(os.homedir(), LOBEHUB_DIR_NAME);
 const CREDENTIALS_FILE = path.join(CREDENTIALS_DIR, 'credentials.json');
 
+// Derive an encryption key from machine-specific info
+// Not bulletproof, but prevents casual reading of the credentials file
 function deriveKey(): Buffer {
   const material = `lobehub-cli:${os.hostname()}:${os.userInfo().username}`;
-
   return crypto.pbkdf2Sync(material, 'lobehub-cli-salt', 100_000, 32, 'sha256');
 }
 
@@ -35,8 +36,8 @@ function encrypt(plaintext: string): string {
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
   const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
   const authTag = cipher.getAuthTag();
+  // Pack: iv(12) + authTag(16) + ciphertext
   const packed = Buffer.concat([iv, authTag, encrypted]);
-
   return packed.toString('base64');
 }
 
@@ -47,9 +48,7 @@ function decrypt(encoded: string): string {
   const authTag = packed.subarray(12, 28);
   const ciphertext = packed.subarray(28);
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-
   decipher.setAuthTag(authTag);
-
   return decipher.update(ciphertext) + decipher.final('utf8');
 }
 
@@ -81,7 +80,6 @@ function isStoredCredentials(data: unknown): data is StoredCredentials {
 export function saveCredentials(credentials: StoredCredentials): void {
   fs.mkdirSync(CREDENTIALS_DIR, { mode: 0o700, recursive: true });
   const encrypted = encrypt(JSON.stringify(credentials));
-
   fs.writeFileSync(CREDENTIALS_FILE, encrypted, { mode: 0o600 });
 }
 
@@ -90,7 +88,6 @@ export function loadCredentials(): StoredCredentials | null {
     const data = fs.readFileSync(CREDENTIALS_FILE, 'utf8');
     const decrypted = decrypt(data);
     const credentials = JSON.parse(decrypted);
-
     return isStoredCredentials(credentials) ? credentials : null;
   } catch {
     return null;

@@ -61,6 +61,8 @@ function persistServerSettings(serverUrl: string) {
           serverUrl,
         }
       : {
+          // Gateway auth is tied to the login server's token issuer/JWKS.
+          // When server changes, clear old gateway to avoid stale cross-environment config.
           serverUrl,
         },
   );
@@ -108,6 +110,7 @@ export function registerLoginCommand(program: Command) {
         }
       }
 
+      // Step 1: Request device code
       let deviceAuth: DeviceAuthResponse;
       try {
         const res = await fetch(`${serverUrl}/oidc/device/auth`, {
@@ -136,6 +139,7 @@ export function registerLoginCommand(program: Command) {
         return;
       }
 
+      // Step 2: Show user code and open browser
       const verifyUrl = deviceAuth.verification_uri_complete || deviceAuth.verification_uri;
 
       log.info('');
@@ -145,6 +149,7 @@ export function registerLoginCommand(program: Command) {
       log.info(`  Enter code: ${deviceAuth.user_code}`);
       log.info('');
 
+      // Try to open browser automatically
       const opened = await openBrowser(verifyUrl);
       if (!opened) {
         log.warn('Could not open browser automatically.');
@@ -152,6 +157,7 @@ export function registerLoginCommand(program: Command) {
 
       log.info('Waiting for authorization...');
 
+      // Step 3: Poll for token
       const interval = (deviceAuth.interval || 5) * 1000;
       const expiresAt = Date.now() + deviceAuth.expires_in * 1000;
 
@@ -176,9 +182,11 @@ export function registerLoginCommand(program: Command) {
             '/oidc/token',
           );
 
+          // Check body for error field — some proxies may return 200 for error responses
           if (body.error) {
             switch (body.error) {
               case 'authorization_pending': {
+                // Keep polling
                 break;
               }
               case 'slow_down': {
@@ -217,7 +225,7 @@ export function registerLoginCommand(program: Command) {
             return;
           }
         } catch {
-          // keep retrying on polling errors
+          // Network error — keep retrying
         }
       }
 
@@ -236,6 +244,7 @@ export function resolveCommandExecutable(
 ): string | undefined {
   if (!cmd) return undefined;
 
+  // If command already contains a path, only check that exact location.
   if (cmd.includes('/') || cmd.includes('\\')) {
     return fs.existsSync(cmd) ? cmd : undefined;
   }
@@ -248,6 +257,7 @@ export function resolveCommandExecutable(
     const pathext = (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean);
     const hasExtension = path.win32.extname(cmd).length > 0;
     const candidateNames = hasExtension ? [cmd] : [cmd, ...pathext.map((ext) => `${cmd}${ext}`)];
+    // Prefer PATH lookup, then fall back to System32 for built-in tools like rundll32.
     const systemRoot = process.env.SystemRoot || process.env.WINDIR;
 
     if (systemRoot) {
@@ -301,6 +311,7 @@ async function openBrowser(url: string): Promise<boolean> {
     });
 
   if (process.platform === 'win32') {
+    // On Windows, use rundll32 to invoke the default URL handler without a shell.
     return runCommand('rundll32', ['url.dll,FileProtocolHandler', url]);
   }
 

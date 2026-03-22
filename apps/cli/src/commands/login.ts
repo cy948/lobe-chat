@@ -197,11 +197,11 @@ export function registerLoginCommand(program: Command) {
             }
           } else if (body.access_token) {
             saveCredentials({
+              accessToken: body.access_token,
               expiresAt: body.expires_in
                 ? Math.floor(Date.now() / 1000) + body.expires_in
                 : undefined,
               refreshToken: body.refresh_token,
-              accessToken: body.access_token,
               tokenType: 'jwt',
             });
 

@@ -34,11 +34,11 @@ export async function getValidToken(): Promise<{ credentials: StoredCredentials 
   if (!refreshed) return null;
 
   const updated: StoredJwtCredentials = {
+    accessToken: refreshed.access_token,
     expiresAt: refreshed.expires_in
       ? Math.floor(Date.now() / 1000) + refreshed.expires_in
       : undefined,
     refreshToken: refreshed.refresh_token || credentials.refreshToken,
-    accessToken: refreshed.access_token,
     tokenType: 'jwt',
     userId: credentials.userId,
   };

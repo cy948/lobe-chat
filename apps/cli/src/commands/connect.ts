@@ -33,9 +33,7 @@ interface ConnectOptions {
   daemonChild?: boolean;
   deviceId?: string;
   gateway?: string;
-  serviceToken?: string;
   token?: string;
-  userId?: string;
   verbose?: boolean;
 }
 
@@ -44,8 +42,6 @@ export function registerConnectCommand(program: Command) {
     .command('connect')
     .description('Connect to the device gateway and listen for tool calls')
     .option('--token <jwt>', 'JWT access token')
-    .option('--service-token <token>', 'Service token (requires --user-id)')
-    .option('--user-id <id>', 'User ID (required with --service-token)')
     .option('--gateway <url>', 'Device gateway URL')
     .option('--device-id <id>', 'Device ID (auto-generated if not provided)')
     .option('-v, --verbose', 'Enable verbose logging')
@@ -130,8 +126,6 @@ export function registerConnectCommand(program: Command) {
     .command('restart')
     .description('Restart the background daemon process')
     .option('--token <jwt>', 'JWT access token')
-    .option('--service-token <token>', 'Service token (requires --user-id)')
-    .option('--user-id <id>', 'User ID (required with --service-token)')
     .option('--gateway <url>', 'Device gateway URL')
     .option('--device-id <id>', 'Device ID')
     .option('-v, --verbose', 'Enable verbose logging')
@@ -170,8 +164,6 @@ function buildDaemonArgs(options: ConnectOptions): string[] {
   const args = [script, 'connect'];
 
   if (options.token) args.push('--token', options.token);
-  if (options.serviceToken) args.push('--service-token', options.serviceToken);
-  if (options.userId) args.push('--user-id', options.userId);
   if (options.gateway) args.push('--gateway', options.gateway);
   if (options.deviceId) args.push('--device-id', options.deviceId);
   if (options.verbose) args.push('--verbose');

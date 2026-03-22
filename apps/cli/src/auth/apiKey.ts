@@ -11,12 +11,12 @@ interface CurrentUserResponse {
   success?: boolean;
 }
 
-function normalizeServerUrl(serverUrl?: string): string {
-  return (serverUrl || loadSettings()?.serverUrl || OFFICIAL_SERVER_URL).replace(/\/$/, '');
-}
-
 export async function getUserIdFromApiKey(apiKey: string, serverUrl?: string): Promise<string> {
-  const normalizedServerUrl = normalizeServerUrl(serverUrl);
+  const normalizedServerUrl = (
+    serverUrl ||
+    loadSettings()?.serverUrl ||
+    OFFICIAL_SERVER_URL
+  ).replace(/\/$/, '');
 
   const response = await fetch(`${normalizedServerUrl}/api/v1/users/me`, {
     headers: {

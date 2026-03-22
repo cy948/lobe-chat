@@ -114,7 +114,7 @@ export function registerConnectCommand(program: Command) {
       }
 
       const lines = opts.lines || '50';
-      const args = ['-n', lines];
+      const args = [`-n`, lines];
       if (opts.follow) args.push('-f');
 
       // Use tail directly — this hands control to the child process
@@ -186,7 +186,7 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
 
   if (!gatewayUrl && settings?.serverUrl) {
     log.error(
-      `Current login uses custom --server ${settings.serverUrl}. Please also provide '--gateway <url>' for the device gateway.`,
+      `Current login uses custom --server ${settings?.serverUrl}. Please also provide '--gateway <url>' for the device gateway.`,
     );
     process.exit(1);
     throw new Error('process.exit');
@@ -228,14 +228,14 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
 
   // Update status file for daemon mode
   const updateStatus = (connectionStatus: string) => {
-    if (!isDaemonChild) return;
-
-    writeStatus({
-      connectionStatus,
-      gatewayUrl: resolvedGatewayUrl,
-      pid: process.pid,
-      startedAt: startedAt.toISOString(),
-    });
+    if (isDaemonChild) {
+      writeStatus({
+        connectionStatus,
+        gatewayUrl: resolvedGatewayUrl,
+        pid: process.pid,
+        startedAt: startedAt.toISOString(),
+      });
+    }
   };
 
   const startedAt = new Date();
@@ -331,7 +331,6 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     info('Shutting down...');
     cleanupAllProcesses();
     client.disconnect();
-
     if (isDaemonChild) {
       removeStatus();
       removePid();

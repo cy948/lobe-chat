@@ -7,7 +7,7 @@ interface ResolveTokenOptions {
   userId?: string;
 }
 
-export interface ResolvedAuth {
+interface ResolvedAuth {
   token: string;
   tokenType: 'apiKey' | 'jwt' | 'serviceToken';
   userId: string;
@@ -16,7 +16,7 @@ export interface ResolvedAuth {
 /**
  * Parse the `sub` claim from a JWT without verifying the signature.
  */
-export function parseJwtSub(token: string): string | undefined {
+function parseJwtSub(token: string): string | undefined {
   try {
     const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
     return payload.sub;

@@ -57,7 +57,7 @@ describe('generate command', () => {
     stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     mockGetTrpcClient.mockResolvedValue(mockTrpcClient);
     mockGetAuthInfo.mockResolvedValue({
-      token: 'test-token',
+      accessToken: 'test-token',
       headers: {
         'Content-Type': 'application/json',
         'Oidc-Auth': 'test-token',

@@ -145,6 +145,60 @@ describe('getValidToken', () => {
     expect(result).toBeNull();
   });
 
+  it('should return null when refresh response has error field', async () => {
+    const creds: StoredCredentials = {
+      expiresAt: Math.floor(Date.now() / 1000) - 100,
+      refreshToken: 'valid-refresh-token',
+      token: 'expired-token',
+      tokenType: 'jwt',
+    };
+    vi.mocked(loadCredentials).mockReturnValue(creds);
+
+    vi.mocked(fetch).mockResolvedValue({
+      json: vi.fn().mockResolvedValue({ error: 'invalid_grant' }),
+      ok: true,
+    } as any);
+
+    const result = await getValidToken();
+
+    expect(result).toBeNull();
+  });
+
+  it('should return null when refresh response has no access_token', async () => {
+    const creds: StoredCredentials = {
+      expiresAt: Math.floor(Date.now() / 1000) - 100,
+      refreshToken: 'valid-refresh-token',
+      token: 'expired-token',
+      tokenType: 'jwt',
+    };
+    vi.mocked(loadCredentials).mockReturnValue(creds);
+
+    vi.mocked(fetch).mockResolvedValue({
+      json: vi.fn().mockResolvedValue({ token_type: 'Bearer' }),
+      ok: true,
+    } as any);
+
+    const result = await getValidToken();
+
+    expect(result).toBeNull();
+  });
+
+  it('should return null when network error occurs during refresh', async () => {
+    const creds: StoredCredentials = {
+      expiresAt: Math.floor(Date.now() / 1000) - 100,
+      refreshToken: 'valid-refresh-token',
+      token: 'expired-token',
+      tokenType: 'jwt',
+    };
+    vi.mocked(loadCredentials).mockReturnValue(creds);
+
+    vi.mocked(fetch).mockRejectedValue(new Error('network error'));
+
+    const result = await getValidToken();
+
+    expect(result).toBeNull();
+  });
+
   it('should send correct request to refresh endpoint', async () => {
     const creds: StoredCredentials = {
       expiresAt: Math.floor(Date.now() / 1000) - 100,

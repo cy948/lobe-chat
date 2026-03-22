@@ -12,15 +12,11 @@ import { log } from '../utils/logger';
 export type TrpcClient = ReturnType<typeof createTRPCClient<LambdaRouter>>;
 export type ToolsTrpcClient = ReturnType<typeof createTRPCClient<ToolsRouter>>;
 
-interface AuthAndServer {
-  headers: Record<string, string>;
-  serverUrl: string;
-}
-
 let _client: TrpcClient | undefined;
 let _toolsClient: ToolsTrpcClient | undefined;
 
-async function getAuthAndServer(): Promise<AuthAndServer> {
+async function getAuthAndServer() {
+  // LOBEHUB_JWT + LOBEHUB_SERVER env vars (used by server-side sandbox execution)
   const envJwt = process.env.LOBEHUB_JWT;
   if (envJwt) {
     const serverUrl = process.env.LOBEHUB_SERVER || OFFICIAL_SERVER_URL;

@@ -16,6 +16,7 @@ vi.mock('../utils/logger', () => ({
   },
 }));
 
+// Helper to create a valid JWT with sub claim
 function makeJwt(sub: string): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none' })).toString('base64url');
   const payload = Buffer.from(JSON.stringify({ sub })).toString('base64url');
@@ -50,6 +51,11 @@ describe('resolveToken', () => {
       const token = `${header}.${payload}.sig`;
 
       await expect(resolveToken({ token })).rejects.toThrow('process.exit');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it('should exit if JWT is malformed', async () => {
+      await expect(resolveToken({ token: 'not-a-jwt' })).rejects.toThrow('process.exit');
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });

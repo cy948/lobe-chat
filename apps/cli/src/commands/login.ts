@@ -117,9 +117,8 @@ export function registerLoginCommand(program: Command) {
         }
 
         deviceAuth = await parseJsonResponse<DeviceAuthResponse>(res, '/oidc/device/auth');
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        log.error(`Failed to reach server: ${message}`);
+      } catch (error: any) {
+        log.error(`Failed to reach server: ${error.message}`);
         log.error(`Make sure ${serverUrl} is reachable.`);
         process.exit(1);
         return;
@@ -232,6 +231,7 @@ export function registerLoginCommand(program: Command) {
                     serverUrl,
                   },
             );
+
             log.info('Login successful! Credentials saved.');
             return;
           }
@@ -268,9 +268,9 @@ export function resolveCommandExecutable(
     const pathext = (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean);
     const hasExtension = path.win32.extname(cmd).length > 0;
     const candidateNames = hasExtension ? [cmd] : [cmd, ...pathext.map((ext) => `${cmd}${ext}`)];
+
     // Prefer PATH lookup, then fall back to System32 for built-in tools like rundll32.
     const systemRoot = process.env.SystemRoot || process.env.WINDIR;
-
     if (systemRoot) {
       pathEntries.push(path.win32.join(systemRoot, 'System32'));
     }
@@ -311,12 +311,10 @@ async function openBrowser(url: string): Promise<boolean> {
             resolve(false);
             return;
           }
-
           resolve(true);
         });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        log.debug(`Could not open browser automatically: ${message}`);
+      } catch (error: any) {
+        log.debug(`Could not open browser automatically: ${error?.message || String(error)}`);
         resolve(false);
       }
     });

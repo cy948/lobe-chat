@@ -59,7 +59,7 @@ describe('agent command', () => {
     consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     mockGetTrpcClient.mockResolvedValue(mockTrpcClient);
     mockGetAuthInfo.mockResolvedValue({
-      token: 'test-token',
+      accessToken: 'test-token',
       headers: { 'Content-Type': 'application/json', 'Oidc-Auth': 'test-token' },
       serverUrl: 'https://example.com',
     });

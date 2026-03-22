@@ -50,34 +50,6 @@ async function parseJsonResponse<T>(res: Response, endpoint: string): Promise<T>
   }
 }
 
-function persistServerSettings(serverUrl: string) {
-  const existingSettings = loadSettings();
-  const shouldPreserveGateway = existingSettings?.serverUrl === serverUrl;
-
-  saveSettings(
-    shouldPreserveGateway
-      ? {
-          gatewayUrl: existingSettings.gatewayUrl,
-          serverUrl,
-        }
-      : {
-          // Gateway auth is tied to the login server's token issuer/JWKS.
-          // When server changes, clear old gateway to avoid stale cross-environment config.
-          serverUrl,
-        },
-  );
-}
-
-function parseJwtSub(token: string): string | undefined {
-  try {
-    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
-
-    return payload.sub;
-  } catch {
-    return undefined;
-  }
-}
-
 export function registerLoginCommand(program: Command) {
   program
     .command('login')
@@ -99,7 +71,21 @@ export function registerLoginCommand(program: Command) {
             userId,
           });
 
-          persistServerSettings(serverUrl);
+          const existingSettings = loadSettings();
+          const shouldPreserveGateway = existingSettings?.serverUrl === serverUrl;
+
+          saveSettings(
+            shouldPreserveGateway
+              ? {
+                  gatewayUrl: existingSettings.gatewayUrl,
+                  serverUrl,
+                }
+              : {
+                  // Gateway auth is tied to the login server's token issuer/JWKS.
+                  // When server changes, clear old gateway to avoid stale cross-environment config.
+                  serverUrl,
+                },
+          );
           log.info('Login successful! API key credentials saved.');
           return;
         } catch (error) {
@@ -210,6 +196,17 @@ export function registerLoginCommand(program: Command) {
               }
             }
           } else if (body.access_token) {
+            let userId: string | undefined;
+
+            try {
+              const payload = JSON.parse(
+                Buffer.from(body.access_token.split('.')[1], 'base64url').toString(),
+              );
+              userId = payload.sub;
+            } catch {
+              userId = undefined;
+            }
+
             saveCredentials({
               expiresAt: body.expires_in
                 ? Math.floor(Date.now() / 1000) + body.expires_in
@@ -217,10 +214,24 @@ export function registerLoginCommand(program: Command) {
               refreshToken: body.refresh_token,
               token: body.access_token,
               tokenType: 'jwt',
-              userId: parseJwtSub(body.access_token),
+              userId,
             });
 
-            persistServerSettings(serverUrl);
+            const existingSettings = loadSettings();
+            const shouldPreserveGateway = existingSettings?.serverUrl === serverUrl;
+
+            saveSettings(
+              shouldPreserveGateway
+                ? {
+                    gatewayUrl: existingSettings.gatewayUrl,
+                    serverUrl,
+                  }
+                : {
+                    // Gateway auth is tied to the login server's token issuer/JWKS.
+                    // When server changes, clear old gateway to avoid stale cross-environment config.
+                    serverUrl,
+                  },
+            );
             log.info('Login successful! Credentials saved.');
             return;
           }

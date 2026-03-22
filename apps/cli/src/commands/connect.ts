@@ -61,6 +61,7 @@ export function registerConnectCommand(program: Command) {
 
       // --daemon-child: running inside daemon, redirect logging
       const isDaemonChild = options.daemonChild || process.env.LOBEHUB_DAEMON === '1';
+
       await runConnect(options, isDaemonChild);
     });
 
@@ -196,6 +197,7 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
   }
 
   const resolvedGatewayUrl = gatewayUrl || OFFICIAL_GATEWAY_URL;
+
   const client = new GatewayClient({
     deviceId: options.deviceId,
     gatewayUrl: resolvedGatewayUrl,
@@ -208,6 +210,7 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     if (isDaemonChild) appendLog(msg);
     else log.info(msg);
   };
+
   const error = (msg: string) => {
     if (isDaemonChild) appendLog(`[ERROR] ${msg}`);
     else log.error(msg);
@@ -224,7 +227,6 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
   info('───────────────────');
 
   // Update status file for daemon mode
-  const startedAt = new Date();
   const updateStatus = (connectionStatus: string) => {
     if (!isDaemonChild) return;
 
@@ -236,6 +238,7 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     });
   };
 
+  const startedAt = new Date();
   updateStatus('connecting');
 
   // Handle system info requests
@@ -278,9 +281,11 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
   client.on('connected', () => {
     updateStatus('connected');
   });
+
   client.on('disconnected', () => {
     updateStatus('disconnected');
   });
+
   client.on('reconnecting', () => {
     updateStatus('reconnecting');
   });
@@ -337,6 +342,7 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     cleanup();
     process.exit(0);
   });
+
   process.on('SIGTERM', () => {
     cleanup();
     process.exit(0);

@@ -52,31 +52,6 @@ function decrypt(encoded: string): string {
   return decipher.update(ciphertext) + decipher.final('utf8');
 }
 
-function isStoredCredentials(data: unknown): data is StoredCredentials {
-  if (!data || typeof data !== 'object') return false;
-
-  const credentials = data as Partial<StoredCredentials>;
-
-  if (typeof credentials.token !== 'string') return false;
-
-  if (credentials.tokenType === 'apiKey') {
-    return typeof credentials.userId === 'string';
-  }
-
-  if (credentials.tokenType !== 'jwt') return false;
-  if (credentials.expiresAt !== undefined && typeof credentials.expiresAt !== 'number') {
-    return false;
-  }
-  if (credentials.refreshToken !== undefined && typeof credentials.refreshToken !== 'string') {
-    return false;
-  }
-  if (credentials.userId !== undefined && typeof credentials.userId !== 'string') {
-    return false;
-  }
-
-  return true;
-}
-
 export function saveCredentials(credentials: StoredCredentials): void {
   fs.mkdirSync(CREDENTIALS_DIR, { mode: 0o700, recursive: true });
   const encrypted = encrypt(JSON.stringify(credentials));
@@ -87,8 +62,17 @@ export function loadCredentials(): StoredCredentials | null {
   try {
     const data = fs.readFileSync(CREDENTIALS_FILE, 'utf8');
     const decrypted = decrypt(data);
-    const credentials = JSON.parse(decrypted);
-    return isStoredCredentials(credentials) ? credentials : null;
+    const credentials = JSON.parse(decrypted) as Partial<StoredCredentials>;
+
+    if (typeof credentials.token !== 'string') return null;
+    if (credentials.tokenType === 'apiKey') {
+      return typeof credentials.userId === 'string'
+        ? (credentials as StoredApiKeyCredentials)
+        : null;
+    }
+    if (credentials.tokenType !== 'jwt') return null;
+
+    return credentials as StoredJwtCredentials;
   } catch {
     return null;
   }

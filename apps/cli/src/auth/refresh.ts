@@ -38,7 +38,7 @@ export async function getValidToken(): Promise<{ credentials: StoredCredentials 
       ? Math.floor(Date.now() / 1000) + refreshed.expires_in
       : undefined,
     refreshToken: refreshed.refresh_token || credentials.refreshToken,
-    token: refreshed.access_token,
+    accessToken: refreshed.access_token,
     tokenType: 'jwt',
     userId: credentials.userId,
   };

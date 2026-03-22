@@ -67,16 +67,16 @@ export async function resolveToken(options: ResolveTokenOptions): Promise<Resolv
     const { credentials } = result;
 
     if (credentials.tokenType === 'apiKey') {
-      return { token: credentials.token, tokenType: 'apiKey', userId: credentials.userId };
+      return { token: credentials.apiKey, tokenType: 'apiKey', userId: credentials.userId };
     }
 
-    const userId = parseJwtSub(credentials.token);
+    const userId = parseJwtSub(credentials.accessToken);
     if (!userId) {
       log.error("Stored token is invalid. Run 'lh login' again.");
       process.exit(1);
     }
 
-    return { token: credentials.token, tokenType: 'jwt', userId };
+    return { token: credentials.accessToken, tokenType: 'jwt', userId };
   }
 
   log.error("No authentication found. Run 'lh login' first, or provide --token.");

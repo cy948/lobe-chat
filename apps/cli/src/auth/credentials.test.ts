@@ -39,7 +39,7 @@ describe('credentials', () => {
   const testCredentials: StoredCredentials = {
     expiresAt: Math.floor(Date.now() / 1000) + 3600,
     refreshToken: 'test-refresh-token',
-    token: 'test-access-token',
+    accessToken: 'test-access-token',
     tokenType: 'jwt',
   };
 
@@ -72,7 +72,7 @@ describe('credentials', () => {
 
     it('should handle API key credentials', () => {
       const apiKeyCredentials: StoredCredentials = {
-        token: 'sk-lh-test',
+        apiKey: 'sk-lh-test',
         tokenType: 'apiKey',
         userId: 'user-123',
       };

@@ -4,15 +4,15 @@ import os from 'node:os';
 import path from 'node:path';
 
 export interface StoredApiKeyCredentials {
-  token: string;
+  apiKey: string;
   tokenType: 'apiKey';
   userId: string;
 }
 
 export interface StoredJwtCredentials {
+  accessToken: string;
   expiresAt?: number; // Unix timestamp (seconds)
   refreshToken?: string;
-  token: string;
   tokenType: 'jwt';
   userId?: string;
 }
@@ -64,13 +64,13 @@ export function loadCredentials(): StoredCredentials | null {
     const decrypted = decrypt(data);
     const credentials = JSON.parse(decrypted) as Partial<StoredCredentials>;
 
-    if (typeof credentials.token !== 'string') return null;
     if (credentials.tokenType === 'apiKey') {
-      return typeof credentials.userId === 'string'
+      return typeof credentials.apiKey === 'string' && typeof credentials.userId === 'string'
         ? (credentials as StoredApiKeyCredentials)
         : null;
     }
     if (credentials.tokenType !== 'jwt') return null;
+    if (typeof credentials.accessToken !== 'string') return null;
 
     return credentials as StoredJwtCredentials;
   } catch {

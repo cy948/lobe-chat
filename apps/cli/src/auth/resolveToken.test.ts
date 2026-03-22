@@ -81,7 +81,7 @@ describe('resolveToken', () => {
       const token = makeJwt('stored-user');
       vi.mocked(getValidToken).mockResolvedValue({
         credentials: {
-          token,
+          accessToken: token,
           tokenType: 'jwt',
         },
       });
@@ -94,7 +94,7 @@ describe('resolveToken', () => {
     it('should return stored API key credentials', async () => {
       vi.mocked(getValidToken).mockResolvedValue({
         credentials: {
-          token: 'sk-lh-test',
+          apiKey: 'sk-lh-test',
           tokenType: 'apiKey',
           userId: 'user-789',
         },
@@ -112,7 +112,7 @@ describe('resolveToken', () => {
 
       vi.mocked(getValidToken).mockResolvedValue({
         credentials: {
-          token,
+          accessToken: token,
           tokenType: 'jwt',
         },
       });

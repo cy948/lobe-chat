@@ -122,7 +122,7 @@ describe('login command', () => {
 
     expect(saveCredentials).toHaveBeenCalledWith(
       expect.objectContaining({
-        token: 'new-token',
+        accessToken: 'new-token',
         tokenType: 'jwt',
         refreshToken: 'refresh-tok',
       }),

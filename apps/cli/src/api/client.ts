@@ -35,8 +35,8 @@ async function getAuthAndServer() {
 
   const headers =
     result.credentials.tokenType === 'apiKey'
-      ? { 'X-API-Key': result.credentials.token }
-      : { 'Oidc-Auth': result.credentials.token };
+      ? { 'X-API-Key': result.credentials.apiKey }
+      : { 'Oidc-Auth': result.credentials.accessToken };
   const serverUrl = loadSettings()?.serverUrl || OFFICIAL_SERVER_URL;
 
   return { headers, serverUrl: serverUrl.replace(/\/$/, '') };

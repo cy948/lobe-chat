@@ -39,6 +39,7 @@ interface TokenErrorResponse {
   error_description?: string;
 }
 
+// Parse HTTP JSON responses from the OIDC endpoints.
 async function parseJsonResponse<T>(res: Response, endpoint: string): Promise<T> {
   try {
     return (await res.json()) as T;
@@ -66,7 +67,7 @@ export function registerLoginCommand(program: Command) {
           const userId = await getUserIdFromApiKey(options.apiKey, serverUrl);
 
           saveCredentials({
-            token: options.apiKey,
+            apiKey: options.apiKey,
             tokenType: 'apiKey',
             userId,
           });
@@ -195,25 +196,13 @@ export function registerLoginCommand(program: Command) {
               }
             }
           } else if (body.access_token) {
-            let userId: string | undefined;
-
-            try {
-              const payload = JSON.parse(
-                Buffer.from(body.access_token.split('.')[1], 'base64url').toString(),
-              );
-              userId = payload.sub;
-            } catch {
-              userId = undefined;
-            }
-
             saveCredentials({
               expiresAt: body.expires_in
                 ? Math.floor(Date.now() / 1000) + body.expires_in
                 : undefined,
               refreshToken: body.refresh_token,
-              token: body.access_token,
+              accessToken: body.access_token,
               tokenType: 'jwt',
-              userId,
             });
 
             const existingSettings = loadSettings();

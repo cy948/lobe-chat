@@ -42,7 +42,7 @@ export async function getAuthInfo(): Promise<AuthInfo> {
     process.exit(1);
   }
 
-  const accessToken = result.credentials.token;
+  const accessToken = result.credentials.accessToken;
   const serverUrl = loadSettings()?.serverUrl || OFFICIAL_SERVER_URL;
 
   return {

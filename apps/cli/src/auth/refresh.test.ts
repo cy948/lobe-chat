@@ -34,7 +34,7 @@ describe('getValidToken', () => {
     const creds: StoredCredentials = {
       expiresAt: Math.floor(Date.now() / 1000) + 3600,
       refreshToken: 'refresh-tok',
-      token: 'valid-token',
+      accessToken: 'valid-token',
       tokenType: 'jwt',
     };
     vi.mocked(loadCredentials).mockReturnValue(creds);
@@ -47,7 +47,7 @@ describe('getValidToken', () => {
 
   it('should return API key credentials without refresh', async () => {
     const creds: StoredCredentials = {
-      token: 'sk-lh-test',
+      apiKey: 'sk-lh-test',
       tokenType: 'apiKey',
       userId: 'user-123',
     };
@@ -62,7 +62,7 @@ describe('getValidToken', () => {
   it('should return null when JWT expired and no refresh token', async () => {
     const creds: StoredCredentials = {
       expiresAt: Math.floor(Date.now() / 1000) - 100,
-      token: 'expired-token',
+      accessToken: 'expired-token',
       tokenType: 'jwt',
     };
     vi.mocked(loadCredentials).mockReturnValue(creds);
@@ -76,7 +76,7 @@ describe('getValidToken', () => {
     const creds: StoredCredentials = {
       expiresAt: Math.floor(Date.now() / 1000) - 100,
       refreshToken: 'valid-refresh-token',
-      token: 'expired-token',
+      accessToken: 'expired-token',
       tokenType: 'jwt',
       userId: 'user-1',
     };
@@ -95,10 +95,10 @@ describe('getValidToken', () => {
     const result = await getValidToken();
 
     expect(result).not.toBeNull();
-    expect(result!.credentials.token).toBe('new-access-token');
+    expect(result!.credentials.accessToken).toBe('new-access-token');
     expect(result!.credentials.refreshToken).toBe('new-refresh-token');
     expect(saveCredentials).toHaveBeenCalledWith(
-      expect.objectContaining({ token: 'new-access-token', tokenType: 'jwt' }),
+      expect.objectContaining({ accessToken: 'new-access-token', tokenType: 'jwt' }),
     );
   });
 
@@ -106,7 +106,7 @@ describe('getValidToken', () => {
     const creds: StoredCredentials = {
       expiresAt: Math.floor(Date.now() / 1000) - 100,
       refreshToken: 'old-refresh-token',
-      token: 'expired-token',
+      accessToken: 'expired-token',
       tokenType: 'jwt',
     };
     vi.mocked(loadCredentials).mockReturnValue(creds);
@@ -129,7 +129,7 @@ describe('getValidToken', () => {
     const creds: StoredCredentials = {
       expiresAt: Math.floor(Date.now() / 1000) - 100,
       refreshToken: 'valid-refresh-token',
-      token: 'expired-token',
+      accessToken: 'expired-token',
       tokenType: 'jwt',
     };
     vi.mocked(loadCredentials).mockReturnValue(creds);
@@ -149,7 +149,7 @@ describe('getValidToken', () => {
     const creds: StoredCredentials = {
       expiresAt: Math.floor(Date.now() / 1000) - 100,
       refreshToken: 'valid-refresh-token',
-      token: 'expired-token',
+      accessToken: 'expired-token',
       tokenType: 'jwt',
     };
     vi.mocked(loadCredentials).mockReturnValue(creds);
@@ -168,7 +168,7 @@ describe('getValidToken', () => {
     const creds: StoredCredentials = {
       expiresAt: Math.floor(Date.now() / 1000) - 100,
       refreshToken: 'valid-refresh-token',
-      token: 'expired-token',
+      accessToken: 'expired-token',
       tokenType: 'jwt',
     };
     vi.mocked(loadCredentials).mockReturnValue(creds);
@@ -187,7 +187,7 @@ describe('getValidToken', () => {
     const creds: StoredCredentials = {
       expiresAt: Math.floor(Date.now() / 1000) - 100,
       refreshToken: 'valid-refresh-token',
-      token: 'expired-token',
+      accessToken: 'expired-token',
       tokenType: 'jwt',
     };
     vi.mocked(loadCredentials).mockReturnValue(creds);
@@ -203,7 +203,7 @@ describe('getValidToken', () => {
     const creds: StoredCredentials = {
       expiresAt: Math.floor(Date.now() / 1000) - 100,
       refreshToken: 'my-refresh-token',
-      token: 'expired-token',
+      accessToken: 'expired-token',
       tokenType: 'jwt',
     };
     vi.mocked(loadCredentials).mockReturnValue(creds);

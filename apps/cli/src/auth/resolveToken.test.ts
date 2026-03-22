@@ -37,7 +37,7 @@ describe('resolveToken', () => {
   });
 
   describe('with explicit --token', () => {
-    it('should return token, tokenType and userId from JWT', async () => {
+    it('should return token and userId from JWT', async () => {
       const token = makeJwt('user-123');
 
       const result = await resolveToken({ token });
@@ -77,7 +77,7 @@ describe('resolveToken', () => {
   });
 
   describe('with stored credentials', () => {
-    it('should return stored JWT credentials token', async () => {
+    it('should return stored credentials token', async () => {
       const token = makeJwt('stored-user');
       vi.mocked(getValidToken).mockResolvedValue({
         credentials: {
@@ -105,7 +105,7 @@ describe('resolveToken', () => {
       expect(result).toEqual({ token: 'sk-lh-test', tokenType: 'apiKey', userId: 'user-789' });
     });
 
-    it('should exit if stored JWT token has no sub', async () => {
+    it('should exit if stored token has no sub', async () => {
       const header = Buffer.from('{}').toString('base64url');
       const payload = Buffer.from('{}').toString('base64url');
       const token = `${header}.${payload}.sig`;

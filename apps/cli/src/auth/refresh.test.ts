@@ -30,7 +30,7 @@ describe('getValidToken', () => {
     expect(result).toBeNull();
   });
 
-  it('should return JWT credentials when token is still valid', async () => {
+  it('should return credentials when token is still valid', async () => {
     const creds: StoredCredentials = {
       expiresAt: Math.floor(Date.now() / 1000) + 3600,
       refreshToken: 'refresh-tok',
@@ -59,7 +59,7 @@ describe('getValidToken', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('should return null when JWT expired and no refresh token', async () => {
+  it('should return null when token expired and no refresh token', async () => {
     const creds: StoredCredentials = {
       expiresAt: Math.floor(Date.now() / 1000) - 100,
       accessToken: 'expired-token',
@@ -72,7 +72,7 @@ describe('getValidToken', () => {
     expect(result).toBeNull();
   });
 
-  it('should refresh and save updated JWT credentials when expired', async () => {
+  it('should refresh and save updated credentials when token is expired', async () => {
     const creds: StoredCredentials = {
       expiresAt: Math.floor(Date.now() / 1000) - 100,
       refreshToken: 'valid-refresh-token',
@@ -125,7 +125,7 @@ describe('getValidToken', () => {
     expect(result!.credentials.expiresAt).toBeUndefined();
   });
 
-  it('should return null when refresh request fails', async () => {
+  it('should return null when refresh request fails (non-ok)', async () => {
     const creds: StoredCredentials = {
       expiresAt: Math.floor(Date.now() / 1000) - 100,
       refreshToken: 'valid-refresh-token',

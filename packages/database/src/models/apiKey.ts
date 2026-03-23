@@ -1,4 +1,4 @@
-import { generateApiKey, isApiKeyExpired, validateApiKeyFormat } from '@lobechat/utils';
+import { generateApiKey, isApiKeyExpired, validateApiKeyFormat } from '@lobechat/utils/apiKey';
 import { hashApiKey } from '@lobechat/utils/server';
 import { and, desc, eq } from 'drizzle-orm';
 

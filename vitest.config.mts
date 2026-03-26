@@ -1,4 +1,5 @@
 import { dirname, join, resolve } from 'node:path';
+
 import tsconfigPaths from 'vite-tsconfig-paths';
 import { coverageConfigDefaults, defineConfig } from 'vitest/config';
 
@@ -27,6 +28,15 @@ export default defineConfig({
   },
   plugins: [
     tsconfigPaths({ projects: ['.'] }),
+    // Let `.md` imports resolve to their raw text content so Rollup/Vitest
+    // doesn't try to parse Markdown as JavaScript.
+    {
+      name: 'raw-md',
+      transform(_, id) {
+        if (id.endsWith('.md'))
+          return { code: 'export default ""', map: null };
+      },
+    },
     /**
      * @lobehub/fluent-emoji@4.0.0 ships `es/FluentEmoji/style.js` but its `es/FluentEmoji/index.js`
      * imports `./style/index.js` which doesn't exist.

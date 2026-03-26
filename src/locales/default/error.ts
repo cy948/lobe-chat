@@ -104,12 +104,22 @@ export default {
     'The request returned empty. Please check if the API proxy address does not end with `/v1`.',
   'response.CreateMessageError':
     'Sorry, the message could not be sent successfully. Please copy the content and try sending it again. This message will not be retained after refreshing the page.',
+  'exceededContext.compact': 'Compact Context',
+  'exceededContext.desc':
+    'The conversation has exceeded the context window limit. You can compact the context to compress history and continue chatting.',
+  'exceededContext.title': 'Context Window Exceeded',
+
+  'unknownError.copyTraceId': 'Trace ID Copied',
+  'unknownError.desc': 'An unexpected error occurred. You can retry or report on',
+  'unknownError.retry': 'Retry',
+  'unknownError.title': 'Oops, the request took a nap',
+
   'response.ExceededContextWindow':
     'The current request content exceeds the length that the model can handle. Please reduce the amount of content and try again.',
   'response.ExceededContextWindowCloud':
     'The conversation is too long to process. Please edit your last message to reduce input or delete some messages and try again.',
   'response.QuotaLimitReachedCloud':
-    'The model service is currently under heavy load. Please try again later.',
+    'The model service is currently under heavy load. Please try again later or switch to another model.',
   'response.FreePlanLimit':
     'You are currently a free user and cannot use this feature. Please upgrade to a paid plan to continue using it.',
   'response.InsufficientBudgetForModel':

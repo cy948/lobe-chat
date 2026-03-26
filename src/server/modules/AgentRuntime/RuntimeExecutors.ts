@@ -92,6 +92,7 @@ const formatErrorEventData = (error: unknown, phase: string) => {
 
 export interface RuntimeExecutorContext {
   agentConfig?: any;
+  botPlatformContext?: any;
   discordContext?: any;
   evalContext?: EvalContext;
   fileService?: any;
@@ -276,6 +277,7 @@ export const createRuntimeExecutors = (
               return info?.abilities?.vision ?? true;
             },
           },
+          botPlatformContext: ctx.botPlatformContext,
           discordContext: ctx.discordContext,
           enableHistoryCount: agentConfig.chatConfig?.enableHistoryCount ?? undefined,
           evalContext: ctx.evalContext,
@@ -979,6 +981,7 @@ export const createRuntimeExecutors = (
         agentId: state.metadata?.agentId,
         memoryToolPermission: agentConfig?.chatConfig?.memory?.toolPermission,
         serverDB: ctx.serverDB,
+        taskId: state.metadata?.taskId,
         toolManifestMap: effectiveManifestMap,
         toolResultMaxLength,
         topicId: ctx.topicId,
@@ -1196,6 +1199,7 @@ export const createRuntimeExecutors = (
             agentId: state.metadata?.agentId,
             memoryToolPermission: batchAgentConfig?.chatConfig?.memory?.toolPermission,
             serverDB: ctx.serverDB,
+            taskId: state.metadata?.taskId,
             toolManifestMap: batchManifestMap,
             toolResultMaxLength: batchAgentConfig?.chatConfig?.toolResultMaxLength,
             topicId: ctx.topicId,

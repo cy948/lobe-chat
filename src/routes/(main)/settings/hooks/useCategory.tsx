@@ -2,6 +2,7 @@ import { isDesktop } from '@lobechat/const';
 import { Avatar } from '@lobehub/ui';
 import { SkillsIcon } from '@lobehub/ui/icons';
 import {
+  // BellIcon,
   Brain,
   BrainCircuit,
   ChartColumnBigIcon,
@@ -100,6 +101,12 @@ export const useCategory = () => {
         key: SettingsTabs.Hotkey,
         label: t('tab.hotkey'),
       },
+      // TODO: temporarily disabled until notification UI is polished
+      // enableBusinessFeatures && {
+      //   icon: BellIcon,
+      //   key: SettingsTabs.Notification,
+      //   label: t('tab.notification'),
+      // },
     ].filter(Boolean) as CategoryItem[];
 
     groups.push({
@@ -127,7 +134,7 @@ export const useCategory = () => {
 
     // Agent group
     const agentItems: CategoryItem[] = [
-      {
+      (!enableBusinessFeatures || isDevMode) && {
         icon: Brain,
         key: SettingsTabs.Provider,
         label: t('tab.provider'),

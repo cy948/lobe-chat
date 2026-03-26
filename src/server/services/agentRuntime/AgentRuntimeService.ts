@@ -184,12 +184,7 @@ export class AgentRuntimeService {
     if (impl instanceof LocalQueueServiceImpl) {
       log('Setting up local execution callback');
       impl.setExecutionCallback(async (operationId, stepIndex, context) => {
-        log('[%s][%d] Local step executing...', operationId, stepIndex);
-        await this.executeStep({
-          context,
-          operationId,
-          stepIndex,
-        });
+        await this.executeStep({ context, operationId, stepIndex });
       });
     }
   }
@@ -274,6 +269,7 @@ export class AgentRuntimeService {
       completionWebhook,
       stepWebhook,
       webhookDelivery,
+      botPlatformContext,
       discordContext,
       evalContext,
       maxSteps,
@@ -318,6 +314,7 @@ export class AgentRuntimeService {
         metadata: {
           activeDeviceId,
           agentConfig,
+          botPlatformContext,
           completionWebhook,
           deviceSystemInfo,
           discordContext,
@@ -1502,6 +1499,7 @@ export class AgentRuntimeService {
     // Create streaming executor context
     const executorContext: RuntimeExecutorContext = {
       agentConfig: metadata?.agentConfig,
+      botPlatformContext: metadata?.botPlatformContext,
       discordContext: metadata?.discordContext,
       userTimezone: metadata?.userTimezone,
       evalContext: metadata?.evalContext,

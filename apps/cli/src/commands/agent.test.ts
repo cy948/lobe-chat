@@ -41,8 +41,8 @@ const { mockStreamAgentEvents } = vi.hoisted(() => ({
   mockStreamAgentEvents: vi.fn(),
 }));
 
-const { mockGetAuthInfo } = vi.hoisted(() => ({
-  mockGetAuthInfo: vi.fn(),
+const { mockGetAgentStreamAuthInfo } = vi.hoisted(() => ({
+  mockGetAgentStreamAuthInfo: vi.fn(),
 }));
 
 const { mockResolveLocalDeviceId } = vi.hoisted(() => ({
@@ -50,7 +50,7 @@ const { mockResolveLocalDeviceId } = vi.hoisted(() => ({
 }));
 
 vi.mock('../api/client', () => ({ getTrpcClient: mockGetTrpcClient }));
-vi.mock('../api/http', () => ({ getAuthInfo: mockGetAuthInfo }));
+vi.mock('../api/http', () => ({ getAgentStreamAuthInfo: mockGetAgentStreamAuthInfo }));
 vi.mock('../utils/agentStream', () => ({ streamAgentEvents: mockStreamAgentEvents }));
 vi.mock('../utils/device', () => ({ resolveLocalDeviceId: mockResolveLocalDeviceId }));
 vi.mock('../utils/logger', () => ({
@@ -66,9 +66,8 @@ describe('agent command', () => {
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
     consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     mockGetTrpcClient.mockResolvedValue(mockTrpcClient);
-    mockGetAuthInfo.mockResolvedValue({
-      accessToken: 'test-token',
-      headers: { 'Content-Type': 'application/json', 'Oidc-Auth': 'test-token' },
+    mockGetAgentStreamAuthInfo.mockResolvedValue({
+      headers: { 'Oidc-Auth': 'test-token' },
       serverUrl: 'https://example.com',
     });
     mockStreamAgentEvents.mockResolvedValue(undefined);
@@ -311,7 +310,6 @@ describe('agent command', () => {
         expect.objectContaining({ json: undefined, verbose: undefined }),
       );
     });
-
     it('should support --slug option', async () => {
       mockTrpcClient.aiAgent.execAgent.mutate.mockResolvedValue({
         operationId: 'op-456',

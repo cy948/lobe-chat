@@ -4,7 +4,7 @@ import type { Command } from 'commander';
 import pc from 'picocolors';
 
 import { getTrpcClient } from '../api/client';
-import { getAuthInfo } from '../api/http';
+import { getAgentStreamAuthInfo } from '../api/http';
 import { replayAgentEvents, streamAgentEvents } from '../utils/agentStream';
 import { resolveLocalDeviceId } from '../utils/device';
 import { confirm, outputJson, printTable, truncate } from '../utils/format';
@@ -348,7 +348,7 @@ export function registerAgentCommand(program: Command) {
         }
 
         // 2. Connect to SSE stream
-        const { serverUrl, headers } = await getAuthInfo();
+        const { serverUrl, headers } = await getAgentStreamAuthInfo();
         const streamUrl = `${serverUrl}/api/agent/stream?operationId=${encodeURIComponent(operationId)}`;
 
         await streamAgentEvents(streamUrl, headers, {

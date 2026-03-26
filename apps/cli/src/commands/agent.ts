@@ -249,7 +249,10 @@ export function registerAgentCommand(program: Command) {
     .option('-p, --prompt <text>', 'User prompt')
     .option('-t, --topic-id <id>', 'Reuse an existing topic')
     .option('--no-auto-start', 'Do not auto-start the agent')
-    .option('--device <target>', 'Device target (local)')
+    .option(
+      '--device <target>',
+      'Target device ID, or use "local" for the current connected device',
+    )
     .option('--json', 'Output full JSON event stream')
     .option('-v, --verbose', 'Show detailed tool call info')
     .option('--replay <file>', 'Replay events from a saved JSON file (offline)')
@@ -290,28 +293,33 @@ export function registerAgentCommand(program: Command) {
 
         let deviceId: string | undefined;
         if (options.device !== undefined) {
-          if (options.device !== 'local') {
-            log.error("Invalid --device value. Only 'local' is supported.");
-            process.exit(1);
-            return;
-          }
-
-          deviceId = resolveLocalDeviceId();
-          if (!deviceId) {
-            log.error(
-              "No local device found. Run 'lh connect' first, then retry with --device local.",
-            );
-            process.exit(1);
-            return;
+          if (options.device === 'local') {
+            deviceId = resolveLocalDeviceId();
+            if (!deviceId) {
+              log.error(
+                "No local device found. Run 'lh connect' first, then retry with --device local.",
+              );
+              process.exit(1);
+              return;
+            }
+          } else {
+            deviceId = options.device;
           }
 
           const devices = await client.device.listDevices.query();
           const matchedDevice = devices.find(
             (device: { deviceId?: string; online?: boolean }) => device.deviceId === deviceId,
           );
-          if (!matchedDevice?.online) {
+          if (!matchedDevice) {
+            log.error(`Device "${deviceId}" was not found. Check 'lh device list' and try again.`);
+            process.exit(1);
+            return;
+          }
+          if (!matchedDevice.online) {
             log.error(
-              `Local device "${deviceId}" is not online. Reconnect with 'lh connect' and try again.`,
+              options.device === 'local'
+                ? `Local device "${deviceId}" is not online. Reconnect with 'lh connect' and try again.`
+                : `Device "${deviceId}" is not online. Bring it online and try again.`,
             );
             process.exit(1);
             return;

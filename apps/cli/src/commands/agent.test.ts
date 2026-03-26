@@ -458,7 +458,15 @@ describe('agent command', () => {
       );
     });
 
-    it('should exit when --device is invalid', async () => {
+    it('should pass explicit --device id as deviceId', async () => {
+      mockTrpcClient.device.listDevices.query.mockResolvedValue([
+        { deviceId: 'device-remote-1', online: true },
+      ]);
+      mockTrpcClient.aiAgent.execAgent.mutate.mockResolvedValue({
+        operationId: 'op-explicit-device',
+        success: true,
+      });
+
       const program = createProgram();
       await program.parseAsync([
         'node',
@@ -470,10 +478,35 @@ describe('agent command', () => {
         '--prompt',
         'Hi',
         '--device',
-        'remote',
+        'device-remote-1',
       ]);
 
-      expect(log.error).toHaveBeenCalledWith(expect.stringContaining("Only 'local' is supported"));
+      expect(mockResolveLocalDeviceId).not.toHaveBeenCalled();
+      expect(mockTrpcClient.aiAgent.execAgent.mutate).toHaveBeenCalledWith(
+        expect.objectContaining({ agentId: 'a1', deviceId: 'device-remote-1', prompt: 'Hi' }),
+      );
+    });
+
+    it('should exit when explicit device is not found', async () => {
+      mockTrpcClient.device.listDevices.query.mockResolvedValue([
+        { deviceId: 'other-device', online: true },
+      ]);
+
+      const program = createProgram();
+      await program.parseAsync([
+        'node',
+        'test',
+        'agent',
+        'run',
+        '--agent-id',
+        'a1',
+        '--prompt',
+        'Hi',
+        '--device',
+        'device-remote-1',
+      ]);
+
+      expect(log.error).toHaveBeenCalledWith(expect.stringContaining('was not found'));
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
@@ -500,7 +533,9 @@ describe('agent command', () => {
 
     it('should exit when local device is offline', async () => {
       mockResolveLocalDeviceId.mockReturnValue('local-device-1');
-      mockTrpcClient.device.listDevices.query.mockResolvedValue([{ deviceId: 'other-device' }]);
+      mockTrpcClient.device.listDevices.query.mockResolvedValue([
+        { deviceId: 'local-device-1', online: false },
+      ]);
 
       const program = createProgram();
       await program.parseAsync([
@@ -517,6 +552,29 @@ describe('agent command', () => {
       ]);
 
       expect(log.error).toHaveBeenCalledWith(expect.stringContaining('is not online'));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it('should exit when explicit device is offline', async () => {
+      mockTrpcClient.device.listDevices.query.mockResolvedValue([
+        { deviceId: 'device-remote-1', online: false },
+      ]);
+
+      const program = createProgram();
+      await program.parseAsync([
+        'node',
+        'test',
+        'agent',
+        'run',
+        '--agent-id',
+        'a1',
+        '--prompt',
+        'Hi',
+        '--device',
+        'device-remote-1',
+      ]);
+
+      expect(log.error).toHaveBeenCalledWith(expect.stringContaining('Bring it online'));
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 

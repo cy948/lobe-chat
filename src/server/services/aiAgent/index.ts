@@ -324,6 +324,7 @@ export class AiAgentService {
     let topicId = appContext?.topicId;
     let topicBoundDeviceId = requestedDeviceId;
     if (!topicId) {
+      // Prepare metadata with cronJobId, botContext, and bound device if provided
       const metadata =
         cronJobId || botContext || requestedDeviceId
           ? {
@@ -451,10 +452,10 @@ export class AiAgentService {
     ];
 
     // Derive activeDeviceId from device context:
-    // 1. Explicit run deviceId
-    // 2. Topic-bound device
-    // 3. Agent-bound device
-    // 4. In IM/Bot scenarios, auto-activate when exactly one device is online
+    // 1. If this run explicitly requested a device and that device is online, use it
+    // 2. Otherwise, if the current topic has a bound device and it is online, use that
+    // 3. Otherwise, fall back to the agent-level bound device when it is online
+    // 4. Otherwise, in IM/Bot scenarios, auto-activate only when exactly one device is online
     const activeDeviceId = boundDeviceId
       ? onlineDevices.some((device) => device.deviceId === boundDeviceId)
         ? boundDeviceId

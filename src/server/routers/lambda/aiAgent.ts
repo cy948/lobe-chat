@@ -578,13 +578,22 @@ export const aiAgentRouter = router({
       task: (typeof tasks)[number],
       taskIndex: number,
     ): Promise<TaskResult> => {
-      const { agentId, slug, prompt, appContext, autoStart = true, existingMessageIds = [] } = task;
+      const {
+        agentId,
+        slug,
+        prompt,
+        appContext,
+        autoStart = true,
+        deviceId,
+        existingMessageIds = [],
+      } = task;
 
       try {
         const result = await ctx.aiAgentService.execAgent({
           agentId,
           appContext,
           autoStart,
+          deviceId,
           existingMessageIds,
           prompt,
           slug,

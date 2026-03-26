@@ -13,7 +13,6 @@ import type { LobeToolManifest } from '@lobechat/context-engine';
 import type { LobeChatDatabase } from '@lobechat/database';
 import type {
   ChatTopicBotContext,
-  ChatTopicMetadata,
   ExecAgentParams,
   ExecAgentResult,
   ExecGroupAgentParams,
@@ -323,9 +322,9 @@ export class AiAgentService {
 
     // 3. Handle topic creation: if no topicId provided, create a new topic; otherwise reuse existing
     let topicId = appContext?.topicId;
-    let topicMetadata: ChatTopicMetadata | undefined;
+    let topicBoundDeviceId = requestedDeviceId;
     if (!topicId) {
-      topicMetadata =
+      const metadata =
         cronJobId || botContext || requestedDeviceId
           ? {
               bot: botContext,
@@ -336,13 +335,12 @@ export class AiAgentService {
 
       const newTopic = await this.topicModel.create({
         agentId: resolvedAgentId,
-        metadata: topicMetadata,
+        metadata,
         title:
           title !== undefined ? title : prompt.slice(0, 50) + (prompt.length > 50 ? '...' : ''),
         trigger,
       });
       topicId = newTopic.id;
-      topicMetadata = newTopic.metadata ?? undefined;
       log(
         'execAgent: created new topic %s with trigger %s, cronJobId %s',
         topicId,
@@ -351,17 +349,16 @@ export class AiAgentService {
       );
     } else {
       log('execAgent: reusing existing topic %s', topicId);
-      const topic = await this.topicModel.findById(topicId);
-      topicMetadata = topic?.metadata ?? undefined;
 
       if (requestedDeviceId) {
         await this.topicModel.updateMetadata(topicId, { boundDeviceId: requestedDeviceId });
-        topicMetadata = { ...topicMetadata, boundDeviceId: requestedDeviceId };
+      } else {
+        const topic = await this.topicModel.findById(topicId);
+        topicBoundDeviceId = topic?.metadata?.boundDeviceId;
       }
     }
 
     await throwIfExecutionAborted('topic setup');
-    const topicBoundDeviceId = requestedDeviceId ?? topicMetadata?.boundDeviceId;
 
     // Extract model and provider from agent config
     const model = agentConfig.model!;
@@ -458,11 +455,8 @@ export class AiAgentService {
     // 2. Topic-bound device
     // 3. Agent-bound device
     // 4. In IM/Bot scenarios, auto-activate when exactly one device is online
-    const hasBoundDeviceOnline = boundDeviceId
-      ? onlineDevices.some((device) => device.deviceId === boundDeviceId)
-      : false;
     const activeDeviceId = boundDeviceId
-      ? hasBoundDeviceOnline
+      ? onlineDevices.some((device) => device.deviceId === boundDeviceId)
         ? boundDeviceId
         : undefined
       : (discordContext || botContext) && onlineDevices.length === 1

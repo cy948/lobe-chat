@@ -2725,5 +2725,66 @@ describe('RuntimeExecutors', () => {
         }),
       );
     });
+
+    it('should retry llm execution, emit stream_retry, and commit only the successful attempt', async () => {
+      const toolCallPayload = [
+        {
+          function: { arguments: '{}', name: 'search' },
+          id: 'tool-call-1',
+          type: 'function',
+        },
+      ];
+
+      const mockChat = vi
+        .fn()
+        .mockImplementationOnce(async (_payload: any, options: any) => {
+          await options.callback.onGrounding?.({ query: 'draft' });
+          await options.callback.onToolsCalling?.({ toolsCalling: toolCallPayload });
+          throw new Error('network timeout');
+        })
+        .mockImplementationOnce(async (_payload: any, options: any) => {
+          await options.callback.onText?.('final');
+          await options.callback.onCompletion?.({
+            usage: { totalInputTokens: 1, totalOutputTokens: 2, totalTokens: 3 },
+          });
+          return new Response('done');
+        });
+
+      vi.mocked(initModelRuntimeFromDB).mockResolvedValue({ chat: mockChat } as any);
+
+      const executors = createRuntimeExecutors(ctx);
+      const state = createMockState();
+      const instruction = {
+        payload: {
+          messages: [{ content: 'Hello', role: 'user' }],
+          model: 'gpt-4',
+          parentMessageId: 'parent-msg-123',
+          provider: 'openai',
+          tools: [],
+        },
+        type: 'call_llm' as const,
+      };
+
+      const result = await executors.call_llm!(instruction, state);
+
+      expect(mockChat).toHaveBeenCalledTimes(2);
+      expect(mockMessageModel.create).toHaveBeenCalledTimes(1);
+      expect(mockMessageModel.update).toHaveBeenCalledWith(
+        'msg-123',
+        expect.objectContaining({ content: 'final' }),
+      );
+      expect(result.newState.messages.at(-1)).toEqual({
+        content: 'final',
+        role: 'assistant',
+        tool_calls: undefined,
+      });
+      expect(mockStreamManager.publishStreamEvent).toHaveBeenCalledWith(
+        'op-123',
+        expect.objectContaining({
+          type: 'stream_retry',
+          data: { attempt: 2, maxAttempts: 2 },
+        }),
+      );
+    });
   });
 });

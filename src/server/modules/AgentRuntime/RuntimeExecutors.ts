@@ -37,7 +37,10 @@ import { type EvalContext } from '@/server/modules/Mecha/ContextEngineering/type
 import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
 import { AgentDocumentsService } from '@/server/services/agentDocuments';
 import { MessageService } from '@/server/services/message';
-import { type ToolExecutionService } from '@/server/services/toolExecution';
+import {
+  type ToolExecutionResultResponse,
+  type ToolExecutionService,
+} from '@/server/services/toolExecution';
 
 import { type IStreamEventManager } from './types';
 
@@ -61,6 +64,51 @@ const normalizeDocumentPosition = (
 const TOOL_PRICING: Record<string, number> = {
   'lobe-web-browsing/craw': 0,
   'lobe-web-browsing/search': 0,
+};
+
+const TOOL_MAX_RETRIES = 2;
+
+type ToolFailureKind = 'replan' | 'retry' | 'stop';
+
+const getToolFailureKind = (result: ToolExecutionResultResponse): ToolFailureKind | undefined => {
+  if (!result.error || typeof result.error !== 'object') return;
+
+  const { kind } = result.error as { kind?: unknown };
+  return kind === 'replan' || kind === 'retry' || kind === 'stop' ? kind : undefined;
+};
+
+const shouldRetryTool = (kind: ToolFailureKind | undefined, attempt: number, maxRetries: number) =>
+  kind === 'retry' && attempt <= maxRetries;
+
+const executeToolWithRetry = async (
+  execute: () => Promise<ToolExecutionResultResponse>,
+  params: { maxRetries: number; operationLogId: string; toolName: string },
+): Promise<{ attempts: number; result: ToolExecutionResultResponse }> => {
+  const maxAttempts = params.maxRetries + 1;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const result = await execute();
+
+    if (result.success) return { attempts: attempt, result };
+
+    const kind = getToolFailureKind(result);
+
+    if (shouldRetryTool(kind, attempt, params.maxRetries)) {
+      log(
+        '[%s] Tool %s failed with kind=%s (attempt %d/%d), retrying ...',
+        params.operationLogId,
+        params.toolName,
+        kind,
+        attempt,
+        maxAttempts,
+      );
+      continue;
+    }
+
+    return { attempts: attempt, result };
+  }
+
+  throw new Error('Tool execution retry loop exited unexpectedly');
 };
 
 const formatErrorEventData = (error: unknown, phase: string) => {
@@ -1033,18 +1081,23 @@ export const createRuntimeExecutors = (
 
       // Execute tool using ToolExecutionService
       log(`[${operationLogId}] Executing tool ${toolName} ...`);
-      const executionResult = await toolExecutionService.executeTool(chatToolPayload, {
-        activeDeviceId: state.metadata?.activeDeviceId,
-        agentId: state.metadata?.agentId,
-        memoryToolPermission: agentConfig?.chatConfig?.memory?.toolPermission,
-        serverDB: ctx.serverDB,
-        taskId: state.metadata?.taskId,
-        toolManifestMap: effectiveManifestMap,
-        toolResultMaxLength,
-        topicId: ctx.topicId,
-        userId: ctx.userId,
-      });
+      const execution = await executeToolWithRetry(
+        () =>
+          toolExecutionService.executeTool(chatToolPayload, {
+            activeDeviceId: state.metadata?.activeDeviceId,
+            agentId: state.metadata?.agentId,
+            memoryToolPermission: agentConfig?.chatConfig?.memory?.toolPermission,
+            serverDB: ctx.serverDB,
+            taskId: state.metadata?.taskId,
+            toolManifestMap: effectiveManifestMap,
+            toolResultMaxLength,
+            topicId: ctx.topicId,
+            userId: ctx.userId,
+          }),
+        { maxRetries: TOOL_MAX_RETRIES, operationLogId, toolName },
+      );
 
+      const executionResult = execution.result;
       const executionTime = executionResult.executionTime;
       const isSuccess = executionResult.success;
       log(
@@ -1057,6 +1110,8 @@ export const createRuntimeExecutors = (
         data: {
           executionTime,
           isSuccess,
+          attempts: execution.attempts,
+          maxAttempts: TOOL_MAX_RETRIES + 1,
           payload,
           phase: 'tool_execution',
           result: executionResult,
@@ -1251,18 +1306,23 @@ export const createRuntimeExecutors = (
 
           const batchAgentConfig = state.metadata?.agentConfig;
 
-          const executionResult = await toolExecutionService.executeTool(chatToolPayload, {
-            activeDeviceId: state.metadata?.activeDeviceId,
-            agentId: state.metadata?.agentId,
-            memoryToolPermission: batchAgentConfig?.chatConfig?.memory?.toolPermission,
-            serverDB: ctx.serverDB,
-            taskId: state.metadata?.taskId,
-            toolManifestMap: batchManifestMap,
-            toolResultMaxLength: batchAgentConfig?.chatConfig?.toolResultMaxLength,
-            topicId: ctx.topicId,
-            userId: ctx.userId,
-          });
+          const execution = await executeToolWithRetry(
+            () =>
+              toolExecutionService.executeTool(chatToolPayload, {
+                activeDeviceId: state.metadata?.activeDeviceId,
+                agentId: state.metadata?.agentId,
+                memoryToolPermission: batchAgentConfig?.chatConfig?.memory?.toolPermission,
+                serverDB: ctx.serverDB,
+                taskId: state.metadata?.taskId,
+                toolManifestMap: batchManifestMap,
+                toolResultMaxLength: batchAgentConfig?.chatConfig?.toolResultMaxLength,
+                topicId: ctx.topicId,
+                userId: ctx.userId,
+              }),
+            { maxRetries: TOOL_MAX_RETRIES, operationLogId, toolName },
+          );
 
+          const executionResult = execution.result;
           const executionTime = executionResult.executionTime;
           const isSuccess = executionResult.success;
           log(
@@ -1274,6 +1334,8 @@ export const createRuntimeExecutors = (
             data: {
               executionTime,
               isSuccess,
+              attempts: execution.attempts,
+              maxAttempts: TOOL_MAX_RETRIES + 1,
               payload: { parentMessageId, toolCalling: chatToolPayload },
               phase: 'tool_execution',
               result: executionResult,

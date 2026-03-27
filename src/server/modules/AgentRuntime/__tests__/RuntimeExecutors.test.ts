@@ -1327,6 +1327,141 @@ describe('RuntimeExecutors', () => {
       const payload = result.nextContext!.payload as { parentMessageId?: string };
       expect(payload.parentMessageId).toBeUndefined();
     });
+
+    it('should retry tool execution when kind is retry and eventually succeed', async () => {
+      mockToolExecutionService.executeTool
+        .mockResolvedValueOnce({
+          content: 'timeout-1',
+          error: { kind: 'retry', message: 'timeout' },
+          executionTime: 50,
+          state: {},
+          success: false,
+        })
+        .mockResolvedValueOnce({
+          content: 'timeout-2',
+          error: { kind: 'retry', message: 'timeout' },
+          executionTime: 50,
+          state: {},
+          success: false,
+        })
+        .mockResolvedValueOnce({
+          content: 'Tool result success',
+          error: null,
+          executionTime: 80,
+          state: {},
+          success: true,
+        });
+
+      const executors = createRuntimeExecutors(ctx);
+      const state = createMockState();
+
+      const instruction = {
+        payload: {
+          parentMessageId: 'assistant-msg-123',
+          toolCalling: {
+            apiName: 'search',
+            arguments: '{}',
+            id: 'tool-call-retry-1',
+            identifier: 'web-search',
+            type: 'default' as const,
+          },
+        },
+        type: 'call_tool' as const,
+      };
+
+      const result = await executors.call_tool!(instruction, state);
+
+      expect(mockToolExecutionService.executeTool).toHaveBeenCalledTimes(3);
+      expect(result.nextContext?.phase).toBe('tool_result');
+      expect((result.nextContext!.payload as any).isSuccess).toBe(true);
+    });
+
+    it('should materialize failed tool result after retry exhaustion', async () => {
+      mockToolExecutionService.executeTool.mockResolvedValue({
+        content: 'still failing',
+        error: { kind: 'retry', message: 'timeout' },
+        executionTime: 50,
+        state: {},
+        success: false,
+      });
+
+      const executors = createRuntimeExecutors(ctx);
+      const state = createMockState();
+
+      const instruction = {
+        payload: {
+          parentMessageId: 'assistant-msg-123',
+          toolCalling: {
+            apiName: 'search',
+            arguments: '{}',
+            id: 'tool-call-retry-2',
+            identifier: 'web-search',
+            type: 'default' as const,
+          },
+        },
+        type: 'call_tool' as const,
+      };
+
+      const result = await executors.call_tool!(instruction, state);
+
+      expect(mockToolExecutionService.executeTool).toHaveBeenCalledTimes(3);
+      expect((result.nextContext!.payload as any).isSuccess).toBe(false);
+      expect(result.nextContext?.phase).toBe('tool_result');
+    });
+
+    it('should not retry for replan or stop kinds', async () => {
+      mockToolExecutionService.executeTool
+        .mockResolvedValueOnce({
+          content: 'invalid args',
+          error: { kind: 'replan', message: 'invalid schema' },
+          executionTime: 30,
+          state: {},
+          success: false,
+        })
+        .mockResolvedValueOnce({
+          content: 'permission denied',
+          error: { kind: 'stop', message: 'forbidden' },
+          executionTime: 30,
+          state: {},
+          success: false,
+        });
+
+      const executors = createRuntimeExecutors(ctx);
+      const state = createMockState();
+
+      const replanInstruction = {
+        payload: {
+          parentMessageId: 'assistant-msg-123',
+          toolCalling: {
+            apiName: 'search',
+            arguments: '{}',
+            id: 'tool-call-replan-1',
+            identifier: 'web-search',
+            type: 'default' as const,
+          },
+        },
+        type: 'call_tool' as const,
+      };
+
+      const stopInstruction = {
+        payload: {
+          parentMessageId: 'assistant-msg-123',
+          toolCalling: {
+            apiName: 'search',
+            arguments: '{}',
+            id: 'tool-call-stop-1',
+            identifier: 'web-search',
+            type: 'default' as const,
+          },
+        },
+        type: 'call_tool' as const,
+      };
+
+      await executors.call_tool!(replanInstruction, state);
+      await executors.call_tool!(stopInstruction, state);
+
+      expect(mockToolExecutionService.executeTool).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('call_tools_batch executor', () => {
@@ -1420,6 +1555,76 @@ describe('RuntimeExecutors', () => {
           tool_call_id: 'tool-call-2',
         }),
       );
+    });
+
+    it('should apply retry policy per tool in batch mode', async () => {
+      const attemptsByTool: Record<string, number> = {};
+
+      mockToolExecutionService.executeTool.mockImplementation((payload: any) => {
+        const toolId = payload.id as string;
+        const nextAttempt = (attemptsByTool[toolId] || 0) + 1;
+        attemptsByTool[toolId] = nextAttempt;
+
+        if (toolId === 'tool-call-retry-batch' && nextAttempt < 3) {
+          return Promise.resolve({
+            content: 'timeout',
+            error: { kind: 'retry', message: 'timeout' },
+            executionTime: 40,
+            state: {},
+            success: false,
+          });
+        }
+
+        if (toolId === 'tool-call-stop-batch') {
+          return Promise.resolve({
+            content: 'permission denied',
+            error: { kind: 'stop', message: 'forbidden' },
+            executionTime: 40,
+            state: {},
+            success: false,
+          });
+        }
+
+        return Promise.resolve({
+          content: 'ok',
+          error: null,
+          executionTime: 60,
+          state: {},
+          success: true,
+        });
+      });
+
+      const executors = createRuntimeExecutors(ctx);
+      const state = createMockState();
+
+      const instruction = {
+        payload: {
+          parentMessageId: 'assistant-msg-123',
+          toolsCalling: [
+            {
+              apiName: 'search',
+              arguments: '{}',
+              id: 'tool-call-retry-batch',
+              identifier: 'web-search',
+              type: 'default' as const,
+            },
+            {
+              apiName: 'search',
+              arguments: '{}',
+              id: 'tool-call-stop-batch',
+              identifier: 'web-search',
+              type: 'default' as const,
+            },
+          ],
+        },
+        type: 'call_tools_batch' as const,
+      };
+
+      const result = await executors.call_tools_batch!(instruction, state);
+
+      expect(mockToolExecutionService.executeTool).toHaveBeenCalledTimes(4);
+      expect(result.nextContext?.phase).toBe('tools_batch_result');
+      expect((result.nextContext!.payload as any).toolResults).toHaveLength(2);
     });
 
     it('should refresh messages from database after batch execution', async () => {

@@ -31,12 +31,6 @@ describe('ToolMessageReorder', () => {
     const res = await proc.process(ctx);
 
     expect(res.messages.map((m) => m.id)).toEqual(['u1', 'a1', 't1']);
-    expect(res.metadata.toolMessageReorder).toEqual(
-      expect.objectContaining({
-        droppedOrphanTools: 1,
-        generatedSyntheticTools: 0,
-      }),
-    );
   });
 
   it('should reorderToolMessages', async () => {
@@ -233,7 +227,7 @@ describe('ToolMessageReorder', () => {
         tool_call_id: 'call_missing',
       },
     ]);
-    expect(result.metadata.toolMessageReorder?.generatedSyntheticTools).toBe(1);
+    expect(result.metadata.toolMessageReorder?.removedInvalidTools).toBe(0);
   });
 
   it('should dedupe duplicate tool calls and keep the first real tool result', async () => {
@@ -270,13 +264,7 @@ describe('ToolMessageReorder', () => {
       { id: 't1-first', role: 'tool', content: '{"ok":1}', tool_call_id: 'call_1' },
       { id: 't2', role: 'tool', content: '{"ok":2}', tool_call_id: 'call_2' },
     ]);
-    expect(result.metadata.toolMessageReorder).toEqual(
-      expect.objectContaining({
-        dedupedToolCalls: 1,
-        droppedDuplicateTools: 1,
-        droppedOrphanTools: 1,
-      }),
-    );
+    expect(result.metadata.toolMessageReorder?.removedInvalidTools).toBe(2);
   });
 
   it('should prefer a real error tool result over a synthetic fallback', async () => {
@@ -318,6 +306,5 @@ describe('ToolMessageReorder', () => {
         tool_call_id: 'call_1',
       },
     ]);
-    expect(result.metadata.toolMessageReorder?.generatedSyntheticTools).toBe(0);
   });
 });

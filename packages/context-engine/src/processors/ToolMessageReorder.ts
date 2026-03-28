@@ -6,12 +6,8 @@ import type { PipelineContext, ProcessorOptions } from '../types';
 declare module '../types' {
   interface PipelineContextMetadataOverrides {
     toolMessageReorder?: {
-      dedupedToolCalls: number;
-      droppedDuplicateTools: number;
-      droppedOrphanTools: number;
-      generatedSyntheticTools: number;
       originalCount: number;
-      reorderedTools: number;
+      removedInvalidTools: number;
       reorderedCount: number;
     };
   }
@@ -24,6 +20,14 @@ const DEFAULT_TOOL_FAILURE_CONTENT = JSON.stringify({
   success: false,
   synthetic: true,
 });
+
+interface ToolMessageReorderDiagnostics {
+  dedupedToolCalls: number;
+  droppedDuplicateTools: number;
+  droppedOrphanTools: number;
+  generatedSyntheticTools: number;
+  reorderedTools: number;
+}
 
 /**
  * Reorder tool messages to ensure that tool messages are displayed in the correct order.
@@ -39,7 +43,7 @@ export class ToolMessageReorder extends BaseProcessor {
   protected async doProcess(context: PipelineContext): Promise<PipelineContext> {
     const clonedContext = this.cloneContext(context);
 
-    const diagnostics = {
+    const diagnostics: ToolMessageReorderDiagnostics = {
       dedupedToolCalls: 0,
       droppedDuplicateTools: 0,
       droppedOrphanTools: 0,
@@ -54,12 +58,8 @@ export class ToolMessageReorder extends BaseProcessor {
     clonedContext.messages = messages;
 
     clonedContext.metadata.toolMessageReorder = {
-      dedupedToolCalls: diagnostics.dedupedToolCalls,
-      droppedDuplicateTools: diagnostics.droppedDuplicateTools,
-      droppedOrphanTools: diagnostics.droppedOrphanTools,
-      generatedSyntheticTools: diagnostics.generatedSyntheticTools,
       originalCount,
-      reorderedTools: diagnostics.reorderedTools,
+      removedInvalidTools: diagnostics.droppedDuplicateTools + diagnostics.droppedOrphanTools,
       reorderedCount,
     };
 
@@ -88,16 +88,7 @@ export class ToolMessageReorder extends BaseProcessor {
     };
   }
 
-  private reorderToolMessages(
-    messages: any[],
-    diagnostics: {
-      dedupedToolCalls: number;
-      droppedDuplicateTools: number;
-      droppedOrphanTools: number;
-      generatedSyntheticTools: number;
-      reorderedTools: number;
-    },
-  ): any[] {
+  private reorderToolMessages(messages: any[], diagnostics: ToolMessageReorderDiagnostics): any[] {
     const validToolCallIds = new Set<string>();
     const toolMessages = new Map<string, { index: number; message: any }>();
 

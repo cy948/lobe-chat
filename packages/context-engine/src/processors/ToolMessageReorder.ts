@@ -168,4 +168,6 @@ export class ToolMessageReorder extends BaseProcessor {
 
     return reorderedMessages;
   }
+
+  // Simplified: removed validation/statistics helper methods
 }

@@ -48,7 +48,15 @@ export class ToolMessageReorder extends BaseProcessor {
       reorderedCount,
     };
 
-    log('Tool message normalization completed %O', clonedContext.metadata.toolMessageReorder);
+    if (removedInvalidTools > 0) {
+      log(
+        'Tool message reordering completed, removed',
+        removedInvalidTools,
+        'invalid tool messages',
+      );
+    } else {
+      log('Tool message reordering completed, message order optimized');
+    }
 
     return this.markAsExecuted(clonedContext);
   }

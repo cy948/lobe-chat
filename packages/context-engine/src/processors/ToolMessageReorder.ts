@@ -6,14 +6,167 @@ import type { PipelineContext, ProcessorOptions } from '../types';
 declare module '../types' {
   interface PipelineContextMetadataOverrides {
     toolMessageReorder?: {
+      dedupedToolCalls: number;
+      droppedDuplicateTools: number;
+      droppedOrphanTools: number;
+      generatedSyntheticTools: number;
       originalCount: number;
-      removedInvalidTools: number;
+      reorderedTools: number;
       reorderedCount: number;
     };
   }
 }
 
 const log = debug('context-engine:processor:ToolMessageReorder');
+
+interface AssistantMessageWithToolCalls {
+  [key: string]: unknown;
+  content?: unknown;
+  role: 'assistant';
+  tool_calls: Array<{
+    function?: { arguments?: string; name?: string };
+    id: string;
+    type?: string;
+  }>;
+}
+
+interface ToolMessage {
+  [key: string]: unknown;
+  content: string;
+  name?: string;
+  role: 'tool';
+  tool_call_id: string;
+}
+
+interface NormalizeDiagnostics {
+  dedupedToolCalls: number;
+  droppedDuplicateTools: number;
+  droppedOrphanTools: number;
+  generatedSyntheticTools: number;
+  reorderedTools: number;
+}
+
+interface NormalizeResult {
+  diagnostics: NormalizeDiagnostics;
+  messages: any[];
+}
+
+const DEFAULT_TOOL_FAILURE_CONTENT = JSON.stringify({
+  error: 'Tool call failed',
+  success: false,
+  synthetic: true,
+});
+
+const isAssistantWithToolCalls = (message: any): message is AssistantMessageWithToolCalls =>
+  message?.role === 'assistant' &&
+  Array.isArray(message.tool_calls) &&
+  message.tool_calls.some((toolCall: any) => !!toolCall?.id);
+
+const isToolMessage = (message: any): message is ToolMessage =>
+  message?.role === 'tool' &&
+  typeof message.tool_call_id === 'string' &&
+  message.tool_call_id.length > 0;
+
+const createSyntheticToolMessage = (
+  toolCall: AssistantMessageWithToolCalls['tool_calls'][number],
+): ToolMessage => ({
+  content: DEFAULT_TOOL_FAILURE_CONTENT,
+  ...(toolCall.function?.name && { name: toolCall.function.name }),
+  role: 'tool',
+  tool_call_id: toolCall.id,
+});
+
+export const normalizeToolCallMessages = (messages: any[]): NormalizeResult => {
+  const diagnostics: NormalizeDiagnostics = {
+    dedupedToolCalls: 0,
+    droppedDuplicateTools: 0,
+    droppedOrphanTools: 0,
+    generatedSyntheticTools: 0,
+    reorderedTools: 0,
+  };
+
+  const toolMessagesById = new Map<string, ToolMessage>();
+  const toolOriginalIndexById = new Map<string, number>();
+  const assistantToolCallIds = new Set<string>();
+
+  for (const [index, message] of messages.entries()) {
+    if (message?.role !== 'tool') continue;
+
+    if (!isToolMessage(message)) {
+      diagnostics.droppedOrphanTools++;
+      continue;
+    }
+
+    if (toolMessagesById.has(message.tool_call_id)) {
+      diagnostics.droppedDuplicateTools++;
+      continue;
+    }
+
+    toolMessagesById.set(message.tool_call_id, message);
+    toolOriginalIndexById.set(message.tool_call_id, index);
+  }
+
+  const normalizedMessages: any[] = [];
+
+  for (const [index, message] of messages.entries()) {
+    if (message?.role === 'tool') continue;
+
+    if (!isAssistantWithToolCalls(message)) {
+      normalizedMessages.push(message);
+      continue;
+    }
+
+    const seenToolCallIds = new Set<string>();
+    const normalizedToolCalls = [];
+
+    for (const toolCall of message.tool_calls) {
+      if (!toolCall?.id) continue;
+
+      if (seenToolCallIds.has(toolCall.id)) {
+        diagnostics.dedupedToolCalls++;
+        continue;
+      }
+
+      seenToolCallIds.add(toolCall.id);
+      assistantToolCallIds.add(toolCall.id);
+      normalizedToolCalls.push(toolCall);
+    }
+
+    const normalizedAssistant =
+      normalizedToolCalls.length === message.tool_calls.length
+        ? message
+        : { ...message, tool_calls: normalizedToolCalls };
+
+    normalizedMessages.push(normalizedAssistant);
+
+    for (const toolCall of normalizedToolCalls) {
+      const matchedToolMessage = toolMessagesById.get(toolCall.id);
+
+      if (matchedToolMessage) {
+        const originalToolIndex = toolOriginalIndexById.get(toolCall.id);
+        if (originalToolIndex !== undefined && originalToolIndex !== index + 1) {
+          diagnostics.reorderedTools++;
+        }
+
+        normalizedMessages.push(matchedToolMessage);
+        toolMessagesById.delete(toolCall.id);
+        toolOriginalIndexById.delete(toolCall.id);
+        continue;
+      }
+
+      diagnostics.generatedSyntheticTools++;
+      normalizedMessages.push(createSyntheticToolMessage(toolCall));
+    }
+  }
+
+  for (const toolCallId of toolMessagesById.keys()) {
+    if (!assistantToolCallIds.has(toolCallId)) {
+      diagnostics.droppedOrphanTools++;
+    }
+  }
+
+  return { diagnostics, messages: normalizedMessages };
+};
 
 /**
  * Reorder tool messages to ensure that tool messages are displayed in the correct order.
@@ -29,95 +182,25 @@ export class ToolMessageReorder extends BaseProcessor {
   protected async doProcess(context: PipelineContext): Promise<PipelineContext> {
     const clonedContext = this.cloneContext(context);
 
-    // Reorder messages
-    const reorderedMessages = this.reorderToolMessages(clonedContext.messages);
+    const { diagnostics, messages } = normalizeToolCallMessages(clonedContext.messages);
 
     const originalCount = clonedContext.messages.length;
-    const reorderedCount = reorderedMessages.length;
+    const reorderedCount = messages.length;
 
-    clonedContext.messages = reorderedMessages;
+    clonedContext.messages = messages;
 
-    // Update metadata
     clonedContext.metadata.toolMessageReorder = {
+      dedupedToolCalls: diagnostics.dedupedToolCalls,
+      droppedDuplicateTools: diagnostics.droppedDuplicateTools,
+      droppedOrphanTools: diagnostics.droppedOrphanTools,
+      generatedSyntheticTools: diagnostics.generatedSyntheticTools,
       originalCount,
-      removedInvalidTools: originalCount - reorderedCount,
+      reorderedTools: diagnostics.reorderedTools,
       reorderedCount,
     };
 
-    if (originalCount !== reorderedCount) {
-      log(
-        'Tool message reordering completed, removed',
-        originalCount - reorderedCount,
-        'invalid tool messages',
-      );
-    } else {
-      log('Tool message reordering completed, message order optimized');
-    }
+    log('Tool message normalization completed %O', clonedContext.metadata.toolMessageReorder);
 
     return this.markAsExecuted(clonedContext);
   }
-
-  /**
-   * Reorder tool messages
-   */
-  private reorderToolMessages(messages: any[]): any[] {
-    // 1. First collect all valid tool_call_ids from assistant messages
-    const validToolCallIds = new Set<string>();
-    messages.forEach((message) => {
-      if (message.role === 'assistant' && message.tool_calls) {
-        message.tool_calls.forEach((toolCall: any) => {
-          validToolCallIds.add(toolCall.id);
-        });
-      }
-    });
-
-    // 2. Collect all valid tool messages
-    const toolMessages: Record<string, any> = {};
-    messages.forEach((message) => {
-      if (
-        message.role === 'tool' &&
-        message.tool_call_id &&
-        validToolCallIds.has(message.tool_call_id)
-      ) {
-        toolMessages[message.tool_call_id] = message;
-      }
-    });
-
-    // 3. Reorder messages
-    const reorderedMessages: any[] = [];
-    messages.forEach((message) => {
-      // Skip invalid tool messages
-      if (
-        message.role === 'tool' &&
-        (!message.tool_call_id || !validToolCallIds.has(message.tool_call_id))
-      ) {
-        log('Skipping invalid tool message:', message.id);
-        return;
-      }
-
-      // Check if this tool message has already been added
-      const hasPushed = reorderedMessages.some(
-        (m) => !!message.tool_call_id && m.tool_call_id === message.tool_call_id,
-      );
-
-      if (hasPushed) return;
-
-      reorderedMessages.push(message);
-
-      // If assistant message with tool_calls, add corresponding tool messages
-      if (message.role === 'assistant' && message.tool_calls) {
-        message.tool_calls.forEach((toolCall: any) => {
-          const correspondingToolMessage = toolMessages[toolCall.id];
-          if (correspondingToolMessage) {
-            reorderedMessages.push(correspondingToolMessage);
-            delete toolMessages[toolCall.id];
-          }
-        });
-      }
-    });
-
-    return reorderedMessages;
-  }
-
-  // Simplified: removed validation/statistics helper methods
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { PipelineContext } from '../../types';
-import { ToolMessageReorder } from '../ToolMessageReorder';
+import { normalizeToolCallMessages, ToolMessageReorder } from '../ToolMessageReorder';
 
 const createContext = (messages: any[]): PipelineContext => ({
   initialState: { messages: [] } as any,
@@ -11,7 +11,7 @@ const createContext = (messages: any[]): PipelineContext => ({
 });
 
 describe('ToolMessageReorder', () => {
-  it('should place tool messages right after their assistant calls and drop invalid tools', async () => {
+  it('should place tool messages right after their assistant calls and drop orphan tools', async () => {
     const proc = new ToolMessageReorder();
     const messages = [
       { id: 'u1', role: 'user', content: 'hi' },
@@ -31,6 +31,12 @@ describe('ToolMessageReorder', () => {
     const res = await proc.process(ctx);
 
     expect(res.messages.map((m) => m.id)).toEqual(['u1', 'a1', 't1']);
+    expect(res.metadata.toolMessageReorder).toEqual(
+      expect.objectContaining({
+        droppedOrphanTools: 1,
+        generatedSyntheticTools: 0,
+      }),
+    );
   });
 
   it('should reorderToolMessages', async () => {
@@ -148,7 +154,7 @@ describe('ToolMessageReorder', () => {
     ]);
   });
 
-  it('should correctly reorder when a tool message appears before the assistant message', async () => {
+  it('should reorder a tool message that appears before its assistant', async () => {
     const messages = [
       {
         role: 'system',
@@ -175,12 +181,95 @@ describe('ToolMessageReorder', () => {
 
     const { messages: output } = await proc.process(ctx);
 
-    // Verify reordering logic works and covers line 688 hasPushed check
-    // In this test, tool messages are duplicated but the second occurrence is skipped
-    expect(output.length).toBe(4); // Original has 3, assistant will add corresponding tool message again
+    expect(output.length).toBe(3);
     expect(output[0].role).toBe('system');
-    expect(output[1].role).toBe('tool');
-    expect(output[2].role).toBe('assistant');
-    expect(output[3].role).toBe('tool'); // Tool message added by assistant's tool_calls
+    expect(output[1].role).toBe('assistant');
+    expect(output[2]).toEqual(
+      expect.objectContaining({
+        role: 'tool',
+        tool_call_id: 'tool_call_1',
+      }),
+    );
+  });
+
+  it('should generate a synthetic tool result when a tool message is missing', async () => {
+    const { messages, diagnostics } = normalizeToolCallMessages([
+      { id: 'u1', role: 'user', content: 'hi' },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'calling',
+        tool_calls: [
+          {
+            function: { arguments: '{}', name: 'test-plugin____testApi' },
+            id: 'call_missing',
+            type: 'function',
+          },
+        ],
+      },
+    ]);
+
+    expect(messages).toEqual([
+      { id: 'u1', role: 'user', content: 'hi' },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'calling',
+        tool_calls: [
+          {
+            function: { arguments: '{}', name: 'test-plugin____testApi' },
+            id: 'call_missing',
+            type: 'function',
+          },
+        ],
+      },
+      {
+        content: '{"error":"Tool call failed","success":false,"synthetic":true}',
+        name: 'test-plugin____testApi',
+        role: 'tool',
+        tool_call_id: 'call_missing',
+      },
+    ]);
+    expect(diagnostics.generatedSyntheticTools).toBe(1);
+  });
+
+  it('should dedupe duplicate tool calls and keep the first real tool result', async () => {
+    const { messages, diagnostics } = normalizeToolCallMessages([
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'calling',
+        tool_calls: [
+          { function: { arguments: '{}', name: 'test' }, id: 'call_1', type: 'function' },
+          { function: { arguments: '{}', name: 'test' }, id: 'call_1', type: 'function' },
+          { function: { arguments: '{}', name: 'test2' }, id: 'call_2', type: 'function' },
+        ],
+      },
+      { id: 't2', role: 'tool', content: '{"ok":2}', tool_call_id: 'call_2' },
+      { id: 't1-first', role: 'tool', content: '{"ok":1}', tool_call_id: 'call_1' },
+      { id: 't1-second', role: 'tool', content: '{"ok":3}', tool_call_id: 'call_1' },
+      { id: 'orphan', role: 'tool', content: '{"ok":4}', tool_call_id: 'call_3' },
+    ]);
+
+    expect(messages).toEqual([
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'calling',
+        tool_calls: [
+          { function: { arguments: '{}', name: 'test' }, id: 'call_1', type: 'function' },
+          { function: { arguments: '{}', name: 'test2' }, id: 'call_2', type: 'function' },
+        ],
+      },
+      { id: 't1-first', role: 'tool', content: '{"ok":1}', tool_call_id: 'call_1' },
+      { id: 't2', role: 'tool', content: '{"ok":2}', tool_call_id: 'call_2' },
+    ]);
+    expect(diagnostics).toEqual(
+      expect.objectContaining({
+        dedupedToolCalls: 1,
+        droppedDuplicateTools: 1,
+        droppedOrphanTools: 1,
+      }),
+    );
   });
 });

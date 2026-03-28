@@ -21,14 +21,6 @@ const DEFAULT_TOOL_FAILURE_CONTENT = JSON.stringify({
   synthetic: true,
 });
 
-interface ToolMessageReorderDiagnostics {
-  dedupedToolCalls: number;
-  droppedDuplicateTools: number;
-  droppedOrphanTools: number;
-  generatedSyntheticTools: number;
-  reorderedTools: number;
-}
-
 /**
  * Reorder tool messages to ensure that tool messages are displayed in the correct order.
  * see https://github.com/lobehub/lobe-chat/pull/3155
@@ -43,14 +35,7 @@ export class ToolMessageReorder extends BaseProcessor {
   protected async doProcess(context: PipelineContext): Promise<PipelineContext> {
     const clonedContext = this.cloneContext(context);
 
-    const diagnostics: ToolMessageReorderDiagnostics = {
-      dedupedToolCalls: 0,
-      droppedDuplicateTools: 0,
-      droppedOrphanTools: 0,
-      generatedSyntheticTools: 0,
-      reorderedTools: 0,
-    };
-    const messages = this.reorderToolMessages(clonedContext.messages, diagnostics);
+    const { messages, removedInvalidTools } = this.reorderToolMessages(clonedContext.messages);
 
     const originalCount = clonedContext.messages.length;
     const reorderedCount = messages.length;
@@ -59,7 +44,7 @@ export class ToolMessageReorder extends BaseProcessor {
 
     clonedContext.metadata.toolMessageReorder = {
       originalCount,
-      removedInvalidTools: diagnostics.droppedDuplicateTools + diagnostics.droppedOrphanTools,
+      removedInvalidTools,
       reorderedCount,
     };
 
@@ -88,10 +73,13 @@ export class ToolMessageReorder extends BaseProcessor {
     };
   }
 
-  private reorderToolMessages(messages: any[], diagnostics: ToolMessageReorderDiagnostics): any[] {
+  private reorderToolMessages(messages: any[]): { messages: any[]; removedInvalidTools: number } {
+    let removedInvalidTools = 0;
+
     const validToolCallIds = new Set<string>();
     const toolMessages = new Map<string, { index: number; message: any }>();
 
+    // 1. First collect all valid tool_call_ids from assistant messages
     for (const message of messages) {
       if (message.role !== 'assistant' || !Array.isArray(message.tool_calls)) continue;
 
@@ -99,32 +87,31 @@ export class ToolMessageReorder extends BaseProcessor {
       for (const toolCall of message.tool_calls) {
         if (!toolCall?.id) continue;
 
-        if (seenToolCallIds.has(toolCall.id)) {
-          diagnostics.dedupedToolCalls++;
-          continue;
-        }
+        if (seenToolCallIds.has(toolCall.id)) continue;
 
         seenToolCallIds.add(toolCall.id);
         validToolCallIds.add(toolCall.id);
       }
     }
 
+    // 2. Collect all valid tool messages
     for (const [index, message] of messages.entries()) {
       if (message.role !== 'tool') continue;
 
       if (!message.tool_call_id || !validToolCallIds.has(message.tool_call_id)) {
-        diagnostics.droppedOrphanTools++;
+        removedInvalidTools++;
         continue;
       }
 
       if (toolMessages.has(message.tool_call_id)) {
-        diagnostics.droppedDuplicateTools++;
+        removedInvalidTools++;
         continue;
       }
 
       toolMessages.set(message.tool_call_id, { index, message });
     }
 
+    // 3. Reorder messages
     const reorderedMessages: any[] = [];
 
     for (const [index, message] of messages.entries()) {
@@ -157,8 +144,6 @@ export class ToolMessageReorder extends BaseProcessor {
         const matchedToolMessage = toolMessages.get(toolCall.id);
 
         if (matchedToolMessage) {
-          if (matchedToolMessage.index !== index + 1) diagnostics.reorderedTools++;
-
           reorderedMessages.push({
             ...matchedToolMessage.message,
             content: this.getToolMessageContent(matchedToolMessage.message),
@@ -167,11 +152,10 @@ export class ToolMessageReorder extends BaseProcessor {
           continue;
         }
 
-        diagnostics.generatedSyntheticTools++;
         reorderedMessages.push(this.createSyntheticToolMessage(toolCall));
       }
     }
 
-    return reorderedMessages;
+    return { messages: reorderedMessages, removedInvalidTools };
   }
 }

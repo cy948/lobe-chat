@@ -246,12 +246,14 @@ export const createRuntimeExecutors = (
 
     // Type assertion to ensure payload correctness
     const operationLogId = `${operationId}:${stepIndex}`;
+
     const stagePrefix = `[${operationLogId}][call_llm]`;
 
     log(`${stagePrefix} Starting operation`);
 
     // Get parentId from payload (parentId or parentMessageId depending on payload type)
     const parentId = llmPayload.parentId || (llmPayload as any).parentMessageId;
+
     // Get or create assistant message
     // If assistantMessageId is provided in payload, use existing message instead of creating new one
     const existingAssistantMessageId = (llmPayload as any).assistantMessageId;

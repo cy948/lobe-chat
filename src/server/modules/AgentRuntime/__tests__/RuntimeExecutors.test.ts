@@ -2639,7 +2639,9 @@ describe('RuntimeExecutors', () => {
       vi.mocked(consumeStreamUntilDone).mockResolvedValue(undefined);
     });
 
-    it('should throw when LLM stream contains error events from provider', async () => {
+    it('should retry and eventually throw when LLM stream contains error events from provider', async () => {
+      vi.useFakeTimers();
+
       // Import real implementations directly from source (bypassing the @lobechat/model-runtime mock)
       const { consumeStreamUntilDone: realConsume } =
         await import('../../../../../packages/model-runtime/src/utils/consumeStream');
@@ -2683,15 +2685,33 @@ describe('RuntimeExecutors', () => {
         type: 'call_llm' as const,
       };
 
-      await expect(executors.call_llm!(instruction, state)).rejects.toThrow(/LLM stream error/);
+      try {
+        const resultPromise = executors.call_llm!(instruction, state);
+        const rejectionExpectation = expect(resultPromise).rejects.toThrow(/LLM stream error/);
 
-      // Error event should be published to stream manager
-      expect(mockStreamManager.publishStreamEvent).toHaveBeenCalledWith(
-        'op-123',
-        expect.objectContaining({
-          type: 'error',
-        }),
-      );
+        await Promise.resolve();
+        await vi.runAllTimersAsync();
+
+        await rejectionExpectation;
+
+        expect(mockChat).toHaveBeenCalledTimes(6);
+
+        const retryEvents = mockStreamManager.publishStreamEvent.mock.calls.filter(
+          ([, event]) => event.type === 'stream_retry',
+        );
+
+        expect(retryEvents).toHaveLength(5);
+
+        // Error event should be published to stream manager after retries are exhausted
+        expect(mockStreamManager.publishStreamEvent).toHaveBeenCalledWith(
+          'op-123',
+          expect.objectContaining({
+            type: 'error',
+          }),
+        );
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('should throw and not produce llm_result when modelRuntime.chat rejects', async () => {

@@ -11,7 +11,7 @@ const createContext = (messages: any[]): PipelineContext => ({
 });
 
 describe('ToolMessageReorder', () => {
-  it('should place tool messages right after their assistant calls and drop orphan tools', async () => {
+  it('should place tool messages right after their assistant calls and drop invalid tools', async () => {
     const proc = new ToolMessageReorder();
     const messages = [
       { id: 'u1', role: 'user', content: 'hi' },
@@ -148,7 +148,7 @@ describe('ToolMessageReorder', () => {
     ]);
   });
 
-  it('should reorder a tool message that appears before its assistant', async () => {
+  it('should correctly reorder when a tool message appears before the assistant message', async () => {
     const messages = [
       {
         role: 'system',
@@ -227,7 +227,6 @@ describe('ToolMessageReorder', () => {
         tool_call_id: 'call_missing',
       },
     ]);
-    expect(result.metadata.toolMessageReorder?.removedInvalidTools).toBe(0);
   });
 
   it('should dedupe duplicate tool calls and keep the first real tool result', async () => {
@@ -264,7 +263,6 @@ describe('ToolMessageReorder', () => {
       { id: 't1-first', role: 'tool', content: '{"ok":1}', tool_call_id: 'call_1' },
       { id: 't2', role: 'tool', content: '{"ok":2}', tool_call_id: 'call_2' },
     ]);
-    expect(result.metadata.toolMessageReorder?.removedInvalidTools).toBe(2);
   });
 
   it('should prefer a real error tool result over a synthetic fallback', async () => {

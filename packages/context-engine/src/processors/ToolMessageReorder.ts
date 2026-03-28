@@ -36,12 +36,12 @@ export class ToolMessageReorder extends BaseProcessor {
   protected async doProcess(context: PipelineContext): Promise<PipelineContext> {
     const clonedContext = this.cloneContext(context);
 
-    const messages = this.reorderToolMessages(clonedContext.messages);
+    const reorderedMessages = this.reorderToolMessages(clonedContext.messages);
 
     const originalCount = clonedContext.messages.length;
-    const reorderedCount = messages.length;
+    const reorderedCount = reorderedMessages.length;
 
-    clonedContext.messages = messages;
+    clonedContext.messages = reorderedMessages;
 
     clonedContext.metadata.toolMessageReorder = {
       originalCount,
@@ -62,15 +62,6 @@ export class ToolMessageReorder extends BaseProcessor {
     return this.markAsExecuted(clonedContext);
   }
 
-  private createSyntheticToolMessage(toolCall: any): any {
-    return {
-      content: DEFAULT_TOOL_FAILURE_CONTENT,
-      ...(toolCall.function?.name && { name: toolCall.function.name }),
-      role: 'tool',
-      tool_call_id: toolCall.id,
-    };
-  }
-
   /**
    * Reorder tool messages
    */
@@ -78,7 +69,7 @@ export class ToolMessageReorder extends BaseProcessor {
     this.removedInvalidTools = 0;
 
     const validToolCallIds = new Set<string>();
-    const toolMessages = new Map<string, { index: number; message: any }>();
+    const toolMessages = new Map<string, any>();
 
     // 1. First collect all valid tool_call_ids from assistant messages
     for (const message of messages) {
@@ -96,7 +87,7 @@ export class ToolMessageReorder extends BaseProcessor {
     }
 
     // 2. Collect all valid tool messages
-    for (const [index, message] of messages.entries()) {
+    for (const message of messages) {
       if (message.role !== 'tool') continue;
 
       if (!message.tool_call_id || !validToolCallIds.has(message.tool_call_id)) {
@@ -109,7 +100,7 @@ export class ToolMessageReorder extends BaseProcessor {
         continue;
       }
 
-      toolMessages.set(message.tool_call_id, { index, message });
+      toolMessages.set(message.tool_call_id, message);
     }
 
     // 3. Reorder messages
@@ -146,23 +137,28 @@ export class ToolMessageReorder extends BaseProcessor {
 
         if (matchedToolMessage) {
           const pluginErrorMessage =
-            typeof matchedToolMessage.message.pluginError?.message === 'string'
-              ? matchedToolMessage.message.pluginError.message
+            typeof matchedToolMessage.pluginError?.message === 'string'
+              ? matchedToolMessage.pluginError.message
               : undefined;
 
           reorderedMessages.push({
-            ...matchedToolMessage.message,
+            ...matchedToolMessage,
             content:
-              typeof matchedToolMessage.message.content === 'string' &&
-              matchedToolMessage.message.content.length > 0
-                ? matchedToolMessage.message.content
+              typeof matchedToolMessage.content === 'string' &&
+              matchedToolMessage.content.length > 0
+                ? matchedToolMessage.content
                 : pluginErrorMessage || DEFAULT_TOOL_FAILURE_CONTENT,
           });
           toolMessages.delete(toolCall.id);
           continue;
         }
 
-        reorderedMessages.push(this.createSyntheticToolMessage(toolCall));
+        reorderedMessages.push({
+          content: DEFAULT_TOOL_FAILURE_CONTENT,
+          ...(toolCall.function?.name && { name: toolCall.function.name }),
+          role: 'tool',
+          tool_call_id: toolCall.id,
+        });
       }
     }
 

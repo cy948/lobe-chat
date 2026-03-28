@@ -2727,6 +2727,8 @@ describe('RuntimeExecutors', () => {
     });
 
     it('should retry llm execution, emit stream_retry, and commit only the successful attempt', async () => {
+      vi.useFakeTimers();
+
       const toolCallPayload = [
         {
           function: { arguments: '{}', name: 'search' },
@@ -2765,26 +2767,109 @@ describe('RuntimeExecutors', () => {
         type: 'call_llm' as const,
       };
 
-      const result = await executors.call_llm!(instruction, state);
+      try {
+        const resultPromise = executors.call_llm!(instruction, state);
 
-      expect(mockChat).toHaveBeenCalledTimes(2);
-      expect(mockMessageModel.create).toHaveBeenCalledTimes(1);
-      expect(mockMessageModel.update).toHaveBeenCalledWith(
-        'msg-123',
-        expect.objectContaining({ content: 'final' }),
-      );
-      expect(result.newState.messages.at(-1)).toEqual({
-        content: 'final',
-        role: 'assistant',
-        tool_calls: undefined,
-      });
-      expect(mockStreamManager.publishStreamEvent).toHaveBeenCalledWith(
-        'op-123',
-        expect.objectContaining({
-          type: 'stream_retry',
-          data: { attempt: 2, maxAttempts: 2 },
-        }),
-      );
+        await vi.runOnlyPendingTimersAsync();
+
+        const result = await resultPromise;
+
+        expect(mockChat).toHaveBeenCalledTimes(2);
+        expect(mockMessageModel.create).toHaveBeenCalledTimes(1);
+        expect(mockMessageModel.update).toHaveBeenCalledWith(
+          'msg-123',
+          expect.objectContaining({ content: 'final' }),
+        );
+        expect(result.newState.messages.at(-1)).toEqual({
+          content: 'final',
+          role: 'assistant',
+          tool_calls: undefined,
+        });
+        expect(mockStreamManager.publishStreamEvent).toHaveBeenCalledWith(
+          'op-123',
+          expect.objectContaining({
+            type: 'stream_retry',
+            data: { attempt: 2, delayMs: 1000, maxAttempts: 6 },
+          }),
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('should apply exponential backoff across multiple llm retries', async () => {
+      vi.useFakeTimers();
+
+      const mockChat = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('network timeout-1'))
+        .mockRejectedValueOnce(new Error('network timeout-2'))
+        .mockRejectedValueOnce(new Error('network timeout-3'))
+        .mockImplementationOnce(async (_payload: any, options: any) => {
+          await options.callback.onText?.('final');
+          await options.callback.onCompletion?.({
+            usage: { totalInputTokens: 1, totalOutputTokens: 2, totalTokens: 3 },
+          });
+          return new Response('done');
+        });
+
+      vi.mocked(initModelRuntimeFromDB).mockResolvedValue({ chat: mockChat } as any);
+
+      const executors = createRuntimeExecutors(ctx);
+      const state = createMockState();
+      const instruction = {
+        payload: {
+          messages: [{ content: 'Hello', role: 'user' }],
+          model: 'gpt-4',
+          parentMessageId: 'parent-msg-123',
+          provider: 'openai',
+          tools: [],
+        },
+        type: 'call_llm' as const,
+      };
+
+      try {
+        const resultPromise = executors.call_llm!(instruction, state);
+
+        await vi.runOnlyPendingTimersAsync();
+        await Promise.resolve();
+        await vi.runOnlyPendingTimersAsync();
+        await Promise.resolve();
+        await vi.runOnlyPendingTimersAsync();
+
+        const result = await resultPromise;
+
+        expect(mockChat).toHaveBeenCalledTimes(4);
+        expect(result.newState.messages.at(-1)).toEqual({
+          content: 'final',
+          role: 'assistant',
+          tool_calls: undefined,
+        });
+
+        expect(mockStreamManager.publishStreamEvent).toHaveBeenCalledWith(
+          'op-123',
+          expect.objectContaining({
+            type: 'stream_retry',
+            data: { attempt: 2, delayMs: 1000, maxAttempts: 6 },
+          }),
+        );
+        expect(mockStreamManager.publishStreamEvent).toHaveBeenCalledWith(
+          'op-123',
+          expect.objectContaining({
+            type: 'stream_retry',
+            data: { attempt: 3, delayMs: 2000, maxAttempts: 6 },
+          }),
+        );
+        expect(mockStreamManager.publishStreamEvent).toHaveBeenCalledWith(
+          'op-123',
+          expect.objectContaining({
+            type: 'stream_retry',
+            data: { attempt: 4, delayMs: 4000, maxAttempts: 6 },
+          }),
+        );
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

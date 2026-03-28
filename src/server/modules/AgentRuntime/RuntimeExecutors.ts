@@ -68,7 +68,9 @@ const TOOL_PRICING: Record<string, number> = {
 };
 
 const TOOL_MAX_RETRIES = 2;
-const LLM_MAX_RETRIES = 1;
+const LLM_MAX_RETRIES = 5;
+const LLM_RETRY_BASE_DELAY_MS = 1000;
+const LLM_RETRY_MAX_DELAY_MS = 30_000;
 
 type ToolFailureKind = 'replan' | 'retry' | 'stop';
 
@@ -84,6 +86,11 @@ const shouldRetryTool = (kind: ToolFailureKind | undefined, attempt: number, max
 
 const shouldRetryLLM = (kind: LLMErrorKind, attempt: number, maxRetries: number) =>
   kind === 'retry' && attempt <= maxRetries;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const getLLMRetryDelayMs = (attempt: number) =>
+  Math.min(LLM_RETRY_BASE_DELAY_MS * 2 ** Math.max(attempt - 1, 0), LLM_RETRY_MAX_DELAY_MS);
 
 const executeToolWithRetry = async (
   execute: () => Promise<ToolExecutionResultResponse>,
@@ -801,19 +808,24 @@ export const createRuntimeExecutors = (
           const classified = classifyLLMError(error);
 
           if (shouldRetryLLM(classified.kind, attempt, LLM_MAX_RETRIES)) {
+            const delayMs = getLLMRetryDelayMs(attempt);
+
             log(
-              '[%s] LLM call failed with kind=%s (attempt %d/%d), retrying ...',
+              '[%s] LLM call failed with kind=%s (attempt %d/%d), retrying in %dms ...',
               operationLogId,
               classified.kind,
               attempt,
               maxAttempts,
+              delayMs,
             );
 
             await streamManager.publishStreamEvent(operationId, {
-              data: { attempt: attempt + 1, maxAttempts },
+              data: { attempt: attempt + 1, delayMs, maxAttempts },
               stepIndex,
               type: 'stream_retry',
             });
+
+            await sleep(delayMs);
             continue;
           }
 

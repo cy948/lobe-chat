@@ -309,7 +309,7 @@ describe('runAgent actions', () => {
           type: 'stream_retry',
           timestamp: Date.now(),
           operationId: TEST_IDS.OPERATION_ID,
-          data: { attempt: 2, maxAttempts: 2 },
+          data: { attempt: 2, delayMs: 1000, maxAttempts: 6 },
         };
 
         await act(async () => {
@@ -330,7 +330,7 @@ describe('runAgent actions', () => {
         });
         expect(result.current.updateOperationMetadata).toHaveBeenCalledWith(
           TEST_IDS.OPERATION_ID,
-          expect.objectContaining({ retryAttempt: 2, retryMaxAttempts: 2 }),
+          expect.objectContaining({ retryAttempt: 2, retryMaxAttempts: 6 }),
         );
       });
     });

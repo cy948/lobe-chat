@@ -23,6 +23,7 @@ interface StreamingContext {
 
 interface StreamRetryData {
   attempt: number;
+  delayMs?: number;
   maxAttempts: number;
 }
 

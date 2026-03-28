@@ -27,6 +27,7 @@ const DEFAULT_TOOL_FAILURE_CONTENT = JSON.stringify({
  */
 export class ToolMessageReorder extends BaseProcessor {
   readonly name = 'ToolMessageReorder';
+  private removedInvalidTools = 0;
 
   constructor(options: ProcessorOptions = {}) {
     super(options);
@@ -35,7 +36,7 @@ export class ToolMessageReorder extends BaseProcessor {
   protected async doProcess(context: PipelineContext): Promise<PipelineContext> {
     const clonedContext = this.cloneContext(context);
 
-    const { messages, removedInvalidTools } = this.reorderToolMessages(clonedContext.messages);
+    const messages = this.reorderToolMessages(clonedContext.messages);
 
     const originalCount = clonedContext.messages.length;
     const reorderedCount = messages.length;
@@ -44,14 +45,14 @@ export class ToolMessageReorder extends BaseProcessor {
 
     clonedContext.metadata.toolMessageReorder = {
       originalCount,
-      removedInvalidTools,
+      removedInvalidTools: this.removedInvalidTools,
       reorderedCount,
     };
 
-    if (removedInvalidTools > 0) {
+    if (this.removedInvalidTools > 0) {
       log(
         'Tool message reordering completed, removed',
-        removedInvalidTools,
+        this.removedInvalidTools,
         'invalid tool messages',
       );
     } else {
@@ -59,17 +60,6 @@ export class ToolMessageReorder extends BaseProcessor {
     }
 
     return this.markAsExecuted(clonedContext);
-  }
-
-  private getToolMessageContent(message: any): string {
-    if (typeof message.content === 'string' && message.content.length > 0) return message.content;
-
-    const pluginErrorMessage =
-      typeof message.pluginError?.message === 'string' ? message.pluginError.message : undefined;
-
-    if (pluginErrorMessage) return pluginErrorMessage;
-
-    return DEFAULT_TOOL_FAILURE_CONTENT;
   }
 
   private createSyntheticToolMessage(toolCall: any): any {
@@ -81,8 +71,11 @@ export class ToolMessageReorder extends BaseProcessor {
     };
   }
 
-  private reorderToolMessages(messages: any[]): { messages: any[]; removedInvalidTools: number } {
-    let removedInvalidTools = 0;
+  /**
+   * Reorder tool messages
+   */
+  private reorderToolMessages(messages: any[]): any[] {
+    this.removedInvalidTools = 0;
 
     const validToolCallIds = new Set<string>();
     const toolMessages = new Map<string, { index: number; message: any }>();
@@ -107,12 +100,12 @@ export class ToolMessageReorder extends BaseProcessor {
       if (message.role !== 'tool') continue;
 
       if (!message.tool_call_id || !validToolCallIds.has(message.tool_call_id)) {
-        removedInvalidTools++;
+        this.removedInvalidTools++;
         continue;
       }
 
       if (toolMessages.has(message.tool_call_id)) {
-        removedInvalidTools++;
+        this.removedInvalidTools++;
         continue;
       }
 
@@ -152,9 +145,18 @@ export class ToolMessageReorder extends BaseProcessor {
         const matchedToolMessage = toolMessages.get(toolCall.id);
 
         if (matchedToolMessage) {
+          const pluginErrorMessage =
+            typeof matchedToolMessage.message.pluginError?.message === 'string'
+              ? matchedToolMessage.message.pluginError.message
+              : undefined;
+
           reorderedMessages.push({
             ...matchedToolMessage.message,
-            content: this.getToolMessageContent(matchedToolMessage.message),
+            content:
+              typeof matchedToolMessage.message.content === 'string' &&
+              matchedToolMessage.message.content.length > 0
+                ? matchedToolMessage.message.content
+                : pluginErrorMessage || DEFAULT_TOOL_FAILURE_CONTENT,
           });
           toolMessages.delete(toolCall.id);
           continue;
@@ -164,6 +166,6 @@ export class ToolMessageReorder extends BaseProcessor {
       }
     }
 
-    return { messages: reorderedMessages, removedInvalidTools };
+    return reorderedMessages;
   }
 }

@@ -148,8 +148,9 @@ const classifyKind = ({ code, message, status }: ToolErrorSignal): ToolErrorKind
   if (hasAnyKeyword(message, REPLAN_KEYWORDS)) return 'replan';
   if (hasAnyKeyword(message, RETRY_KEYWORDS)) return 'retry';
 
-  // Requested default behavior: unknown errors are retried first.
-  return 'retry';
+  // Unknown failures may happen after a side effect already succeeded, so only
+  // explicitly classified retryable errors should be replayed.
+  return 'stop';
 };
 
 export const classifyToolError = (error: unknown): ClassifiedToolError => {

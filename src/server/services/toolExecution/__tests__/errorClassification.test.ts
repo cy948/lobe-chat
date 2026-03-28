@@ -21,9 +21,9 @@ describe('classifyToolError', () => {
     expect(result.kind).toBe('replan');
   });
 
-  it('should default unknown errors to retry', () => {
+  it('should default unknown errors to stop', () => {
     const result = classifyToolError(new Error('unexpected issue'));
 
-    expect(result.kind).toBe('retry');
+    expect(result.kind).toBe('stop');
   });
 });

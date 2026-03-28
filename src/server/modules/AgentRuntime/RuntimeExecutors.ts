@@ -2,6 +2,7 @@ import {
   type AgentEvent,
   type AgentInstruction,
   type AgentInstructionCompressContext,
+  type AgentState,
   type CallLLMPayload,
   type GeneralAgentCallLLMResultPayload,
   type GeneralAgentCompressionResultPayload,
@@ -92,6 +93,18 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const getLLMRetryDelayMs = (attempt: number) =>
   Math.min(LLM_RETRY_BASE_DELAY_MS * 2 ** Math.max(attempt - 1, 0), LLM_RETRY_MAX_DELAY_MS);
 
+const isOperationInterrupted = async (ctx: RuntimeExecutorContext) => {
+  if (!ctx.loadAgentState) return false;
+
+  try {
+    const latestState = await ctx.loadAgentState(ctx.operationId);
+    return latestState?.status === 'interrupted';
+  } catch (error) {
+    console.error('[RuntimeExecutors] Failed to load operation state for retry guard:', error);
+    return false;
+  }
+};
+
 const executeToolWithRetry = async (
   execute: () => Promise<ToolExecutionResultResponse>,
   params: { maxRetries: number; operationLogId: string; toolName: string },
@@ -174,6 +187,7 @@ export interface RuntimeExecutorContext {
   discordContext?: any;
   evalContext?: EvalContext;
   fileService?: any;
+  loadAgentState?: (operationId: string) => Promise<AgentState | null>;
   messageModel: MessageModel;
   operationId: string;
   serverDB: LobeChatDatabase;
@@ -806,8 +820,9 @@ export const createRuntimeExecutors = (
           clearAttemptBuffers();
 
           const classified = classifyLLMError(error);
+          const interrupted = await isOperationInterrupted(ctx);
 
-          if (shouldRetryLLM(classified.kind, attempt, LLM_MAX_RETRIES)) {
+          if (!interrupted && shouldRetryLLM(classified.kind, attempt, LLM_MAX_RETRIES)) {
             const delayMs = getLLMRetryDelayMs(attempt);
 
             log(

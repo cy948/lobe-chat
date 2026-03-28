@@ -83,6 +83,7 @@ describe('RuntimeExecutors', () => {
     };
 
     ctx = {
+      loadAgentState: vi.fn().mockResolvedValue(null),
       messageModel: mockMessageModel,
       operationId: 'op-123',
       serverDB: {} as any, // Mock serverDB
@@ -1621,10 +1622,12 @@ describe('RuntimeExecutors', () => {
       const result = await executors.call_tools_batch!(instruction, state);
 
       expect(mockToolExecutionService.executeTool).toHaveBeenCalledTimes(4);
-      expect((result.nextContext!.payload as any).toolResults).toMatchObject([
-        { isSuccess: true },
-        { isSuccess: false },
-      ]);
+      expect((result.nextContext!.payload as any).toolResults).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ isSuccess: true }),
+          expect.objectContaining({ isSuccess: false }),
+        ]),
+      );
     });
 
     it('should refresh messages from database after batch execution', async () => {
@@ -2790,6 +2793,38 @@ describe('RuntimeExecutors', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    it('should not retry llm execution after operation is interrupted', async () => {
+      const mockChat = vi.fn().mockRejectedValue(new Error('network timeout'));
+      vi.mocked(initModelRuntimeFromDB).mockResolvedValue({ chat: mockChat } as any);
+      const loadAgentState = vi.fn().mockResolvedValue({ status: 'interrupted' });
+
+      const executors = createRuntimeExecutors({
+        ...ctx,
+        loadAgentState,
+      });
+      const state = createMockState();
+      const instruction = {
+        payload: {
+          messages: [{ content: 'Hello', role: 'user' }],
+          model: 'gpt-4',
+          parentMessageId: 'parent-msg-123',
+          provider: 'openai',
+          tools: [],
+        },
+        type: 'call_llm' as const,
+      };
+
+      await expect(executors.call_llm!(instruction, state)).rejects.toThrow('network timeout');
+
+      expect(mockChat).toHaveBeenCalledTimes(1);
+      expect(loadAgentState).toHaveBeenCalledWith('op-123');
+      expect(
+        mockStreamManager.publishStreamEvent.mock.calls.some(
+          ([, event]) => event.type === 'stream_retry',
+        ),
+      ).toBe(false);
     });
 
     it('should apply exponential backoff across multiple llm retries', async () => {

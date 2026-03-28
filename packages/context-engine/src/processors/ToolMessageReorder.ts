@@ -27,7 +27,6 @@ const DEFAULT_TOOL_FAILURE_CONTENT = JSON.stringify({
  */
 export class ToolMessageReorder extends BaseProcessor {
   readonly name = 'ToolMessageReorder';
-  private removedInvalidTools = 0;
 
   constructor(options: ProcessorOptions = {}) {
     super(options);
@@ -36,23 +35,27 @@ export class ToolMessageReorder extends BaseProcessor {
   protected async doProcess(context: PipelineContext): Promise<PipelineContext> {
     const clonedContext = this.cloneContext(context);
 
-    const reorderedMessages = this.reorderToolMessages(clonedContext.messages);
+    // Reorder messages
+    const { reorderedMessages, removedInvalidTools } = this.reorderToolMessages(
+      clonedContext.messages,
+    );
 
     const originalCount = clonedContext.messages.length;
     const reorderedCount = reorderedMessages.length;
 
     clonedContext.messages = reorderedMessages;
 
+    // Update metadata
     clonedContext.metadata.toolMessageReorder = {
       originalCount,
-      removedInvalidTools: this.removedInvalidTools,
+      removedInvalidTools,
       reorderedCount,
     };
 
-    if (this.removedInvalidTools > 0) {
+    if (removedInvalidTools > 0) {
       log(
         'Tool message reordering completed, removed',
-        this.removedInvalidTools,
+        removedInvalidTools,
         'invalid tool messages',
       );
     } else {
@@ -65,9 +68,11 @@ export class ToolMessageReorder extends BaseProcessor {
   /**
    * Reorder tool messages
    */
-  private reorderToolMessages(messages: any[]): any[] {
-    this.removedInvalidTools = 0;
-
+  private reorderToolMessages(messages: any[]): {
+    removedInvalidTools: number;
+    reorderedMessages: any[];
+  } {
+    let removedInvalidTools = 0;
     const validToolCallIds = new Set<string>();
     const toolMessages = new Map<string, any>();
 
@@ -90,13 +95,15 @@ export class ToolMessageReorder extends BaseProcessor {
     for (const message of messages) {
       if (message.role !== 'tool') continue;
 
+      // Skip invalid tool messages
       if (!message.tool_call_id || !validToolCallIds.has(message.tool_call_id)) {
-        this.removedInvalidTools++;
+        removedInvalidTools++;
         continue;
       }
 
       if (toolMessages.has(message.tool_call_id)) {
-        this.removedInvalidTools++;
+        // Check if this tool message has already been added
+        removedInvalidTools++;
         continue;
       }
 
@@ -132,6 +139,7 @@ export class ToolMessageReorder extends BaseProcessor {
           : { ...message, tool_calls: normalizedToolCalls },
       );
 
+      // If assistant message with tool_calls, add corresponding tool messages
       for (const toolCall of normalizedToolCalls) {
         const matchedToolMessage = toolMessages.get(toolCall.id);
 
@@ -162,7 +170,7 @@ export class ToolMessageReorder extends BaseProcessor {
       }
     }
 
-    return reorderedMessages;
+    return { reorderedMessages, removedInvalidTools };
   }
 
   // Simplified: removed validation/statistics helper methods

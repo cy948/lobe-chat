@@ -19,154 +19,11 @@ declare module '../types' {
 
 const log = debug('context-engine:processor:ToolMessageReorder');
 
-interface AssistantMessageWithToolCalls {
-  [key: string]: unknown;
-  content?: unknown;
-  role: 'assistant';
-  tool_calls: Array<{
-    function?: { arguments?: string; name?: string };
-    id: string;
-    type?: string;
-  }>;
-}
-
-interface ToolMessage {
-  [key: string]: unknown;
-  content: string;
-  name?: string;
-  role: 'tool';
-  tool_call_id: string;
-}
-
-interface NormalizeDiagnostics {
-  dedupedToolCalls: number;
-  droppedDuplicateTools: number;
-  droppedOrphanTools: number;
-  generatedSyntheticTools: number;
-  reorderedTools: number;
-}
-
-interface NormalizeResult {
-  diagnostics: NormalizeDiagnostics;
-  messages: any[];
-}
-
 const DEFAULT_TOOL_FAILURE_CONTENT = JSON.stringify({
   error: 'Tool call failed',
   success: false,
   synthetic: true,
 });
-
-const isAssistantWithToolCalls = (message: any): message is AssistantMessageWithToolCalls =>
-  message?.role === 'assistant' &&
-  Array.isArray(message.tool_calls) &&
-  message.tool_calls.some((toolCall: any) => !!toolCall?.id);
-
-const isToolMessage = (message: any): message is ToolMessage =>
-  message?.role === 'tool' &&
-  typeof message.tool_call_id === 'string' &&
-  message.tool_call_id.length > 0;
-
-const createSyntheticToolMessage = (
-  toolCall: AssistantMessageWithToolCalls['tool_calls'][number],
-): ToolMessage => ({
-  content: DEFAULT_TOOL_FAILURE_CONTENT,
-  ...(toolCall.function?.name && { name: toolCall.function.name }),
-  role: 'tool',
-  tool_call_id: toolCall.id,
-});
-
-export const normalizeToolCallMessages = (messages: any[]): NormalizeResult => {
-  const diagnostics: NormalizeDiagnostics = {
-    dedupedToolCalls: 0,
-    droppedDuplicateTools: 0,
-    droppedOrphanTools: 0,
-    generatedSyntheticTools: 0,
-    reorderedTools: 0,
-  };
-
-  const toolMessagesById = new Map<string, ToolMessage>();
-  const toolOriginalIndexById = new Map<string, number>();
-  const assistantToolCallIds = new Set<string>();
-
-  for (const [index, message] of messages.entries()) {
-    if (message?.role !== 'tool') continue;
-
-    if (!isToolMessage(message)) {
-      diagnostics.droppedOrphanTools++;
-      continue;
-    }
-
-    if (toolMessagesById.has(message.tool_call_id)) {
-      diagnostics.droppedDuplicateTools++;
-      continue;
-    }
-
-    toolMessagesById.set(message.tool_call_id, message);
-    toolOriginalIndexById.set(message.tool_call_id, index);
-  }
-
-  const normalizedMessages: any[] = [];
-
-  for (const [index, message] of messages.entries()) {
-    if (message?.role === 'tool') continue;
-
-    if (!isAssistantWithToolCalls(message)) {
-      normalizedMessages.push(message);
-      continue;
-    }
-
-    const seenToolCallIds = new Set<string>();
-    const normalizedToolCalls = [];
-
-    for (const toolCall of message.tool_calls) {
-      if (!toolCall?.id) continue;
-
-      if (seenToolCallIds.has(toolCall.id)) {
-        diagnostics.dedupedToolCalls++;
-        continue;
-      }
-
-      seenToolCallIds.add(toolCall.id);
-      assistantToolCallIds.add(toolCall.id);
-      normalizedToolCalls.push(toolCall);
-    }
-
-    const normalizedAssistant =
-      normalizedToolCalls.length === message.tool_calls.length
-        ? message
-        : { ...message, tool_calls: normalizedToolCalls };
-
-    normalizedMessages.push(normalizedAssistant);
-
-    for (const toolCall of normalizedToolCalls) {
-      const matchedToolMessage = toolMessagesById.get(toolCall.id);
-
-      if (matchedToolMessage) {
-        const originalToolIndex = toolOriginalIndexById.get(toolCall.id);
-        if (originalToolIndex !== undefined && originalToolIndex !== index + 1) {
-          diagnostics.reorderedTools++;
-        }
-
-        normalizedMessages.push(matchedToolMessage);
-        toolMessagesById.delete(toolCall.id);
-        toolOriginalIndexById.delete(toolCall.id);
-        continue;
-      }
-
-      diagnostics.generatedSyntheticTools++;
-      normalizedMessages.push(createSyntheticToolMessage(toolCall));
-    }
-  }
-
-  for (const toolCallId of toolMessagesById.keys()) {
-    if (!assistantToolCallIds.has(toolCallId)) {
-      diagnostics.droppedOrphanTools++;
-    }
-  }
-
-  return { diagnostics, messages: normalizedMessages };
-};
 
 /**
  * Reorder tool messages to ensure that tool messages are displayed in the correct order.
@@ -182,7 +39,14 @@ export class ToolMessageReorder extends BaseProcessor {
   protected async doProcess(context: PipelineContext): Promise<PipelineContext> {
     const clonedContext = this.cloneContext(context);
 
-    const { diagnostics, messages } = normalizeToolCallMessages(clonedContext.messages);
+    const diagnostics = {
+      dedupedToolCalls: 0,
+      droppedDuplicateTools: 0,
+      droppedOrphanTools: 0,
+      generatedSyntheticTools: 0,
+      reorderedTools: 0,
+    };
+    const messages = this.reorderToolMessages(clonedContext.messages, diagnostics);
 
     const originalCount = clonedContext.messages.length;
     const reorderedCount = messages.length;
@@ -202,5 +66,121 @@ export class ToolMessageReorder extends BaseProcessor {
     log('Tool message normalization completed %O', clonedContext.metadata.toolMessageReorder);
 
     return this.markAsExecuted(clonedContext);
+  }
+
+  private getToolMessageContent(message: any): string {
+    if (typeof message.content === 'string' && message.content.length > 0) return message.content;
+
+    const pluginErrorMessage =
+      typeof message.pluginError?.message === 'string' ? message.pluginError.message : undefined;
+
+    if (pluginErrorMessage) return pluginErrorMessage;
+
+    return DEFAULT_TOOL_FAILURE_CONTENT;
+  }
+
+  private createSyntheticToolMessage(toolCall: any): any {
+    return {
+      content: DEFAULT_TOOL_FAILURE_CONTENT,
+      ...(toolCall.function?.name && { name: toolCall.function.name }),
+      role: 'tool',
+      tool_call_id: toolCall.id,
+    };
+  }
+
+  private reorderToolMessages(
+    messages: any[],
+    diagnostics: {
+      dedupedToolCalls: number;
+      droppedDuplicateTools: number;
+      droppedOrphanTools: number;
+      generatedSyntheticTools: number;
+      reorderedTools: number;
+    },
+  ): any[] {
+    const validToolCallIds = new Set<string>();
+    const toolMessages = new Map<string, { index: number; message: any }>();
+
+    for (const message of messages) {
+      if (message.role !== 'assistant' || !Array.isArray(message.tool_calls)) continue;
+
+      const seenToolCallIds = new Set<string>();
+      for (const toolCall of message.tool_calls) {
+        if (!toolCall?.id) continue;
+
+        if (seenToolCallIds.has(toolCall.id)) {
+          diagnostics.dedupedToolCalls++;
+          continue;
+        }
+
+        seenToolCallIds.add(toolCall.id);
+        validToolCallIds.add(toolCall.id);
+      }
+    }
+
+    for (const [index, message] of messages.entries()) {
+      if (message.role !== 'tool') continue;
+
+      if (!message.tool_call_id || !validToolCallIds.has(message.tool_call_id)) {
+        diagnostics.droppedOrphanTools++;
+        continue;
+      }
+
+      if (toolMessages.has(message.tool_call_id)) {
+        diagnostics.droppedDuplicateTools++;
+        continue;
+      }
+
+      toolMessages.set(message.tool_call_id, { index, message });
+    }
+
+    const reorderedMessages: any[] = [];
+
+    for (const [index, message] of messages.entries()) {
+      if (message.role === 'tool') continue;
+
+      if (message.role !== 'assistant' || !Array.isArray(message.tool_calls)) {
+        reorderedMessages.push(message);
+        continue;
+      }
+
+      const seenToolCallIds = new Set<string>();
+      const normalizedToolCalls = [];
+
+      for (const toolCall of message.tool_calls) {
+        if (!toolCall?.id) continue;
+
+        if (seenToolCallIds.has(toolCall.id)) continue;
+
+        seenToolCallIds.add(toolCall.id);
+        normalizedToolCalls.push(toolCall);
+      }
+
+      reorderedMessages.push(
+        normalizedToolCalls.length === message.tool_calls.length
+          ? message
+          : { ...message, tool_calls: normalizedToolCalls },
+      );
+
+      for (const toolCall of normalizedToolCalls) {
+        const matchedToolMessage = toolMessages.get(toolCall.id);
+
+        if (matchedToolMessage) {
+          if (matchedToolMessage.index !== index + 1) diagnostics.reorderedTools++;
+
+          reorderedMessages.push({
+            ...matchedToolMessage.message,
+            content: this.getToolMessageContent(matchedToolMessage.message),
+          });
+          toolMessages.delete(toolCall.id);
+          continue;
+        }
+
+        diagnostics.generatedSyntheticTools++;
+        reorderedMessages.push(this.createSyntheticToolMessage(toolCall));
+      }
+    }
+
+    return reorderedMessages;
   }
 }

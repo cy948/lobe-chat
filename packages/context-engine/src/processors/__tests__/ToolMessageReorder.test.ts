@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { PipelineContext } from '../../types';
-import { normalizeToolCallMessages, ToolMessageReorder } from '../ToolMessageReorder';
+import { ToolMessageReorder } from '../ToolMessageReorder';
 
 const createContext = (messages: any[]): PipelineContext => ({
   initialState: { messages: [] } as any,
@@ -193,7 +193,8 @@ describe('ToolMessageReorder', () => {
   });
 
   it('should generate a synthetic tool result when a tool message is missing', async () => {
-    const { messages, diagnostics } = normalizeToolCallMessages([
+    const proc = new ToolMessageReorder();
+    const ctx = createContext([
       { id: 'u1', role: 'user', content: 'hi' },
       {
         id: 'a1',
@@ -209,7 +210,9 @@ describe('ToolMessageReorder', () => {
       },
     ]);
 
-    expect(messages).toEqual([
+    const result = await proc.process(ctx);
+
+    expect(result.messages).toEqual([
       { id: 'u1', role: 'user', content: 'hi' },
       {
         id: 'a1',
@@ -230,11 +233,12 @@ describe('ToolMessageReorder', () => {
         tool_call_id: 'call_missing',
       },
     ]);
-    expect(diagnostics.generatedSyntheticTools).toBe(1);
+    expect(result.metadata.toolMessageReorder?.generatedSyntheticTools).toBe(1);
   });
 
   it('should dedupe duplicate tool calls and keep the first real tool result', async () => {
-    const { messages, diagnostics } = normalizeToolCallMessages([
+    const proc = new ToolMessageReorder();
+    const ctx = createContext([
       {
         id: 'a1',
         role: 'assistant',
@@ -251,7 +255,9 @@ describe('ToolMessageReorder', () => {
       { id: 'orphan', role: 'tool', content: '{"ok":4}', tool_call_id: 'call_3' },
     ]);
 
-    expect(messages).toEqual([
+    const result = await proc.process(ctx);
+
+    expect(result.messages).toEqual([
       {
         id: 'a1',
         role: 'assistant',
@@ -264,12 +270,54 @@ describe('ToolMessageReorder', () => {
       { id: 't1-first', role: 'tool', content: '{"ok":1}', tool_call_id: 'call_1' },
       { id: 't2', role: 'tool', content: '{"ok":2}', tool_call_id: 'call_2' },
     ]);
-    expect(diagnostics).toEqual(
+    expect(result.metadata.toolMessageReorder).toEqual(
       expect.objectContaining({
         dedupedToolCalls: 1,
         droppedDuplicateTools: 1,
         droppedOrphanTools: 1,
       }),
     );
+  });
+
+  it('should prefer a real error tool result over a synthetic fallback', async () => {
+    const proc = new ToolMessageReorder();
+    const ctx = createContext([
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'calling',
+        tool_calls: [
+          { function: { arguments: '{}', name: 'test' }, id: 'call_1', type: 'function' },
+        ],
+      },
+      {
+        id: 't1',
+        role: 'tool',
+        content: '',
+        pluginError: { message: 'Manifest not found for tool: test' },
+        tool_call_id: 'call_1',
+      },
+    ]);
+
+    const result = await proc.process(ctx);
+
+    expect(result.messages).toEqual([
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'calling',
+        tool_calls: [
+          { function: { arguments: '{}', name: 'test' }, id: 'call_1', type: 'function' },
+        ],
+      },
+      {
+        id: 't1',
+        role: 'tool',
+        content: 'Manifest not found for tool: test',
+        pluginError: { message: 'Manifest not found for tool: test' },
+        tool_call_id: 'call_1',
+      },
+    ]);
+    expect(result.metadata.toolMessageReorder?.generatedSyntheticTools).toBe(0);
   });
 });

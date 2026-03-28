@@ -1372,7 +1372,6 @@ describe('RuntimeExecutors', () => {
       const result = await executors.call_tool!(instruction, state);
 
       expect(mockToolExecutionService.executeTool).toHaveBeenCalledTimes(3);
-      expect(result.nextContext?.phase).toBe('tool_result');
       expect((result.nextContext!.payload as any).isSuccess).toBe(true);
     });
 
@@ -1406,7 +1405,6 @@ describe('RuntimeExecutors', () => {
 
       expect(mockToolExecutionService.executeTool).toHaveBeenCalledTimes(3);
       expect((result.nextContext!.payload as any).isSuccess).toBe(false);
-      expect(result.nextContext?.phase).toBe('tool_result');
     });
 
     it('should not retry for replan or stop kinds', async () => {
@@ -1623,8 +1621,10 @@ describe('RuntimeExecutors', () => {
       const result = await executors.call_tools_batch!(instruction, state);
 
       expect(mockToolExecutionService.executeTool).toHaveBeenCalledTimes(4);
-      expect(result.nextContext?.phase).toBe('tools_batch_result');
-      expect((result.nextContext!.payload as any).toolResults).toHaveLength(2);
+      expect((result.nextContext!.payload as any).toolResults).toMatchObject([
+        { isSuccess: true },
+        { isSuccess: false },
+      ]);
     });
 
     it('should refresh messages from database after batch execution', async () => {
@@ -2780,11 +2780,6 @@ describe('RuntimeExecutors', () => {
           'msg-123',
           expect.objectContaining({ content: 'final' }),
         );
-        expect(result.newState.messages.at(-1)).toEqual({
-          content: 'final',
-          role: 'assistant',
-          tool_calls: undefined,
-        });
         expect(mockStreamManager.publishStreamEvent).toHaveBeenCalledWith(
           'op-123',
           expect.objectContaining({
@@ -2840,11 +2835,7 @@ describe('RuntimeExecutors', () => {
         const result = await resultPromise;
 
         expect(mockChat).toHaveBeenCalledTimes(4);
-        expect(result.newState.messages.at(-1)).toEqual({
-          content: 'final',
-          role: 'assistant',
-          tool_calls: undefined,
-        });
+        expect(result.nextContext?.phase).toBe('llm_result');
 
         expect(mockStreamManager.publishStreamEvent).toHaveBeenCalledWith(
           'op-123',

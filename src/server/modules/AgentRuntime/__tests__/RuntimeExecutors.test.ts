@@ -1376,6 +1376,43 @@ describe('RuntimeExecutors', () => {
       expect((result.nextContext!.payload as any).isSuccess).toBe(true);
     });
 
+    it('should stop retrying tool execution after operation is interrupted', async () => {
+      mockToolExecutionService.executeTool.mockResolvedValue({
+        content: 'timeout',
+        error: { kind: 'retry', message: 'timeout' },
+        executionTime: 50,
+        state: {},
+        success: false,
+      });
+      const loadAgentState = vi.fn().mockResolvedValue({ status: 'interrupted' });
+
+      const executors = createRuntimeExecutors({
+        ...ctx,
+        loadAgentState,
+      });
+      const state = createMockState();
+
+      const instruction = {
+        payload: {
+          parentMessageId: 'assistant-msg-123',
+          toolCalling: {
+            apiName: 'search',
+            arguments: '{}',
+            id: 'tool-call-retry-1',
+            identifier: 'web-search',
+            type: 'default' as const,
+          },
+        },
+        type: 'call_tool' as const,
+      };
+
+      const result = await executors.call_tool!(instruction, state);
+
+      expect(mockToolExecutionService.executeTool).toHaveBeenCalledTimes(1);
+      expect(loadAgentState).toHaveBeenCalledWith('op-123');
+      expect((result.nextContext!.payload as any).isSuccess).toBe(false);
+    });
+
     it('should materialize failed tool result after retry exhaustion', async () => {
       mockToolExecutionService.executeTool.mockResolvedValue({
         content: 'still failing',
@@ -2697,7 +2734,7 @@ describe('RuntimeExecutors', () => {
         expect(mockChat).toHaveBeenCalledTimes(6);
 
         const retryEvents = mockStreamManager.publishStreamEvent.mock.calls.filter(
-          ([, event]) => event.type === 'stream_retry',
+          ([, event]: [string, { type: string }]) => event.type === 'stream_retry',
         );
 
         expect(retryEvents).toHaveLength(5);
@@ -2842,9 +2879,51 @@ describe('RuntimeExecutors', () => {
       expect(loadAgentState).toHaveBeenCalledWith('op-123');
       expect(
         mockStreamManager.publishStreamEvent.mock.calls.some(
-          ([, event]) => event.type === 'stream_retry',
+          ([, event]: [string, { type: string }]) => event.type === 'stream_retry',
         ),
       ).toBe(false);
+    });
+
+    it('should not retry llm execution if operation is interrupted during backoff', async () => {
+      vi.useFakeTimers();
+
+      const mockChat = vi.fn().mockRejectedValue(new Error('network timeout'));
+      vi.mocked(initModelRuntimeFromDB).mockResolvedValue({ chat: mockChat } as any);
+      const loadAgentState = vi
+        .fn()
+        .mockResolvedValueOnce({ status: 'running' })
+        .mockResolvedValueOnce({ status: 'interrupted' });
+
+      const executors = createRuntimeExecutors({
+        ...ctx,
+        loadAgentState,
+      });
+      const state = createMockState();
+      const instruction = {
+        payload: {
+          messages: [{ content: 'Hello', role: 'user' }],
+          model: 'gpt-4',
+          parentMessageId: 'parent-msg-123',
+          provider: 'openai',
+          tools: [],
+        },
+        type: 'call_llm' as const,
+      };
+
+      try {
+        const resultPromise = executors.call_llm!(instruction, state);
+        const rejectionExpectation = expect(resultPromise).rejects.toThrow('network timeout');
+
+        await Promise.resolve();
+        await vi.runOnlyPendingTimersAsync();
+
+        await rejectionExpectation;
+
+        expect(mockChat).toHaveBeenCalledTimes(1);
+        expect(loadAgentState).toHaveBeenCalledTimes(2);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('should apply exponential backoff across multiple llm retries', async () => {

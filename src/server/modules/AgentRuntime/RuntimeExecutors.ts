@@ -107,7 +107,12 @@ const isOperationInterrupted = async (ctx: RuntimeExecutorContext) => {
 
 const executeToolWithRetry = async (
   execute: () => Promise<ToolExecutionResultResponse>,
-  params: { maxRetries: number; operationLogId: string; toolName: string },
+  params: {
+    isInterrupted?: () => Promise<boolean>;
+    maxRetries: number;
+    operationLogId: string;
+    toolName: string;
+  },
 ): Promise<{ attempts: number; result: ToolExecutionResultResponse }> => {
   const maxAttempts = params.maxRetries + 1;
 
@@ -119,6 +124,10 @@ const executeToolWithRetry = async (
     const kind = getToolFailureKind(result);
 
     if (shouldRetryTool(kind, attempt, params.maxRetries)) {
+      if (await params.isInterrupted?.()) {
+        return { attempts: attempt, result };
+      }
+
       log(
         '[%s] Tool %s failed with kind=%s (attempt %d/%d), retrying ...',
         params.operationLogId,
@@ -841,6 +850,11 @@ export const createRuntimeExecutors = (
             });
 
             await sleep(delayMs);
+
+            if (await isOperationInterrupted(ctx)) {
+              throw error;
+            }
+
             continue;
           }
 
@@ -1169,7 +1183,12 @@ export const createRuntimeExecutors = (
             topicId: ctx.topicId,
             userId: ctx.userId,
           }),
-        { maxRetries: TOOL_MAX_RETRIES, operationLogId, toolName },
+        {
+          isInterrupted: () => isOperationInterrupted(ctx),
+          maxRetries: TOOL_MAX_RETRIES,
+          operationLogId,
+          toolName,
+        },
       );
 
       const executionResult = execution.result;
@@ -1394,7 +1413,12 @@ export const createRuntimeExecutors = (
                 topicId: ctx.topicId,
                 userId: ctx.userId,
               }),
-            { maxRetries: TOOL_MAX_RETRIES, operationLogId, toolName },
+            {
+              isInterrupted: () => isOperationInterrupted(ctx),
+              maxRetries: TOOL_MAX_RETRIES,
+              operationLogId,
+              toolName,
+            },
           );
 
           const executionResult = execution.result;

@@ -1,4 +1,4 @@
-type LLMErrorKind = 'replan' | 'retry' | 'stop';
+type LLMErrorKind = 'retry' | 'stop';
 
 interface ClassifiedLLMError {
   code?: string;
@@ -20,8 +20,8 @@ const RETRY_ERROR_TYPES = new Set([
   'QuotaLimitReached',
   'StreamChunkError',
 ]);
-const REPLAN_ERROR_TYPES = new Set(['ExceededContextWindow', 'ModelNotFound']);
 const STOP_ERROR_TYPES = new Set([
+  'ExceededContextWindow',
   'InsufficientQuota',
   'InvalidBedrockCredentials',
   'InvalidGithubCopilotToken',
@@ -29,6 +29,7 @@ const STOP_ERROR_TYPES = new Set([
   'InvalidOllamaArgs',
   'InvalidProviderAPIKey',
   'InvalidVertexCredentials',
+  'ModelNotFound',
   'PermissionDenied',
   'Unauthorized',
 ]);
@@ -43,21 +44,19 @@ const RETRY_KEYWORDS = [
   'timed out',
   'temporarily unavailable',
 ];
-const REPLAN_KEYWORDS = [
-  'context window',
-  'invalid request',
-  'maximum context length',
-  'model not found',
-  'payload',
-  'too many tokens',
-];
 const STOP_KEYWORDS = [
   '403',
+  'context window',
   'api key',
   'billing',
   'forbidden',
   'insufficient quota',
+  'invalid request',
+  'maximum context length',
+  'model not found',
   'permission denied',
+  'payload',
+  'too many tokens',
   'unauthorized',
 ];
 
@@ -144,24 +143,22 @@ const normalizeSignal = (error: unknown): LLMErrorSignal => {
 const classifyKind = ({ code, errorType, message, status }: LLMErrorSignal): LLMErrorKind => {
   if (errorType) {
     if (STOP_ERROR_TYPES.has(errorType)) return 'stop';
-    if (REPLAN_ERROR_TYPES.has(errorType)) return 'replan';
     if (RETRY_ERROR_TYPES.has(errorType)) return 'retry';
   }
 
   if (code) {
     if (code.includes('UNAUTHORIZED') || code.includes('FORBIDDEN')) return 'stop';
-    if (code.includes('MODEL_NOT_FOUND')) return 'replan';
+    if (code.includes('MODEL_NOT_FOUND')) return 'stop';
     if (code.includes('RATE_LIMIT') || code.includes('TIMEOUT')) return 'retry';
   }
 
   if (status !== undefined) {
     if (status === 401 || status === 403) return 'stop';
-    if (status === 400 || status === 404 || status === 409 || status === 422) return 'replan';
+    if (status === 400 || status === 404 || status === 409 || status === 422) return 'stop';
     if (status === 408 || status === 425 || status === 429 || status >= 500) return 'retry';
   }
 
   if (hasAnyKeyword(message, STOP_KEYWORDS)) return 'stop';
-  if (hasAnyKeyword(message, REPLAN_KEYWORDS)) return 'replan';
   if (hasAnyKeyword(message, RETRY_KEYWORDS)) return 'retry';
 
   return 'retry';

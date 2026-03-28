@@ -15,11 +15,11 @@ describe('classifyLLMError', () => {
     ).toBe('stop');
   });
 
-  it('should classify context window errors as replan', () => {
+  it('should classify context window errors as stop', () => {
     expect(
       classifyLLMError({ errorType: 'ExceededContextWindow', message: 'maximum context length' })
         .kind,
-    ).toBe('replan');
+    ).toBe('stop');
   });
 
   it('should default unknown errors to retry', () => {

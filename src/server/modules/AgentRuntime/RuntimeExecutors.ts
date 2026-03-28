@@ -285,176 +285,172 @@ export const createRuntimeExecutors = (
       type: 'stream_start',
     });
 
-    // Process messages through serverMessagesEngine to inject system role, knowledge, etc.
-    // Rebuild params from agentConfig at execution time (capabilities built dynamically)
-    const agentConfig = ctx.agentConfig;
-    let processedMessages;
-    if (agentConfig) {
-      const { LOBE_DEFAULT_MODEL_LIST } = await import('model-bank');
+    try {
+      type ContentPart = { text: string; type: 'text' } | { image: string; type: 'image' };
 
-      // Extract <refer_topic> tags from messages and fetch summaries.
-      // Skip if messages already contain injected topic_reference_context
-      // (e.g., from client-side contextEngineering preprocessing) to avoid double injection.
-      let topicReferences;
-      const alreadyHasTopicRefs = (
-        llmPayload.messages as Array<{ content: string | unknown }>
-      ).some((m) => typeof m.content === 'string' && m.content.includes('topic_reference_context'));
+      // Process messages through serverMessagesEngine to inject system role, knowledge, etc.
+      // Rebuild params from agentConfig at execution time (capabilities built dynamically)
+      const agentConfig = ctx.agentConfig;
+      let processedMessages;
+      if (agentConfig) {
+        const { LOBE_DEFAULT_MODEL_LIST } = await import('model-bank');
 
-      if (!alreadyHasTopicRefs && ctx.serverDB && ctx.userId) {
-        const topicModel = new TopicModel(ctx.serverDB, ctx.userId);
-        const messageModel = new MessageModelClass(ctx.serverDB, ctx.userId);
-        topicReferences = await resolveTopicReferences(
-          llmPayload.messages as Array<{ content: string | unknown }>,
-          async (topicId) => topicModel.findById(topicId),
-          async (topicId) => {
-            const topic = await topicModel.findById(topicId);
-            return messageModel.query({
-              agentId: topic?.agentId ?? undefined,
-              groupId: topic?.groupId ?? undefined,
-              topicId,
-            });
-          },
+        // Extract <refer_topic> tags from messages and fetch summaries.
+        // Skip if messages already contain injected topic_reference_context
+        // (e.g., from client-side contextEngineering preprocessing) to avoid double injection.
+        let topicReferences;
+        const alreadyHasTopicRefs = (
+          llmPayload.messages as Array<{ content: string | unknown }>
+        ).some(
+          (m) => typeof m.content === 'string' && m.content.includes('topic_reference_context'),
         );
-      }
 
-      // Fetch agent documents for context injection
-      let agentDocuments: AgentContextDocument[] | undefined;
-      const agentId = state.metadata?.agentId;
-      if (agentId && ctx.serverDB && ctx.userId) {
-        try {
-          const agentDocService = new AgentDocumentsService(ctx.serverDB, ctx.userId);
-          const docs = await agentDocService.getAgentDocuments(agentId);
-          if (docs.length > 0) {
-            agentDocuments = docs.map((doc) => ({
-              content: doc.content,
-              filename: doc.filename,
-              id: doc.id,
-              loadPosition: normalizeDocumentPosition(
-                doc.policy?.context?.position || doc.policyLoadPosition,
-              ),
-              loadRules: doc.loadRules,
-              policyId: doc.templateId,
-              policyLoadFormat: doc.policy?.context?.policyLoadFormat || doc.policyLoadFormat,
-              title: doc.title,
-            }));
-            log('Resolved %d agent documents for agent %s', agentDocuments.length, agentId);
-          }
-        } catch (error) {
-          log('Failed to resolve agent documents for agent %s: %O', agentId, error);
+        if (!alreadyHasTopicRefs && ctx.serverDB && ctx.userId) {
+          const topicModel = new TopicModel(ctx.serverDB, ctx.userId);
+          const messageModel = new MessageModelClass(ctx.serverDB, ctx.userId);
+          topicReferences = await resolveTopicReferences(
+            llmPayload.messages as Array<{ content: string | unknown }>,
+            async (topicId) => topicModel.findById(topicId),
+            async (topicId) => {
+              const topic = await topicModel.findById(topicId);
+              return messageModel.query({
+                agentId: topic?.agentId ?? undefined,
+                groupId: topic?.groupId ?? undefined,
+                topicId,
+              });
+            },
+          );
         }
+
+        // Fetch agent documents for context injection
+        let agentDocuments: AgentContextDocument[] | undefined;
+        const agentId = state.metadata?.agentId;
+        if (agentId && ctx.serverDB && ctx.userId) {
+          try {
+            const agentDocService = new AgentDocumentsService(ctx.serverDB, ctx.userId);
+            const docs = await agentDocService.getAgentDocuments(agentId);
+            if (docs.length > 0) {
+              agentDocuments = docs.map((doc) => ({
+                content: doc.content,
+                filename: doc.filename,
+                id: doc.id,
+                loadPosition: normalizeDocumentPosition(
+                  doc.policy?.context?.position || doc.policyLoadPosition,
+                ),
+                loadRules: doc.loadRules,
+                policyId: doc.templateId,
+                policyLoadFormat: doc.policy?.context?.policyLoadFormat || doc.policyLoadFormat,
+                title: doc.title,
+              }));
+              log('Resolved %d agent documents for agent %s', agentDocuments.length, agentId);
+            }
+          } catch (error) {
+            log('Failed to resolve agent documents for agent %s: %O', agentId, error);
+          }
+        }
+
+        const contextEngineInput = {
+          agentDocuments,
+          additionalVariables: state.metadata?.deviceSystemInfo,
+          userTimezone: ctx.userTimezone,
+          capabilities: {
+            isCanUseFC: (m: string, p: string) => {
+              const info = LOBE_DEFAULT_MODEL_LIST.find(
+                (item) => item.id === m && item.providerId === p,
+              );
+              return info?.abilities?.functionCall ?? true;
+            },
+            isCanUseVideo: (m: string, p: string) => {
+              const info = LOBE_DEFAULT_MODEL_LIST.find(
+                (item) => item.id === m && item.providerId === p,
+              );
+              return info?.abilities?.video ?? false;
+            },
+            isCanUseVision: (m: string, p: string) => {
+              const info = LOBE_DEFAULT_MODEL_LIST.find(
+                (item) => item.id === m && item.providerId === p,
+              );
+              return info?.abilities?.vision ?? true;
+            },
+          },
+          botPlatformContext: ctx.botPlatformContext,
+          discordContext: ctx.discordContext,
+          enableHistoryCount: agentConfig.chatConfig?.enableHistoryCount ?? undefined,
+          evalContext: ctx.evalContext,
+          forceFinish: state.forceFinish,
+          historyCount: agentConfig.chatConfig?.historyCount ?? undefined,
+          knowledge: {
+            fileContents: agentConfig.files
+              ?.filter((f: { enabled?: boolean | null }) => f.enabled === true)
+              .map((f: { content?: string | null; id?: string; name?: string }) => ({
+                content: f.content ?? '',
+                fileId: f.id ?? '',
+                filename: f.name ?? '',
+              })),
+            knowledgeBases: agentConfig.knowledgeBases
+              ?.filter((kb: { enabled?: boolean | null }) => kb.enabled === true)
+              .map((kb: { id?: string; name?: string }) => ({
+                id: kb.id ?? '',
+                name: kb.name ?? '',
+              })),
+          },
+          messages: llmPayload.messages as UIChatMessage[],
+          model,
+          provider,
+          systemRole: agentConfig.systemRole ?? undefined,
+          toolsConfig: {
+            manifests: Object.values(resolved.manifestMap),
+            tools: resolved.enabledToolIds,
+          },
+          userMemory: state.metadata?.userMemory,
+
+          // Skills configuration for <available_skills> injection
+          ...(resolvedSkills?.enabledSkills?.length && {
+            skillsConfig: { enabledSkills: resolvedSkills.enabledSkills },
+          }),
+
+          // Topic reference summaries
+          ...(topicReferences && { topicReferences }),
+        };
+
+        processedMessages = await serverMessagesEngine(contextEngineInput);
+
+        // Emit context engine event for tracing
+        // Omit large/redundant fields to reduce snapshot size:
+        // - input.messages: reconstructible from step's messagesBaseline + messagesDelta
+        // - input.toolsConfig: static per operation, ~47KB of manifests repeated every call_llm step
+        // Keep output (processedMessages) — needed by inspect CLI for --env, --system-role, -m
+        const {
+          messages: _inputMsgs,
+          toolsConfig: _toolsConfig,
+          ...contextEngineInputLite
+        } = contextEngineInput;
+        events.push({
+          input: {
+            ...contextEngineInputLite,
+            toolCount: _toolsConfig?.tools?.length ?? 0,
+          },
+          output: processedMessages,
+          type: 'context_engine_result',
+        } as any);
+      } else {
+        processedMessages = llmPayload.messages;
       }
 
-      const contextEngineInput = {
-        agentDocuments,
-        additionalVariables: state.metadata?.deviceSystemInfo,
-        userTimezone: ctx.userTimezone,
-        capabilities: {
-          isCanUseFC: (m: string, p: string) => {
-            const info = LOBE_DEFAULT_MODEL_LIST.find(
-              (item) => item.id === m && item.providerId === p,
-            );
-            return info?.abilities?.functionCall ?? true;
-          },
-          isCanUseVideo: (m: string, p: string) => {
-            const info = LOBE_DEFAULT_MODEL_LIST.find(
-              (item) => item.id === m && item.providerId === p,
-            );
-            return info?.abilities?.video ?? false;
-          },
-          isCanUseVision: (m: string, p: string) => {
-            const info = LOBE_DEFAULT_MODEL_LIST.find(
-              (item) => item.id === m && item.providerId === p,
-            );
-            return info?.abilities?.vision ?? true;
-          },
-        },
-        botPlatformContext: ctx.botPlatformContext,
-        discordContext: ctx.discordContext,
-        enableHistoryCount: agentConfig.chatConfig?.enableHistoryCount ?? undefined,
-        evalContext: ctx.evalContext,
-        forceFinish: state.forceFinish,
-        historyCount: agentConfig.chatConfig?.historyCount ?? undefined,
-        knowledge: {
-          fileContents: agentConfig.files
-            ?.filter((f: { enabled?: boolean | null }) => f.enabled === true)
-            .map((f: { content?: string | null; id?: string; name?: string }) => ({
-              content: f.content ?? '',
-              fileId: f.id ?? '',
-              filename: f.name ?? '',
-            })),
-          knowledgeBases: agentConfig.knowledgeBases
-            ?.filter((kb: { enabled?: boolean | null }) => kb.enabled === true)
-            .map((kb: { id?: string; name?: string }) => ({
-              id: kb.id ?? '',
-              name: kb.name ?? '',
-            })),
-        },
-        messages: llmPayload.messages as UIChatMessage[],
-        model,
-        provider,
-        systemRole: agentConfig.systemRole ?? undefined,
-        toolsConfig: {
-          manifests: Object.values(resolved.manifestMap),
-          tools: resolved.enabledToolIds,
-        },
-        userMemory: state.metadata?.userMemory,
+      // Initialize ModelRuntime (read user's keyVaults from database)
+      const modelRuntime = await initModelRuntimeFromDB(ctx.serverDB, ctx.userId!, provider);
 
-        // Skills configuration for <available_skills> injection
-        ...(resolvedSkills?.enabledSkills?.length && {
-          skillsConfig: { enabledSkills: resolvedSkills.enabledSkills },
-        }),
+      // Construct ChatStreamPayload
+      const stream = ctx.stream ?? true;
+      const chatPayload = { messages: processedMessages, model, stream, tools };
 
-        // Topic reference summaries
-        ...(topicReferences && { topicReferences }),
-      };
-
-      processedMessages = await serverMessagesEngine(contextEngineInput);
-
-      // Emit context engine event for tracing
-      // Omit large/redundant fields to reduce snapshot size:
-      // - input.messages: reconstructible from step's messagesBaseline + messagesDelta
-      // - input.toolsConfig: static per operation, ~47KB of manifests repeated every call_llm step
-      // Keep output (processedMessages) — needed by inspect CLI for --env, --system-role, -m
-      const {
-        messages: _inputMsgs,
-        toolsConfig: _toolsConfig,
-        ...contextEngineInputLite
-      } = contextEngineInput;
-      events.push({
-        input: {
-          ...contextEngineInputLite,
-          toolCount: _toolsConfig?.tools?.length ?? 0,
-        },
-        output: processedMessages,
-        type: 'context_engine_result',
-      } as any);
-    } else {
-      processedMessages = llmPayload.messages;
-    }
-
-    const stream = ctx.stream ?? true;
-    const maxAttempts = LLM_MAX_RETRIES + 1;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      // Buffer: accumulate text and reasoning, send every 50ms
+      const BUFFER_INTERVAL = 50;
       let textBuffer = '';
       let reasoningBuffer = '';
+
       let textBufferTimer: NodeJS.Timeout | null = null;
       let reasoningBufferTimer: NodeJS.Timeout | null = null;
-      let content = '';
-      let toolsCalling: ChatToolPayload[] = [];
-      let tool_calls: MessageToolCall[] = [];
-      let thinkingContent = '';
-      let imageList: any[] = [];
-      let grounding: any = null;
-      let currentStepUsage: any = undefined;
-      let streamError: any = undefined;
-
-      // Multimodal content parts tracking
-      type ContentPart = { text: string; type: 'text' } | { image: string; type: 'image' };
-      let contentParts: ContentPart[] = [];
-      let reasoningParts: ContentPart[] = [];
-      let hasContentImages = false;
-      let hasReasoningImages = false;
 
       const flushTextBuffer = async () => {
         const delta = textBuffer;
@@ -512,23 +508,38 @@ export const createRuntimeExecutors = (
         }
       };
 
+      const maxAttempts = LLM_MAX_RETRIES + 1;
+
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        content = '';
-        toolsCalling = [];
-        tool_calls = [];
-        thinkingContent = '';
-        imageList = [];
-        grounding = null;
-        currentStepUsage = undefined;
-        streamError = undefined;
-        contentParts = [];
-        reasoningParts = [];
-        hasContentImages = false;
-        hasReasoningImages = false;
+        let content = '';
+        let toolsCalling: ChatToolPayload[] = [];
+        let tool_calls: MessageToolCall[] = [];
+        let thinkingContent = '';
+        const imageList: any[] = [];
+        let grounding: any = null;
+        let currentStepUsage: any = undefined;
+        let streamError: any = undefined;
+        const contentParts: ContentPart[] = [];
+        const reasoningParts: ContentPart[] = [];
+        const hasContentImages = false;
+        const hasReasoningImages = false;
         textBuffer = '';
         reasoningBuffer = '';
-        textBufferTimer = null;
-        reasoningBufferTimer = null;
+
+        const clearAttemptBuffers = () => {
+          if (textBufferTimer) {
+            clearTimeout(textBufferTimer);
+            textBufferTimer = null;
+          }
+
+          if (reasoningBufferTimer) {
+            clearTimeout(reasoningBufferTimer);
+            reasoningBufferTimer = null;
+          }
+
+          textBuffer = '';
+          reasoningBuffer = '';
+        };
 
         try {
           log(
@@ -651,17 +662,7 @@ export const createRuntimeExecutors = (
 
           await flushTextBuffer();
           await flushReasoningBuffer();
-
-          // Clean up timers and flush remaining buffers
-          if (textBufferTimer) {
-            clearTimeout(textBufferTimer);
-            textBufferTimer = null;
-          }
-
-          if (reasoningBufferTimer) {
-            clearTimeout(reasoningBufferTimer);
-            reasoningBufferTimer = null;
-          }
+          clearAttemptBuffers();
 
           log(
             `[${operationLogId}] finish model-runtime calling | content: %d chars | reasoning: %d chars | tools: %d | usage: %s`,
@@ -795,18 +796,7 @@ export const createRuntimeExecutors = (
             },
           };
         } catch (error) {
-          if (textBufferTimer) {
-            clearTimeout(textBufferTimer);
-            textBufferTimer = null;
-          }
-
-          if (reasoningBufferTimer) {
-            clearTimeout(reasoningBufferTimer);
-            reasoningBufferTimer = null;
-          }
-
-          textBuffer = '';
-          reasoningBuffer = '';
+          clearAttemptBuffers();
 
           const classified = classifyLLMError(error);
 

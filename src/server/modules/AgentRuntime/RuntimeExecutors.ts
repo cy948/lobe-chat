@@ -244,19 +244,25 @@ export const createRuntimeExecutors = (
       throw new Error('Model and provider are required for call_llm instruction');
     }
 
+    // Type assertion to ensure payload correctness
     const operationLogId = `${operationId}:${stepIndex}`;
     const stagePrefix = `[${operationLogId}][call_llm]`;
 
     log(`${stagePrefix} Starting operation`);
 
+    // Get parentId from payload (parentId or parentMessageId depending on payload type)
     const parentId = llmPayload.parentId || (llmPayload as any).parentMessageId;
+    // Get or create assistant message
+    // If assistantMessageId is provided in payload, use existing message instead of creating new one
     const existingAssistantMessageId = (llmPayload as any).assistantMessageId;
     let assistantMessageItem: { id: string };
 
     if (existingAssistantMessageId) {
+      // Use existing assistant message (created by execAgent)
       assistantMessageItem = { id: existingAssistantMessageId };
       log(`${stagePrefix} Using existing assistant message: %s`, existingAssistantMessageId);
     } else {
+      // Create new assistant message (legacy behavior)
       assistantMessageItem = await ctx.messageModel.create({
         agentId: state.metadata!.agentId!,
         content: '',
@@ -270,6 +276,7 @@ export const createRuntimeExecutors = (
       log(`${stagePrefix} Created new assistant message: %s`, assistantMessageItem.id);
     }
 
+    // Publish stream start event
     await streamManager.publishStreamEvent(operationId, {
       data: { assistantMessage: assistantMessageItem, model, provider },
       stepIndex,
@@ -435,350 +442,408 @@ export const createRuntimeExecutors = (
       let toolsCalling: ChatToolPayload[] = [];
       let tool_calls: MessageToolCall[] = [];
       let thinkingContent = '';
-      const imageList: any[] = [];
+      let imageList: any[] = [];
       let grounding: any = null;
       let currentStepUsage: any = undefined;
       let streamError: any = undefined;
+
+      // Multimodal content parts tracking
       type ContentPart = { text: string; type: 'text' } | { image: string; type: 'image' };
-      const contentParts: ContentPart[] = [];
-      const reasoningParts: ContentPart[] = [];
-      const hasContentImages = false;
-      const hasReasoningImages = false;
+      let contentParts: ContentPart[] = [];
+      let reasoningParts: ContentPart[] = [];
+      let hasContentImages = false;
+      let hasReasoningImages = false;
 
       const flushTextBuffer = async () => {
         const delta = textBuffer;
         textBuffer = '';
 
-        if (!delta) return;
+        if (!!delta) {
+          log(`[${operationLogId}] flushTextBuffer:`, delta);
 
-        log(`[${operationLogId}] flushTextBuffer:`, delta);
-        events.push({
-          chunk: { text: delta, type: 'text' },
-          type: 'llm_stream',
-        });
+          // Build standard Agent Runtime event
+          events.push({
+            chunk: { text: delta, type: 'text' },
+            type: 'llm_stream',
+          });
 
-        const publishStart = Date.now();
-        await streamManager.publishStreamChunk(operationId, stepIndex, {
-          chunkType: 'text',
-          content: delta,
-        });
-        timing(
-          '[%s] flushTextBuffer published at %d, took %dms, length: %d',
-          operationLogId,
-          publishStart,
-          Date.now() - publishStart,
-          delta.length,
-        );
+          const publishStart = Date.now();
+          await streamManager.publishStreamChunk(operationId, stepIndex, {
+            chunkType: 'text',
+            content: delta,
+          });
+          timing(
+            '[%s] flushTextBuffer published at %d, took %dms, length: %d',
+            operationLogId,
+            publishStart,
+            Date.now() - publishStart,
+            delta.length,
+          );
+        }
       };
 
       const flushReasoningBuffer = async () => {
         const delta = reasoningBuffer;
+
         reasoningBuffer = '';
 
-        if (!delta) return;
+        if (!!delta) {
+          log(`[${operationLogId}] flushReasoningBuffer:`, delta);
 
-        log(`[${operationLogId}] flushReasoningBuffer:`, delta);
-        events.push({
-          chunk: { text: delta, type: 'reasoning' },
-          type: 'llm_stream',
-        });
+          events.push({
+            chunk: { text: delta, type: 'reasoning' },
+            type: 'llm_stream',
+          });
 
-        const publishStart = Date.now();
-        await streamManager.publishStreamChunk(operationId, stepIndex, {
-          chunkType: 'reasoning',
-          reasoning: delta,
-        });
-        timing(
-          '[%s] flushReasoningBuffer published at %d, took %dms, length: %d',
-          operationLogId,
-          publishStart,
-          Date.now() - publishStart,
-          delta.length,
-        );
+          const publishStart = Date.now();
+          await streamManager.publishStreamChunk(operationId, stepIndex, {
+            chunkType: 'reasoning',
+            reasoning: delta,
+          });
+          timing(
+            '[%s] flushReasoningBuffer published at %d, took %dms, length: %d',
+            operationLogId,
+            publishStart,
+            Date.now() - publishStart,
+            delta.length,
+          );
+        }
       };
 
-      const clearAttemptBuffers = () => {
-        if (textBufferTimer) {
-          clearTimeout(textBufferTimer);
-          textBufferTimer = null;
-        }
-
-        if (reasoningBufferTimer) {
-          clearTimeout(reasoningBufferTimer);
-          reasoningBufferTimer = null;
-        }
-
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        content = '';
+        toolsCalling = [];
+        tool_calls = [];
+        thinkingContent = '';
+        imageList = [];
+        grounding = null;
+        currentStepUsage = undefined;
+        streamError = undefined;
+        contentParts = [];
+        reasoningParts = [];
+        hasContentImages = false;
+        hasReasoningImages = false;
         textBuffer = '';
         reasoningBuffer = '';
-      };
+        textBufferTimer = null;
+        reasoningBufferTimer = null;
 
-      try {
-        const modelRuntime = await initModelRuntimeFromDB(ctx.serverDB, ctx.userId!, provider);
-        const chatPayload = { messages: processedMessages, model, stream, tools };
+        try {
+          log(
+            `${stagePrefix} calling model-runtime chat (attempt %d/%d, model: %s, messages: %d, tools: %d)`,
+            attempt,
+            maxAttempts,
+            model,
+            processedMessages.length,
+            tools?.length ?? 0,
+          );
 
-        log(
-          `${stagePrefix} calling model-runtime chat (attempt %d/%d, model: %s, messages: %d, tools: %d)`,
-          attempt,
-          maxAttempts,
-          model,
-          processedMessages.length,
-          tools?.length ?? 0,
-        );
+          // Call model-runtime chat
+          const response = await modelRuntime.chat(chatPayload, {
+            callback: {
+              onCompletion: async (data) => {
+                // Capture usage (may or may not include cost)
+                if (data.usage) {
+                  currentStepUsage = data.usage;
+                }
+              },
+              onGrounding: async (groundingData) => {
+                log(`[${operationLogId}][grounding] %O`, groundingData);
+                grounding = groundingData;
 
-        const response = await modelRuntime.chat(chatPayload, {
-          callback: {
-            onCompletion: async (data) => {
-              if (data.usage) {
-                currentStepUsage = data.usage;
-              }
-            },
-            onGrounding: async (groundingData) => {
-              log(`[${operationLogId}][grounding] %O`, groundingData);
-              grounding = groundingData;
+                await streamManager.publishStreamChunk(operationId, stepIndex, {
+                  chunkType: 'grounding',
+                  grounding: groundingData,
+                });
+              },
+              onText: async (text) => {
+                timing(
+                  '[%s] onText received chunk at %d, length: %d',
+                  operationLogId,
+                  Date.now(),
+                  text.length,
+                );
+                content += text;
 
-              await streamManager.publishStreamChunk(operationId, stepIndex, {
-                chunkType: 'grounding',
-                grounding: groundingData,
-              });
-            },
-            onText: async (text) => {
-              timing(
-                '[%s] onText received chunk at %d, length: %d',
-                operationLogId,
-                Date.now(),
-                text.length,
-              );
-              content += text;
-              textBuffer += text;
+                textBuffer += text;
 
-              if (!textBufferTimer) {
-                textBufferTimer = setTimeout(async () => {
-                  await flushTextBuffer();
-                  textBufferTimer = null;
-                }, 50);
-              }
-            },
-            onThinking: async (reasoning) => {
-              timing(
-                '[%s] onThinking received chunk at %d, length: %d',
-                operationLogId,
-                Date.now(),
-                reasoning.length,
-              );
-              thinkingContent += reasoning;
-              reasoningBuffer += reasoning;
+                // If no timer exists, create one
+                if (!textBufferTimer) {
+                  textBufferTimer = setTimeout(async () => {
+                    await flushTextBuffer();
+                    textBufferTimer = null;
+                  }, BUFFER_INTERVAL);
+                }
+              },
+              onThinking: async (reasoning) => {
+                timing(
+                  '[%s] onThinking received chunk at %d, length: %d',
+                  operationLogId,
+                  Date.now(),
+                  reasoning.length,
+                );
+                thinkingContent += reasoning;
 
-              if (!reasoningBufferTimer) {
-                reasoningBufferTimer = setTimeout(async () => {
-                  await flushReasoningBuffer();
-                  reasoningBufferTimer = null;
-                }, 50);
-              }
-            },
-            onToolsCalling: async ({ toolsCalling: raw }) => {
-              const payload = new ToolNameResolver()
-                .resolve(raw, resolved.manifestMap)
-                .map((p) => ({
+                // Buffer reasoning content
+                reasoningBuffer += reasoning;
+
+                // If no timer exists, create one
+                if (!reasoningBufferTimer) {
+                  reasoningBufferTimer = setTimeout(async () => {
+                    await flushReasoningBuffer();
+                    reasoningBufferTimer = null;
+                  }, BUFFER_INTERVAL);
+                }
+              },
+              onToolsCalling: async ({ toolsCalling: raw }) => {
+                const resolvedCalls = new ToolNameResolver().resolve(raw, resolved.manifestMap);
+                // Add source field from resolved sourceMap for routing tool execution
+                const payload = resolvedCalls.map((p) => ({
                   ...p,
                   source: resolved.sourceMap[p.identifier],
                 }));
+                // log(`[${operationLogId}][toolsCalling]`, payload);
+                toolsCalling = payload;
+                tool_calls = raw;
 
-              toolsCalling = payload;
-              tool_calls = raw;
+                // If textBuffer exists, flush it first
+                if (!!textBuffer) {
+                  await flushTextBuffer();
+                }
 
-              if (textBuffer) {
-                await flushTextBuffer();
-              }
-
-              await streamManager.publishStreamChunk(operationId, stepIndex, {
-                chunkType: 'tools_calling',
-                toolsCalling: payload,
-              });
+                await streamManager.publishStreamChunk(operationId, stepIndex, {
+                  chunkType: 'tools_calling',
+                  toolsCalling: payload,
+                });
+              },
+              onError: async (errorData) => {
+                streamError = errorData;
+                console.error(`[${operationLogId}][stream_error]`, errorData);
+              },
             },
-            onError: async (errorData) => {
-              streamError = errorData;
-              console.error(`[${operationLogId}][stream_error]`, errorData);
+            metadata: {
+              operationId,
+              topicId: state.metadata?.topicId,
+              trigger: state.metadata?.trigger,
             },
-          },
-          metadata: {
-            operationId,
-            topicId: state.metadata?.topicId,
-            trigger: state.metadata?.trigger,
-          },
-          user: ctx.userId,
-        });
-
-        await consumeStreamUntilDone(response);
-
-        if (streamError) {
-          const streamExecutionError = new Error(
-            typeof streamError.message === 'string'
-              ? `LLM stream error: ${streamError.message}`
-              : `LLM stream error: ${JSON.stringify(streamError)}`,
-          );
-          const { message: _message, ...restStreamError } = streamError as Record<string, unknown>;
-          Object.assign(streamExecutionError, restStreamError);
-          throw streamExecutionError;
-        }
-
-        await flushTextBuffer();
-        await flushReasoningBuffer();
-        clearAttemptBuffers();
-
-        log(
-          `[${operationLogId}] finish model-runtime calling | content: %d chars | reasoning: %d chars | tools: %d | usage: %s`,
-          content.length,
-          thinkingContent.length,
-          toolsCalling.length,
-          currentStepUsage ? 'yes' : 'none',
-        );
-
-        if (thinkingContent) {
-          log(`[${operationLogId}][reasoning]`, thinkingContent);
-        }
-        if (content) {
-          log(`[${operationLogId}][content]`, content);
-        }
-        if (toolsCalling.length > 0) {
-          log(`[${operationLogId}][toolsCalling] `, toolsCalling);
-        }
-        if (currentStepUsage) {
-          log(`[${operationLogId}][usage] %O`, currentStepUsage);
-        }
-
-        events.push({
-          result: { content, reasoning: thinkingContent, tool_calls, usage: currentStepUsage },
-          type: 'llm_result',
-        });
-
-        await streamManager.publishStreamEvent(operationId, {
-          data: {
-            finalContent: content,
-            grounding,
-            imageList: imageList.length > 0 ? imageList : undefined,
-            reasoning: thinkingContent || undefined,
-            toolsCalling,
-            usage: currentStepUsage,
-          },
-          stepIndex,
-          type: 'stream_end',
-        });
-
-        log('[%s:%d] call_llm completed', operationId, stepIndex);
-
-        const finalContent = hasContentImages ? serializePartsForStorage(contentParts) : content;
-
-        let finalReasoning: any = undefined;
-        if (hasReasoningImages) {
-          finalReasoning = {
-            content: serializePartsForStorage(reasoningParts),
-            isMultimodal: true,
-          };
-        } else if (thinkingContent) {
-          finalReasoning = {
-            content: thinkingContent,
-          };
-        }
-
-        try {
-          const metadata: Record<string, any> = {};
-          if (currentStepUsage && typeof currentStepUsage === 'object') {
-            Object.assign(metadata, currentStepUsage);
-          }
-          if (hasContentImages) {
-            metadata.isMultimodal = true;
-          }
-
-          await ctx.messageModel.update(assistantMessageItem.id, {
-            content: finalContent,
-            imageList: imageList.length > 0 ? imageList : undefined,
-            metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
-            reasoning: finalReasoning,
-            search: grounding,
-            tools: toolsCalling.length > 0 ? toolsCalling : undefined,
-          });
-        } catch (error) {
-          console.error('[call_llm] Failed to update message:', error);
-        }
-
-        const newState = structuredClone(state);
-        newState.messages.push({
-          content,
-          role: 'assistant',
-          tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
-        });
-
-        if (currentStepUsage) {
-          const { usage, cost } = UsageCounter.accumulateLLM({
-            cost: newState.cost,
-            model: llmPayload.model,
-            modelUsage: currentStepUsage,
-            provider: llmPayload.provider,
-            usage: newState.usage,
+            user: ctx.userId,
           });
 
-          newState.usage = usage;
-          if (cost) newState.cost = cost;
-        }
+          // Consume stream to ensure all callbacks complete execution
+          await consumeStreamUntilDone(response);
 
-        return {
-          events,
-          newState,
-          nextContext: {
-            payload: {
-              hasToolsCalling: toolsCalling.length > 0,
-              parentMessageId: assistantMessageItem.id,
-              result: { content, tool_calls },
-              toolsCalling,
-            } as GeneralAgentCallLLMResultPayload,
-            phase: 'llm_result',
-            session: {
-              eventCount: events.length,
-              messageCount: newState.messages.length,
-              sessionId: operationId,
-              status: 'running',
-              stepCount: state.stepCount + 1,
-            },
-            stepUsage: currentStepUsage,
-          },
-        };
-      } catch (error) {
-        clearAttemptBuffers();
+          // If a stream error was captured via onError callback, throw to propagate the error
+          if (streamError) {
+            const streamExecutionError = new Error(
+              typeof streamError.message === 'string'
+                ? `LLM stream error: ${streamError.message}`
+                : `LLM stream error: ${JSON.stringify(streamError)}`,
+            );
+            const { message: _message, ...restStreamError } = streamError as Record<
+              string,
+              unknown
+            >;
+            Object.assign(streamExecutionError, restStreamError);
+            throw streamExecutionError;
+          }
 
-        const classified = classifyLLMError(error);
+          await flushTextBuffer();
+          await flushReasoningBuffer();
 
-        if (shouldRetryLLM(classified.kind, attempt, LLM_MAX_RETRIES)) {
+          // Clean up timers and flush remaining buffers
+          if (textBufferTimer) {
+            clearTimeout(textBufferTimer);
+            textBufferTimer = null;
+          }
+
+          if (reasoningBufferTimer) {
+            clearTimeout(reasoningBufferTimer);
+            reasoningBufferTimer = null;
+          }
+
           log(
-            '[%s] LLM call failed with kind=%s (attempt %d/%d), retrying ...',
-            operationLogId,
-            classified.kind,
-            attempt,
-            maxAttempts,
+            `[${operationLogId}] finish model-runtime calling | content: %d chars | reasoning: %d chars | tools: %d | usage: %s`,
+            content.length,
+            thinkingContent.length,
+            toolsCalling.length,
+            currentStepUsage ? 'yes' : 'none',
           );
 
-          await streamManager.publishStreamEvent(operationId, {
-            data: { attempt: attempt + 1, maxAttempts },
-            stepIndex,
-            type: 'stream_retry',
+          if (thinkingContent) {
+            log(`[${operationLogId}][reasoning]`, thinkingContent);
+          }
+          if (content) {
+            log(`[${operationLogId}][content]`, content);
+          }
+          if (toolsCalling.length > 0) {
+            log(`[${operationLogId}][toolsCalling] `, toolsCalling);
+          }
+
+          // Log usage information
+          if (currentStepUsage) {
+            log(`[${operationLogId}][usage] %O`, currentStepUsage);
+          }
+
+          // Add a complete llm_stream event (including all streaming chunks)
+          events.push({
+            result: { content, reasoning: thinkingContent, tool_calls, usage: currentStepUsage },
+            type: 'llm_result',
           });
-          continue;
+
+          // Publish stream end event
+          await streamManager.publishStreamEvent(operationId, {
+            data: {
+              finalContent: content,
+              grounding,
+              imageList: imageList.length > 0 ? imageList : undefined,
+              reasoning: thinkingContent || undefined,
+              toolsCalling,
+              usage: currentStepUsage,
+            },
+            stepIndex,
+            type: 'stream_end',
+          });
+
+          log('[%s:%d] call_llm completed', operationId, stepIndex);
+
+          // ===== 1. First save original usage to message.metadata =====
+          // Determine final content - use serialized parts if has images, otherwise plain text
+          const finalContent = hasContentImages ? serializePartsForStorage(contentParts) : content;
+
+          // Determine final reasoning - handle multimodal reasoning
+          let finalReasoning: any = undefined;
+          if (hasReasoningImages) {
+            // Has images, use multimodal format
+            finalReasoning = {
+              content: serializePartsForStorage(reasoningParts),
+              isMultimodal: true,
+            };
+          } else if (thinkingContent) {
+            // Has text from reasoning but no images
+            finalReasoning = {
+              content: thinkingContent,
+            };
+          }
+
+          try {
+            // Build metadata object
+            const metadata: Record<string, any> = {};
+            if (currentStepUsage && typeof currentStepUsage === 'object') {
+              Object.assign(metadata, currentStepUsage);
+            }
+            if (hasContentImages) {
+              metadata.isMultimodal = true;
+            }
+
+            await ctx.messageModel.update(assistantMessageItem.id, {
+              content: finalContent,
+              imageList: imageList.length > 0 ? imageList : undefined,
+              metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+              reasoning: finalReasoning,
+              search: grounding,
+              tools: toolsCalling.length > 0 ? toolsCalling : undefined,
+            });
+          } catch (error) {
+            console.error('[call_llm] Failed to update message:', error);
+          }
+
+          // ===== 2. Then accumulate to AgentState =====
+          const newState = structuredClone(state);
+
+          newState.messages.push({
+            content,
+            role: 'assistant',
+            tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
+          });
+
+          if (currentStepUsage) {
+            // Use UsageCounter to uniformly accumulate usage and cost
+            const { usage, cost } = UsageCounter.accumulateLLM({
+              cost: newState.cost,
+              model: llmPayload.model,
+              modelUsage: currentStepUsage,
+              provider: llmPayload.provider,
+              usage: newState.usage,
+            });
+
+            newState.usage = usage;
+            if (cost) newState.cost = cost;
+          }
+
+          return {
+            events,
+            newState,
+            nextContext: {
+              payload: {
+                hasToolsCalling: toolsCalling.length > 0,
+                // Pass assistant message ID as parentMessageId for tool calls
+                parentMessageId: assistantMessageItem.id,
+                result: { content, tool_calls },
+                toolsCalling,
+              } as GeneralAgentCallLLMResultPayload,
+              phase: 'llm_result',
+              session: {
+                eventCount: events.length,
+                messageCount: newState.messages.length,
+                sessionId: operationId,
+                status: 'running',
+                stepCount: state.stepCount + 1,
+              },
+              stepUsage: currentStepUsage,
+            },
+          };
+        } catch (error) {
+          if (textBufferTimer) {
+            clearTimeout(textBufferTimer);
+            textBufferTimer = null;
+          }
+
+          if (reasoningBufferTimer) {
+            clearTimeout(reasoningBufferTimer);
+            reasoningBufferTimer = null;
+          }
+
+          textBuffer = '';
+          reasoningBuffer = '';
+
+          const classified = classifyLLMError(error);
+
+          if (shouldRetryLLM(classified.kind, attempt, LLM_MAX_RETRIES)) {
+            log(
+              '[%s] LLM call failed with kind=%s (attempt %d/%d), retrying ...',
+              operationLogId,
+              classified.kind,
+              attempt,
+              maxAttempts,
+            );
+
+            await streamManager.publishStreamEvent(operationId, {
+              data: { attempt: attempt + 1, maxAttempts },
+              stepIndex,
+              type: 'stream_retry',
+            });
+            continue;
+          }
+
+          throw error;
         }
-
-        await streamManager.publishStreamEvent(operationId, {
-          data: formatErrorEventData(error, 'llm_execution'),
-          stepIndex,
-          type: 'error',
-        });
-
-        console.error(
-          `[StreamingLLMExecutor][${operationId}:${stepIndex}] LLM execution failed:`,
-          error,
-        );
-        throw error;
       }
-    }
 
-    throw new Error('LLM execution retry loop exited unexpectedly');
+      throw new Error('LLM execution retry loop exited unexpectedly');
+    } catch (error) {
+      // Publish error event
+      await streamManager.publishStreamEvent(operationId, {
+        data: formatErrorEventData(error, 'llm_execution'),
+        stepIndex,
+        type: 'error',
+      });
+
+      console.error(
+        `[StreamingLLMExecutor][${operationId}:${stepIndex}] LLM execution failed:`,
+        error,
+      );
+      throw error;
+    }
   },
 
   compress_context: async (instruction, state) => {

@@ -128,6 +128,10 @@ interface InternalExecAgentParams extends ExecAgentParams {
   maxSteps?: number;
   queueRetries?: number;
   queueRetryDelay?: string;
+  /** Parent message ID to continue from. Only takes effect when resume is true */
+  parentMessageId?: string;
+  /** Whether to continue execution from an existing persisted message */
+  resume?: boolean;
   /** Abort startup before the agent runtime operation is created */
   signal?: AbortSignal;
   /** Step lifecycle callbacks for operation tracking (server-side only) */

@@ -27,7 +27,11 @@ import { agentEvalRunTopics } from '@/database/schemas';
 import { AgentService } from '@/server/services/agent';
 import { AgentRuntimeService } from '@/server/services/agentRuntime/AgentRuntimeService';
 import { AiAgentService } from '@/server/services/aiAgent';
-import { AgentEvalRunWorkflow } from '@/server/workflows/agentEvalRun';
+import {
+  AgentEvalRunWorkflow,
+  type ResumeAgentTrajectoryPayload,
+  type ResumeThreadTrajectoryPayload,
+} from '@/server/workflows/agentEvalRun';
 
 /** Round cost to at most 6 decimal places to avoid floating-point noise */
 const roundCost = (v: number): number => Math.round(v * 1e6) / 1e6;
@@ -257,7 +261,7 @@ export class AgentEvalRunService {
 
   async resumeTrajectory(params: { runId: string; testCaseId: string; threadId?: string }) {
     const target = await this.resolveTrajectoryResumeTarget(params);
-    const { appContext, envPrompt, parentMessageId, run, runTopic, thread, topicId } = target;
+    const { envPrompt, parentMessageId, run, runTopic, thread, topicId } = target;
 
     const previousRunStatus = run.status;
     const previousRunMetrics = run.metrics;
@@ -295,93 +299,40 @@ export class AgentEvalRunService {
     await this.runModel.update(run.id, { startedAt: new Date(), status: 'running' });
     await this.refreshRunProgress(run.id);
 
-    const aiAgentService = new AiAgentService(this.db, this.userId);
-    const webhookBaseBody = { runId: run.id, testCaseId: params.testCaseId, userId: this.userId };
-
     try {
-      const execResult = await aiAgentService.execAgent({
-        agentId: run.targetAgentId ?? undefined,
-        appContext,
-        autoStart: true,
-        hooks: [
-          thread
-            ? {
-                handler: async (event) => {
-                  const service = new AgentEvalRunService(this.db, this.userId);
-                  await service.recordThreadCompletion({
-                    runId: run.id,
-                    status: event.status || event.reason || 'done',
-                    telemetry: {
-                      completionReason: event.reason,
-                      cost: event.cost,
-                      duration: event.duration,
-                      errorMessage: event.errorMessage,
-                      llmCalls: event.llmCalls,
-                      steps: event.steps,
-                      toolCalls: event.toolCalls,
-                      totalTokens: event.totalTokens,
-                    },
-                    testCaseId: params.testCaseId,
-                    threadId: thread.id,
-                    topicId,
-                  });
-                },
-                id: 'eval-thread-complete',
-                type: 'onComplete' as const,
-                webhook: {
-                  body: { ...webhookBaseBody, threadId: thread.id, topicId },
-                  url: '/api/workflows/agent-eval-run/on-thread-complete',
-                },
-              }
-            : {
-                handler: async (event) => {
-                  const service = new AgentEvalRunService(this.db, this.userId);
-                  await service.recordTrajectoryCompletion({
-                    runId: run.id,
-                    status: event.status || event.reason || 'done',
-                    telemetry: {
-                      completionReason: event.reason,
-                      cost: event.cost,
-                      duration: event.duration,
-                      errorDetail: event.errorDetail,
-                      errorMessage: event.errorMessage,
-                      llmCalls: event.llmCalls,
-                      steps: event.steps,
-                      toolCalls: event.toolCalls,
-                      totalTokens: event.totalTokens,
-                    },
-                    testCaseId: params.testCaseId,
-                  });
-                },
-                id: 'eval-trajectory-complete',
-                type: 'onComplete' as const,
-                webhook: {
-                  body: webhookBaseBody,
-                  url: '/api/workflows/agent-eval-run/on-trajectory-complete',
-                },
-              },
-        ],
-        ...(envPrompt && { evalContext: { envPrompt } }),
-        maxSteps: run.config?.maxSteps,
-        parentMessageId,
-        prompt: '',
-        resume: true,
-        userInterventionConfig: { approvalMode: 'headless' },
-      });
-
-      if (execResult?.operationId) {
-        if (thread) {
-          await this.threadModel.update(thread.id, {
-            metadata: { operationId: execResult.operationId, testCaseId: params.testCaseId } as any,
-          });
-        } else {
-          await this.runTopicModel.updateByRunAndTopic(run.id, topicId, {
-            evalResult: { operationId: execResult.operationId, rubricScores: [] },
-          });
-        }
+      if (thread) {
+        await AgentEvalRunWorkflow.triggerResumeThreadTrajectory({
+          appContext: { threadId: thread.id, topicId },
+          envPrompt,
+          maxSteps: run.config?.maxSteps,
+          parentMessageId,
+          runId: run.id,
+          testCaseId: params.testCaseId,
+          threadId: thread.id,
+          topicId,
+          userId: this.userId,
+        });
+      } else {
+        await AgentEvalRunWorkflow.triggerResumeAgentTrajectory({
+          appContext: { topicId },
+          envPrompt,
+          maxSteps: run.config?.maxSteps,
+          parentMessageId,
+          runId: run.id,
+          testCaseId: params.testCaseId,
+          topicId,
+          userId: this.userId,
+        });
       }
 
-      return { operationId: execResult?.operationId, parentMessageId, topicId };
+      return {
+        mode: thread ? ('thread' as const) : ('single' as const),
+        runId: run.id,
+        testCaseId: params.testCaseId,
+        threadId: thread?.id,
+        topicId,
+        triggered: true,
+      };
     } catch (error) {
       await this.runTopicModel.updateByRunAndTopic(run.id, topicId, previousRunTopic);
 
@@ -406,6 +357,183 @@ export class AgentEvalRunService {
       });
 
       throw error;
+    }
+  }
+
+  async executeResumedTrajectory(params: ResumeAgentTrajectoryPayload) {
+    const { appContext, envPrompt, maxSteps, parentMessageId, runId, testCaseId, topicId } = params;
+    const loaded = await this.loadTrajectoryData(runId, testCaseId);
+
+    if ('error' in loaded) {
+      return { error: loaded.error, topicId };
+    }
+
+    const { run } = loaded;
+    const aiAgentService = new AiAgentService(this.db, this.userId);
+    const webhookUrl = '/api/workflows/agent-eval-run/on-trajectory-complete';
+    const userId = this.userId;
+    const db = this.db;
+
+    try {
+      const execResult = await aiAgentService.execAgent({
+        agentId: run.targetAgentId ?? undefined,
+        appContext,
+        autoStart: true,
+        hooks: [
+          {
+            handler: async (event) => {
+              const service = new AgentEvalRunService(db, userId);
+              await service.recordTrajectoryCompletion({
+                runId,
+                status: event.status || event.reason || 'done',
+                telemetry: {
+                  completionReason: event.reason,
+                  cost: event.cost,
+                  duration: event.duration,
+                  errorDetail: event.errorDetail,
+                  errorMessage: event.errorMessage,
+                  llmCalls: event.llmCalls,
+                  steps: event.steps,
+                  toolCalls: event.toolCalls,
+                  totalTokens: event.totalTokens,
+                },
+                testCaseId,
+              });
+            },
+            id: 'eval-trajectory-complete',
+            type: 'onComplete' as const,
+            webhook: {
+              body: { runId, testCaseId, userId },
+              url: webhookUrl,
+            },
+          },
+        ],
+        ...(envPrompt && { evalContext: { envPrompt } }),
+        maxSteps,
+        parentMessageId,
+        prompt: '',
+        resume: true,
+        userInterventionConfig: { approvalMode: 'headless' },
+      });
+
+      if (execResult?.operationId) {
+        await this.runTopicModel.updateByRunAndTopic(runId, topicId, {
+          evalResult: { operationId: execResult.operationId, rubricScores: [] },
+        });
+      }
+
+      return { topicId };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Agent execution failed to start';
+      console.error(
+        `[resume-agent-trajectory] execAgent failed for run=${runId} testCase=${testCaseId}:`,
+        error,
+      );
+
+      await this.runTopicModel.updateByRunAndTopic(runId, topicId, {
+        evalResult: { completionReason: 'error', error: errorMessage, rubricScores: [] },
+        passed: false,
+        score: 0,
+        status: 'error',
+      });
+
+      return { error: errorMessage, topicId };
+    }
+  }
+
+  async executeResumedThreadTrajectory(params: ResumeThreadTrajectoryPayload) {
+    const {
+      appContext,
+      envPrompt,
+      maxSteps,
+      parentMessageId,
+      runId,
+      testCaseId,
+      threadId,
+      topicId,
+    } = params;
+    const loaded = await this.loadTrajectoryData(runId, testCaseId);
+
+    if ('error' in loaded) {
+      return { error: loaded.error, threadId, topicId };
+    }
+
+    const { run } = loaded;
+    const aiAgentService = new AiAgentService(this.db, this.userId);
+    const webhookUrl = '/api/workflows/agent-eval-run/on-thread-complete';
+    const userId = this.userId;
+    const db = this.db;
+
+    try {
+      const execResult = await aiAgentService.execAgent({
+        agentId: run.targetAgentId ?? undefined,
+        appContext,
+        autoStart: true,
+        hooks: [
+          {
+            handler: async (event) => {
+              const service = new AgentEvalRunService(db, userId);
+              await service.recordThreadCompletion({
+                runId,
+                status: event.status || event.reason || 'done',
+                telemetry: {
+                  completionReason: event.reason,
+                  cost: event.cost,
+                  duration: event.duration,
+                  errorMessage: event.errorMessage,
+                  llmCalls: event.llmCalls,
+                  steps: event.steps,
+                  toolCalls: event.toolCalls,
+                  totalTokens: event.totalTokens,
+                },
+                testCaseId,
+                threadId,
+                topicId,
+              });
+            },
+            id: 'eval-thread-complete',
+            type: 'onComplete' as const,
+            webhook: {
+              body: { runId, testCaseId, threadId, topicId, userId },
+              url: webhookUrl,
+            },
+          },
+        ],
+        ...(envPrompt && { evalContext: { envPrompt } }),
+        maxSteps,
+        parentMessageId,
+        prompt: '',
+        resume: true,
+        userInterventionConfig: { approvalMode: 'headless' },
+      });
+
+      if (execResult?.operationId) {
+        await this.threadModel.update(threadId, {
+          metadata: { operationId: execResult.operationId, testCaseId } as any,
+        });
+      }
+
+      return { threadId, topicId };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Thread execution failed to start';
+      console.error(
+        `[resume-thread-trajectory] execAgent failed for run=${runId} thread=${threadId}:`,
+        error,
+      );
+
+      await this.threadModel.update(threadId, {
+        metadata: {
+          completedAt: new Date().toISOString(),
+          error: errorMessage,
+          passed: false,
+          score: 0,
+          testCaseId,
+        },
+      } as any);
+
+      return { error: errorMessage, threadId, topicId };
     }
   }
 

@@ -21,12 +21,6 @@ interface StreamingContext {
   toolsCalling?: ChatToolPayload[];
 }
 
-interface StreamRetryData {
-  attempt: number;
-  delayMs?: number;
-  maxAttempts: number;
-}
-
 type Setter = StoreSetter<ChatStore>;
 export const agentSlice = (set: Setter, get: () => ChatStore, _api?: unknown) =>
   new AgentActionImpl(set, get, _api);
@@ -210,26 +204,6 @@ export class AgentActionImpl {
           }
         }
 
-        break;
-      }
-
-      case 'stream_retry': {
-        const { attempt, maxAttempts } = (event.data || {}) as StreamRetryData;
-
-        context.content = '';
-        context.reasoning = '';
-        context.toolsCalling = [];
-
-        internal_dispatchMessage({
-          id: assistantId,
-          type: 'updateMessage',
-          value: { content: '', reasoning: undefined, search: undefined, tools: [] },
-        });
-
-        this.#get().updateOperationMetadata(operationId, {
-          retryAttempt: attempt,
-          retryMaxAttempts: maxAttempts,
-        });
         break;
       }
 

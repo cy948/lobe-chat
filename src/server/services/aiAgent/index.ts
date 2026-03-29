@@ -407,7 +407,7 @@ export class AiAgentService {
         throw new Error('Resume mode requires the parent message to belong to a topic');
       }
 
-      // Prepare metadata with cronJobId and botContext if provided
+      // Prepare metadata with cronJobId, taskId, and botContext if provided
       const metadata =
         cronJobId || taskId || botContext
           ? { bot: botContext, cronJobId: cronJobId || undefined, taskId: taskId || undefined }

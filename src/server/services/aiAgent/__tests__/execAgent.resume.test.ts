@@ -144,7 +144,6 @@ describe('AiAgentService.execAgent - resume mode', () => {
     });
 
     mockFindById.mockResolvedValue({
-      content: 'original question',
       id: 'parent-msg-1',
       sessionId: 'session-1',
       threadId: 'thread-1',
@@ -161,15 +160,27 @@ describe('AiAgentService.execAgent - resume mode', () => {
     service = new AiAgentService({} as any, 'user-1');
   });
 
-  it('should ignore prompt and only create a new assistant message in resume mode', async () => {
+  it('should create only a new assistant message in resume mode and use caller appContext', async () => {
     await service.execAgent({
       agentId: 'agent-1',
+      appContext: {
+        sessionId: 'session-1',
+        threadId: 'thread-1',
+        topicId: 'topic-1',
+      },
       parentMessageId: 'parent-msg-1',
-      prompt: 'ignored prompt',
+      prompt: 'caller prompt is ignored for runtime payload messages',
       resume: true,
     });
 
     expect(mockFindById).toHaveBeenCalledWith('parent-msg-1');
+    expect(mockMessageQuery).toHaveBeenCalledWith(
+      {
+        sessionId: 'session-1',
+        topicId: 'topic-1',
+      },
+      expect.any(Object),
+    );
     expect(mockMessageCreate).toHaveBeenCalledTimes(1);
     expect(mockMessageCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -189,7 +200,7 @@ describe('AiAgentService.execAgent - resume mode', () => {
         }),
         initialContext: expect.objectContaining({
           payload: expect.objectContaining({
-            message: [{ content: 'original question' }],
+            message: [{ content: '' }],
             parentMessageId: 'parent-msg-1',
           }),
           phase: 'user_input',
@@ -202,11 +213,35 @@ describe('AiAgentService.execAgent - resume mode', () => {
     );
   });
 
+  it('should reject missing appContext in resume mode', async () => {
+    await expect(
+      service.execAgent({
+        agentId: 'agent-1',
+        parentMessageId: 'parent-msg-1',
+        resume: true,
+      }),
+    ).rejects.toThrow('appContext is required when resume is true');
+  });
+
+  it('should reject appContext.topicId mismatch in resume mode', async () => {
+    await expect(
+      service.execAgent({
+        agentId: 'agent-1',
+        appContext: {
+          sessionId: 'session-1',
+          threadId: 'thread-1',
+          topicId: 'topic-other',
+        },
+        parentMessageId: 'parent-msg-1',
+        resume: true,
+      }),
+    ).rejects.toThrow('appContext.topicId does not match parent message');
+  });
+
   it('should require parentMessageId when resume is true', async () => {
     await expect(
       service.execAgent({
         agentId: 'agent-1',
-        prompt: 'ignored prompt',
         resume: true,
       }),
     ).rejects.toThrow('parentMessageId is required when resume is true');

@@ -78,8 +78,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Either agentId or slug is required' }, { status: 400 });
     }
 
-    if (!prompt) {
+    if (!resume && !prompt) {
       return NextResponse.json({ error: 'prompt is required' }, { status: 400 });
+    }
+
+    if (resume && !appContext) {
+      return NextResponse.json(
+        { error: 'appContext is required when resume is true' },
+        { status: 400 },
+      );
+    }
+
+    if (resume && !appContext?.topicId) {
+      return NextResponse.json(
+        { error: 'appContext.topicId is required when resume is true' },
+        { status: 400 },
+      );
     }
 
     log(`[exec] Starting agent execution for user ${userId}, agent ${agentId || slug}`);

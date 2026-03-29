@@ -227,7 +227,7 @@ export class AiAgentService {
       additionalPluginIds,
       agentId,
       slug,
-      prompt,
+      prompt: rawPrompt,
       appContext,
       autoStart = true,
       botContext,
@@ -258,6 +258,7 @@ export class AiAgentService {
       parentMessageId,
       resume,
     } = params;
+    const prompt = rawPrompt ?? '';
 
     // Validate that either agentId or slug is provided
     if (!agentId && !slug) {
@@ -363,12 +364,18 @@ export class AiAgentService {
     }
 
     let resumeParentMessage;
-    let resumePrompt = prompt;
-    let resumeAppContext = appContext;
 
     if (resume) {
       if (!parentMessageId) {
         throw new Error('parentMessageId is required when resume is true');
+      }
+
+      if (!appContext) {
+        throw new Error('appContext is required when resume is true');
+      }
+
+      if (!appContext.topicId) {
+        throw new Error('appContext.topicId is required when resume is true');
       }
 
       resumeParentMessage = await this.messageModel.findById(parentMessageId);
@@ -377,17 +384,24 @@ export class AiAgentService {
         throw new Error(`Parent message not found: ${parentMessageId}`);
       }
 
-      resumePrompt = resumeParentMessage.content || '';
-      resumeAppContext = {
-        ...appContext,
-        sessionId: resumeParentMessage.sessionId || appContext?.sessionId,
-        threadId: resumeParentMessage.threadId || appContext?.threadId,
-        topicId: resumeParentMessage.topicId || appContext?.topicId,
-      };
+      if (resumeParentMessage.topicId !== appContext.topicId) {
+        throw new Error('appContext.topicId does not match parent message');
+      }
+
+      if (
+        resumeParentMessage.threadId &&
+        resumeParentMessage.threadId !== (appContext.threadId ?? undefined)
+      ) {
+        throw new Error('appContext.threadId does not match parent message');
+      }
+
+      if (resumeParentMessage.sessionId && resumeParentMessage.sessionId !== appContext.sessionId) {
+        throw new Error('appContext.sessionId does not match parent message');
+      }
     }
 
     // 3. Handle topic creation: if no topicId provided, create a new topic; otherwise reuse existing
-    let topicId = resumeAppContext?.topicId;
+    let topicId = appContext?.topicId;
     if (!topicId) {
       if (resume) {
         throw new Error('Resume mode requires the parent message to belong to a topic');
@@ -403,9 +417,7 @@ export class AiAgentService {
         agentId: resolvedAgentId,
         metadata,
         title:
-          title !== undefined
-            ? title
-            : resumePrompt.slice(0, 50) + (resumePrompt.length > 50 ? '...' : ''),
+          title !== undefined ? title : prompt.slice(0, 50) + (prompt.length > 50 ? '...' : ''),
         trigger,
       });
       topicId = newTopic.id;
@@ -819,7 +831,7 @@ export class AiAgentService {
       );
       const idSet = new Set(existingMessageIds);
       historyMessages = historyMessages.filter((msg) => idSet.has(msg.id));
-    } else if (resumeAppContext?.topicId) {
+    } else if (appContext?.topicId) {
       // Follow-up message in existing topic: load all history for context
       historyMessages = await this.messageModel.query(
         {
@@ -869,17 +881,19 @@ export class AiAgentService {
 
     // 13. Create user message in database
     // Include threadId if provided (for SubAgent task execution in isolated Thread)
-    const userMessageRecord = resumeParentMessage
-      ? resumeParentMessage
+    const userMessageRecord = resume
+      ? undefined
       : await this.messageModel.create({
           agentId: resolvedAgentId,
-          content: resumePrompt,
+          content: prompt,
           files: fileIds,
           role: 'user',
-          threadId: resumeAppContext?.threadId ?? undefined,
+          threadId: appContext?.threadId ?? undefined,
           topicId,
         });
-    log('execAgent: created user message %s', userMessageRecord.id);
+    if (userMessageRecord) {
+      log('execAgent: created user message %s', userMessageRecord.id);
+    }
 
     // 14. Create assistant message placeholder in database
     // Include threadId if provided (for SubAgent task execution in isolated Thread)
@@ -887,17 +901,17 @@ export class AiAgentService {
       agentId: resolvedAgentId,
       content: LOADING_FLAT,
       model,
-      parentId: userMessageRecord.id,
+      parentId: parentMessageId ?? userMessageRecord?.id,
       provider,
       role: 'assistant',
-      threadId: resumeAppContext?.threadId ?? undefined,
+      threadId: appContext?.threadId ?? undefined,
       topicId,
     });
     log('execAgent: created assistant message %s', assistantMessageRecord.id);
     assistantMessageRef.current = assistantMessageRecord.id;
 
     // Create user message object for processing (include imageList for vision models)
-    const userMessage = { content: resumePrompt, imageList, role: 'user' as const };
+    const userMessage = { content: prompt, imageList, role: 'user' as const };
 
     // Combine history messages with user message
     const allMessages = resume ? historyMessages : [...historyMessages, userMessage];
@@ -916,9 +930,9 @@ export class AiAgentService {
         // Pass assistant message ID so agent runtime knows which message to update
         assistantMessageId: assistantMessageRecord.id,
         isFirstMessage: true,
-        message: [{ content: resumePrompt }],
+        message: resume ? [{ content: '' }] : [{ content: prompt }],
         // Pass user message ID as parentMessageId for reference
-        parentMessageId: userMessageRecord.id,
+        parentMessageId: parentMessageId ?? userMessageRecord?.id ?? '',
         // Include tools for initial LLM call
         tools,
       },
@@ -990,8 +1004,8 @@ export class AiAgentService {
         userTimezone,
         appContext: {
           agentId: resolvedAgentId,
-          groupId: resumeAppContext?.groupId,
-          threadId: resumeAppContext?.threadId,
+          groupId: appContext?.groupId,
+          threadId: appContext?.threadId,
           topicId,
           trigger,
         },
@@ -1039,7 +1053,7 @@ export class AiAgentService {
         success: true,
         timestamp: new Date().toISOString(),
         topicId,
-        userMessageId: userMessageRecord.id,
+        userMessageId: userMessageRecord?.id ?? parentMessageId ?? '',
       };
     } catch (error) {
       if (isAbortError(error)) {

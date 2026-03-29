@@ -96,8 +96,8 @@ const ExecAgentSchema = z
     /** Parent message ID to continue from. Only takes effect when resume is true */
     parentMessageId: z.string().optional(),
     /** The user input/prompt */
-    prompt: z.string(),
-    /** Whether to resume execution from an existing message */
+    prompt: z.string().optional(),
+    /** Whether to continue execution from an existing persisted message */
     resume: z.boolean().optional(),
     /** The agent slug to run (either agentId or slug is required) */
     slug: z.string().optional(),
@@ -105,8 +105,17 @@ const ExecAgentSchema = z
   .refine((data) => data.agentId || data.slug, {
     message: 'Either agentId or slug must be provided',
   })
+  .refine((data) => data.resume || !!data.prompt, {
+    message: 'prompt is required when resume is false',
+  })
   .refine((data) => !data.resume || !!data.parentMessageId, {
     message: 'parentMessageId is required when resume is true',
+  })
+  .refine((data) => !data.resume || !!data.appContext, {
+    message: 'appContext is required when resume is true',
+  })
+  .refine((data) => !data.resume || !!data.appContext?.topicId, {
+    message: 'appContext.topicId is required when resume is true',
   });
 
 /**

@@ -829,6 +829,7 @@ export class AiAgentService {
       historyMessages = await this.messageModel.query(
         {
           sessionId: appContext?.sessionId,
+          threadId: appContext?.threadId,
           topicId: appContext?.topicId ?? undefined,
         },
         { postProcessUrl },
@@ -840,6 +841,7 @@ export class AiAgentService {
       historyMessages = await this.messageModel.query(
         {
           sessionId: appContext?.sessionId,
+          threadId: appContext?.threadId,
           topicId: appContext?.topicId,
         },
         { postProcessUrl },
@@ -1099,7 +1101,7 @@ export class AiAgentService {
         success: false,
         timestamp: new Date().toISOString(),
         topicId,
-        userMessageId: userMessageRecord.id,
+        userMessageId: userMessageRecord?.id ?? resumeParentMessage?.id ?? parentMessageId ?? '',
       };
     }
   }

@@ -1,3 +1,4 @@
+import { LOADING_FLAT } from '@lobechat/const';
 import { type LobeChatDatabase } from '@lobechat/database';
 import { evaluate } from '@lobechat/eval-rubric';
 import type {
@@ -10,6 +11,7 @@ import type {
   RubricType,
 } from '@lobechat/types';
 import { RequestTrigger } from '@lobechat/types';
+import { and, eq } from 'drizzle-orm';
 
 import {
   AgentEvalBenchmarkModel,
@@ -21,6 +23,7 @@ import {
 import { MessageModel } from '@/database/models/message';
 import { ThreadModel } from '@/database/models/thread';
 import { TopicModel } from '@/database/models/topic';
+import { agentEvalRunTopics } from '@/database/schemas';
 import { AgentService } from '@/server/services/agent';
 import { AgentRuntimeService } from '@/server/services/agentRuntime/AgentRuntimeService';
 import { AiAgentService } from '@/server/services/aiAgent';
@@ -222,6 +225,370 @@ export class AgentEvalRunService {
 
     // 5. Set run status to running
     await this.runModel.update(runId, { status: 'running' });
+  }
+
+  async getRunRetryInfo(
+    runId: string,
+  ): Promise<{ canRetry: boolean; reason?: string; retryableCount: number }> {
+    const run = await this.runModel.findById(runId);
+    if (!run) return { canRetry: false, reason: 'Run not found', retryableCount: 0 };
+
+    if (!['completed', 'failed', 'aborted'].includes(run.status)) {
+      return {
+        canRetry: false,
+        reason: 'Only completed, failed, or aborted runs can resume trajectories',
+        retryableCount: 0,
+      };
+    }
+
+    const runTopics = await this.runTopicModel.findByRunId(runId);
+    const retryableCount = runTopics.filter((topic) => topic.status === 'timeout').length;
+
+    if (retryableCount === 0) {
+      return {
+        canRetry: false,
+        reason: 'No timeout trajectories available to resume',
+        retryableCount,
+      };
+    }
+
+    return { canRetry: true, retryableCount };
+  }
+
+  async resumeTrajectory(params: { runId: string; testCaseId: string; threadId?: string }) {
+    const target = await this.resolveTrajectoryResumeTarget(params);
+    const { appContext, envPrompt, parentMessageId, run, runTopic, thread, topicId } = target;
+
+    const previousRunStatus = run.status;
+    const previousRunMetrics = run.metrics;
+    const previousRunTopic = {
+      evalResult: runTopic.evalResult,
+      passed: runTopic.passed,
+      score: runTopic.score,
+      status: runTopic.status,
+    };
+    const previousThreadMetadata = thread?.metadata;
+
+    await this.db
+      .update(agentEvalRunTopics)
+      .set({
+        createdAt: new Date(),
+        evalResult: null,
+        passed: null,
+        score: null,
+        status: 'running',
+      })
+      .where(
+        and(
+          eq(agentEvalRunTopics.runId, run.id),
+          eq(agentEvalRunTopics.topicId, topicId),
+          eq(agentEvalRunTopics.userId, this.userId),
+        ),
+      );
+
+    if (thread) {
+      await this.threadModel.update(thread.id, {
+        metadata: { testCaseId: params.testCaseId } as any,
+      });
+    }
+
+    await this.runModel.update(run.id, { startedAt: new Date(), status: 'running' });
+    await this.refreshRunProgress(run.id);
+
+    const aiAgentService = new AiAgentService(this.db, this.userId);
+    const webhookBaseBody = { runId: run.id, testCaseId: params.testCaseId, userId: this.userId };
+
+    try {
+      const execResult = await aiAgentService.execAgent({
+        agentId: run.targetAgentId ?? undefined,
+        appContext,
+        autoStart: true,
+        hooks: [
+          thread
+            ? {
+                handler: async (event) => {
+                  const service = new AgentEvalRunService(this.db, this.userId);
+                  await service.recordThreadCompletion({
+                    runId: run.id,
+                    status: event.status || event.reason || 'done',
+                    telemetry: {
+                      completionReason: event.reason,
+                      cost: event.cost,
+                      duration: event.duration,
+                      errorMessage: event.errorMessage,
+                      llmCalls: event.llmCalls,
+                      steps: event.steps,
+                      toolCalls: event.toolCalls,
+                      totalTokens: event.totalTokens,
+                    },
+                    testCaseId: params.testCaseId,
+                    threadId: thread.id,
+                    topicId,
+                  });
+                },
+                id: 'eval-thread-complete',
+                type: 'onComplete' as const,
+                webhook: {
+                  body: { ...webhookBaseBody, threadId: thread.id, topicId },
+                  url: '/api/workflows/agent-eval-run/on-thread-complete',
+                },
+              }
+            : {
+                handler: async (event) => {
+                  const service = new AgentEvalRunService(this.db, this.userId);
+                  await service.recordTrajectoryCompletion({
+                    runId: run.id,
+                    status: event.status || event.reason || 'done',
+                    telemetry: {
+                      completionReason: event.reason,
+                      cost: event.cost,
+                      duration: event.duration,
+                      errorDetail: event.errorDetail,
+                      errorMessage: event.errorMessage,
+                      llmCalls: event.llmCalls,
+                      steps: event.steps,
+                      toolCalls: event.toolCalls,
+                      totalTokens: event.totalTokens,
+                    },
+                    testCaseId: params.testCaseId,
+                  });
+                },
+                id: 'eval-trajectory-complete',
+                type: 'onComplete' as const,
+                webhook: {
+                  body: webhookBaseBody,
+                  url: '/api/workflows/agent-eval-run/on-trajectory-complete',
+                },
+              },
+        ],
+        ...(envPrompt && { evalContext: { envPrompt } }),
+        maxSteps: run.config?.maxSteps,
+        parentMessageId,
+        prompt: '',
+        resume: true,
+        userInterventionConfig: { approvalMode: 'headless' },
+      });
+
+      if (execResult?.operationId) {
+        if (thread) {
+          await this.threadModel.update(thread.id, {
+            metadata: { operationId: execResult.operationId, testCaseId: params.testCaseId } as any,
+          });
+        } else {
+          await this.runTopicModel.updateByRunAndTopic(run.id, topicId, {
+            evalResult: { operationId: execResult.operationId, rubricScores: [] },
+          });
+        }
+      }
+
+      return { operationId: execResult?.operationId, parentMessageId, topicId };
+    } catch (error) {
+      await this.runTopicModel.updateByRunAndTopic(run.id, topicId, previousRunTopic);
+
+      await this.db
+        .update(agentEvalRunTopics)
+        .set({ createdAt: runTopic.createdAt })
+        .where(
+          and(
+            eq(agentEvalRunTopics.runId, run.id),
+            eq(agentEvalRunTopics.topicId, topicId),
+            eq(agentEvalRunTopics.userId, this.userId),
+          ),
+        );
+
+      if (thread) {
+        await this.threadModel.update(thread.id, { metadata: previousThreadMetadata as any });
+      }
+
+      await this.runModel.update(run.id, {
+        metrics: previousRunMetrics as EvalRunMetrics | null | undefined,
+        status: previousRunStatus,
+      });
+
+      throw error;
+    }
+  }
+
+  private async resolveTrajectoryResumeTarget(params: {
+    runId: string;
+    testCaseId: string;
+    threadId?: string;
+  }) {
+    const loaded = await this.loadTrajectoryData(params.runId, params.testCaseId);
+    if ('error' in loaded) {
+      throw new Error(loaded.error);
+    }
+
+    const { envPrompt, run } = loaded;
+    const runTopic = await this.runTopicModel.findByRunAndTestCase(params.runId, params.testCaseId);
+    if (!runTopic) {
+      throw new Error('RunTopic not found');
+    }
+
+    if (runTopic.status !== 'timeout') {
+      throw new Error('Only timeout trajectories can be resumed');
+    }
+
+    const k = run.config?.k ?? 1;
+    if (k === 1 && params.threadId) {
+      throw new Error('threadId is only supported when k > 1');
+    }
+
+    if (k > 1 && !params.threadId) {
+      throw new Error('threadId is required when k > 1');
+    }
+
+    if (!runTopic.topicId) {
+      throw new Error('RunTopic topicId is required');
+    }
+
+    let thread: Awaited<ReturnType<ThreadModel['findById']>> | undefined;
+
+    if (params.threadId) {
+      thread = await this.threadModel.findById(params.threadId);
+
+      if (!thread || thread.topicId !== runTopic.topicId || thread.type !== 'eval') {
+        throw new Error('Thread does not belong to the target eval trajectory');
+      }
+    }
+
+    const parentMessageId = await this.resolveResumeParentMessageId({
+      threadId: thread?.id,
+      topicId: runTopic.topicId,
+    });
+
+    return {
+      appContext: thread
+        ? { threadId: thread.id, topicId: runTopic.topicId }
+        : { topicId: runTopic.topicId },
+      envPrompt,
+      parentMessageId,
+      run,
+      runTopic,
+      thread,
+      topicId: runTopic.topicId,
+    };
+  }
+
+  private async resolveResumeParentMessageId(params: { threadId?: string; topicId: string }) {
+    const messages = await this.messageModel.query({
+      threadId: params.threadId,
+      topicId: params.topicId,
+    });
+
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const message = messages[index];
+
+      if (message.role === 'assistant') {
+        if (message.parentId) return message.parentId;
+        if (!message.content || message.content === LOADING_FLAT) continue;
+      }
+
+      if (message.role === 'tool' || message.role === 'user') {
+        return message.id;
+      }
+    }
+
+    throw new Error('Unable to resolve a valid resume parent message');
+  }
+
+  private async refreshRunProgress(runId: string) {
+    const run = await this.runModel.findById(runId);
+    if (!run) return;
+
+    const totalCases = run.metrics?.totalCases;
+    if (!totalCases) return;
+
+    const allTopics = await this.runTopicModel.findByRunId(runId);
+    const completedCount = allTopics.filter(
+      (t) =>
+        (t.evalResult && 'completionReason' in t.evalResult) ||
+        t.status === 'timeout' ||
+        t.status === 'external',
+    ).length;
+    const passedCases = allTopics.filter((t) => t.status === 'passed').length;
+    const failedCases = allTopics.filter((t) => t.status === 'failed').length;
+    const errorCases = allTopics.filter((t) => t.status === 'error').length;
+    const externalCases = allTopics.filter((t) => t.status === 'external').length;
+    const timeoutCases = allTopics.filter((t) => t.status === 'timeout').length;
+
+    let sumCost = 0;
+    let sumTokens = 0;
+    let sumSteps = 0;
+    let sumLlmCalls = 0;
+    let sumToolCalls = 0;
+    let actualTotalCost = 0;
+    let actualTotalTokens = 0;
+    let actualTotalDuration = 0;
+
+    for (const topic of allTopics) {
+      const result = topic.evalResult as Record<string, unknown> | null;
+      if (result && ('completionReason' in result || topic.status === 'timeout')) {
+        if (typeof result.cost === 'number') sumCost += result.cost;
+        if (typeof result.tokens === 'number') sumTokens += result.tokens;
+        if (typeof result.steps === 'number') sumSteps += result.steps;
+        if (typeof result.llmCalls === 'number') sumLlmCalls += result.llmCalls;
+        if (typeof result.toolCalls === 'number') sumToolCalls += result.toolCalls;
+
+        const topicTotalCost =
+          typeof result.totalCost === 'number'
+            ? result.totalCost
+            : typeof result.cost === 'number'
+              ? result.cost
+              : 0;
+        const topicTotalTokens =
+          typeof result.totalTokens === 'number'
+            ? result.totalTokens
+            : typeof result.tokens === 'number'
+              ? result.tokens
+              : 0;
+        const topicTotalDuration =
+          typeof result.totalDuration === 'number'
+            ? result.totalDuration
+            : typeof result.duration === 'number'
+              ? result.duration
+              : 0;
+
+        actualTotalCost += topicTotalCost;
+        actualTotalTokens += topicTotalTokens;
+        actualTotalDuration += topicTotalDuration;
+      }
+    }
+
+    await this.runModel.update(runId, {
+      metrics: {
+        ...(run.metrics as EvalRunMetrics),
+        completedCases: completedCount,
+        cost: sumCost ? roundCost(sumCost) : undefined,
+        errorCases,
+        externalCases: externalCases || undefined,
+        failedCases,
+        llmCalls: sumLlmCalls || undefined,
+        passedCases,
+        perCaseCost: sumCost && completedCount ? roundCost(sumCost / completedCount) : undefined,
+        perCaseLlmCalls:
+          sumLlmCalls && completedCount
+            ? Math.round((sumLlmCalls / completedCount) * 10) / 10
+            : undefined,
+        perCaseSteps:
+          sumSteps && completedCount
+            ? Math.round((sumSteps / completedCount) * 10) / 10
+            : undefined,
+        perCaseTokens:
+          sumTokens && completedCount ? Math.round(sumTokens / completedCount) : undefined,
+        perCaseToolCalls:
+          sumToolCalls && completedCount
+            ? Math.round((sumToolCalls / completedCount) * 10) / 10
+            : undefined,
+        steps: sumSteps || undefined,
+        timeoutCases,
+        tokens: sumTokens || undefined,
+        toolCalls: sumToolCalls || undefined,
+        totalCost: actualTotalCost ? roundCost(actualTotalCost) : undefined,
+        totalDuration: actualTotalDuration || undefined,
+        totalTokens: actualTotalTokens || undefined,
+      },
+    });
   }
 
   async loadTrajectoryData(runId: string, testCaseId: string) {

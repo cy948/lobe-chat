@@ -177,6 +177,7 @@ describe('AiAgentService.execAgent - resume mode', () => {
     expect(mockMessageQuery).toHaveBeenCalledWith(
       {
         sessionId: 'session-1',
+        threadId: 'thread-1',
         topicId: 'topic-1',
       },
       expect.any(Object),
@@ -218,6 +219,7 @@ describe('AiAgentService.execAgent - resume mode', () => {
       service.execAgent({
         agentId: 'agent-1',
         parentMessageId: 'parent-msg-1',
+        prompt: '',
         resume: true,
       }),
     ).rejects.toThrow('appContext is required when resume is true');
@@ -233,6 +235,7 @@ describe('AiAgentService.execAgent - resume mode', () => {
           topicId: 'topic-other',
         },
         parentMessageId: 'parent-msg-1',
+        prompt: '',
         resume: true,
       }),
     ).rejects.toThrow('appContext.topicId does not match parent message');
@@ -242,6 +245,7 @@ describe('AiAgentService.execAgent - resume mode', () => {
     await expect(
       service.execAgent({
         agentId: 'agent-1',
+        prompt: '',
         resume: true,
       }),
     ).rejects.toThrow('parentMessageId is required when resume is true');

@@ -153,7 +153,7 @@ export class ToolMessageReorder extends BaseProcessor {
             ...matchedToolMessage,
             content:
               typeof matchedToolMessage.content === 'string' &&
-              matchedToolMessage.content.length > 0
+              (matchedToolMessage.content.length > 0 || !pluginErrorMessage)
                 ? matchedToolMessage.content
                 : pluginErrorMessage || DEFAULT_TOOL_FAILURE_CONTENT,
           });

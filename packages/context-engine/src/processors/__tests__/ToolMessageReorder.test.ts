@@ -158,7 +158,7 @@ describe('ToolMessageReorder', () => {
         role: 'tool',
         tool_call_id: 'tool_call_1',
         name: 'test-plugin____testApi',
-        content: 'Tool result',
+        content: '',
       },
       {
         role: 'assistant',
@@ -181,6 +181,7 @@ describe('ToolMessageReorder', () => {
     expect(output[2]).toEqual(
       expect.objectContaining({
         role: 'tool',
+        content: '',
         tool_call_id: 'tool_call_1',
       }),
     );

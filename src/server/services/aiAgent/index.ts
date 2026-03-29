@@ -121,6 +121,10 @@ interface InternalExecAgentParams extends ExecAgentParams {
   hooks?: AgentHook[];
   /** Maximum steps for the agent operation */
   maxSteps?: number;
+  /** Parent message ID to continue from. Only takes effect when resume is true */
+  parentMessageId?: string;
+  /** Whether to continue execution from an existing persisted message */
+  resume?: boolean;
   /** Abort startup before the agent runtime operation is created */
   signal?: AbortSignal;
   /** Step lifecycle callbacks for operation tracking (server-side only) */

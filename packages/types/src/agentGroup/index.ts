@@ -164,12 +164,8 @@ export interface ExecAgentParams {
   existingMessageIds?: string[];
   /** Additional system instructions appended after the agent's own system role */
   instructions?: string;
-  /** Parent message ID to continue from. Only takes effect when resume is true */
-  parentMessageId?: string;
   /** The user input/prompt */
   prompt: string;
-  /** Whether to resume execution from an existing message */
-  resume?: boolean;
   /** The agent slug to run (either agentId or slug is required) */
   slug?: string;
 }

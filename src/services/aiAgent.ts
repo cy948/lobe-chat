@@ -12,7 +12,7 @@ export interface ExecAgentTaskParams {
   autoStart?: boolean;
   existingMessageIds?: string[];
   parentMessageId?: string;
-  prompt: string;
+  prompt?: string;
   resume?: boolean;
   slug?: string;
 }

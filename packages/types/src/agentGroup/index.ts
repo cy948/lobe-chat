@@ -166,9 +166,9 @@ export interface ExecAgentParams {
   instructions?: string;
   /** Parent message ID to continue from. Only takes effect when resume is true */
   parentMessageId?: string;
-  /** The user input/prompt. Not used as the continuation source in resume mode */
-  prompt?: string;
-  /** Whether to continue execution from an existing persisted message */
+  /** The user input/prompt */
+  prompt: string;
+  /** Whether to resume execution from an existing message */
   resume?: boolean;
   /** The agent slug to run (either agentId or slug is required) */
   slug?: string;

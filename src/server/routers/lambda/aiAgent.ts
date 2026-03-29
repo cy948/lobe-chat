@@ -93,29 +93,13 @@ const ExecAgentSchema = z
     autoStart: z.boolean().optional().default(true),
     /** Optional existing message IDs to include in context */
     existingMessageIds: z.array(z.string()).optional().default([]),
-    /** Parent message ID to continue from. Only takes effect when resume is true */
-    parentMessageId: z.string().optional(),
     /** The user input/prompt */
-    prompt: z.string().optional(),
-    /** Whether to continue execution from an existing persisted message */
-    resume: z.boolean().optional(),
+    prompt: z.string(),
     /** The agent slug to run (either agentId or slug is required) */
     slug: z.string().optional(),
   })
   .refine((data) => data.agentId || data.slug, {
     message: 'Either agentId or slug must be provided',
-  })
-  .refine((data) => data.resume || !!data.prompt, {
-    message: 'prompt is required when resume is false',
-  })
-  .refine((data) => !data.resume || !!data.parentMessageId, {
-    message: 'parentMessageId is required when resume is true',
-  })
-  .refine((data) => !data.resume || !!data.appContext, {
-    message: 'appContext is required when resume is true',
-  })
-  .refine((data) => !data.resume || !!data.appContext?.topicId, {
-    message: 'appContext.topicId is required when resume is true',
   });
 
 /**
@@ -534,16 +518,7 @@ export const aiAgentRouter = router({
     }),
 
   execAgent: aiAgentProcedure.input(ExecAgentSchema).mutation(async ({ input, ctx }) => {
-    const {
-      agentId,
-      slug,
-      prompt,
-      appContext,
-      autoStart = true,
-      existingMessageIds = [],
-      parentMessageId,
-      resume,
-    } = input;
+    const { agentId, slug, prompt, appContext, autoStart = true, existingMessageIds = [] } = input;
 
     log('execAgent: identifier=%s, prompt=%s', agentId || slug, prompt.slice(0, 50));
 
@@ -553,9 +528,7 @@ export const aiAgentRouter = router({
         appContext,
         autoStart,
         existingMessageIds,
-        parentMessageId,
         prompt,
-        resume,
         slug,
       });
     } catch (error: any) {
@@ -594,16 +567,7 @@ export const aiAgentRouter = router({
       task: (typeof tasks)[number],
       taskIndex: number,
     ): Promise<TaskResult> => {
-      const {
-        agentId,
-        slug,
-        prompt,
-        appContext,
-        autoStart = true,
-        existingMessageIds = [],
-        parentMessageId,
-        resume,
-      } = task;
+      const { agentId, slug, prompt, appContext, autoStart = true, existingMessageIds = [] } = task;
 
       try {
         const result = await ctx.aiAgentService.execAgent({
@@ -611,9 +575,7 @@ export const aiAgentRouter = router({
           appContext,
           autoStart,
           existingMessageIds,
-          parentMessageId,
           prompt,
-          resume,
           slug,
         });
 

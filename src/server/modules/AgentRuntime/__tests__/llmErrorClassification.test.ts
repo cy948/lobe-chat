@@ -22,6 +22,30 @@ describe('classifyLLMError', () => {
     ).toBe('stop');
   });
 
+  it('should classify ProviderBizError invalid_request errors as stop', () => {
+    expect(
+      classifyLLMError({
+        error: {
+          error: {
+            message: 'tools.0.custom.input_schema: Field required',
+            type: 'invalid_request_error',
+          },
+          errorType: 'ProviderBizError',
+        },
+        errorType: 'ProviderBizError',
+      }).kind,
+    ).toBe('stop');
+  });
+
+  it('should keep ProviderBizError rate limit errors as retry', () => {
+    expect(
+      classifyLLMError({
+        error: { message: '429 rate limit exceeded' },
+        errorType: 'ProviderBizError',
+      }).kind,
+    ).toBe('retry');
+  });
+
   it('should default unknown errors to retry', () => {
     expect(classifyLLMError(new Error('unexpected upstream issue')).kind).toBe('retry');
   });

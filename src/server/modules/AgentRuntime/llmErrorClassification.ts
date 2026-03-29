@@ -114,7 +114,14 @@ const normalizeSignal = (error: unknown): LLMErrorSignal => {
   if (error && typeof error === 'object') {
     const raw = error as {
       code?: string;
-      error?: { code?: string; message?: string; status?: number; type?: string };
+      error?: {
+        code?: string;
+        error?: { code?: string; message?: string; status?: number; type?: string };
+        errorType?: string;
+        message?: string;
+        status?: number;
+        type?: string;
+      };
       errorType?: string;
       message?: string;
       status?: number;
@@ -122,18 +129,30 @@ const normalizeSignal = (error: unknown): LLMErrorSignal => {
       type?: string;
     };
     const nested = raw.error;
-    const message = (raw.message || nested?.message || 'unknown error').toLowerCase();
+    const nestedError = nested?.error;
+    const message = (
+      raw.message ||
+      nested?.message ||
+      nestedError?.message ||
+      'unknown error'
+    ).toLowerCase();
 
     return {
-      code: normalizeCode(raw.code || nested?.code),
-      errorType: normalizeErrorType(raw.errorType || raw.type || nested?.type),
+      code: normalizeCode(raw.code || nested?.code || nestedError?.code),
+      errorType: normalizeErrorType(
+        raw.errorType || raw.type || nested?.errorType || nested?.type || nestedError?.type,
+      ),
       message,
       status:
         typeof raw.status === 'number'
           ? raw.status
           : typeof raw.statusCode === 'number'
             ? raw.statusCode
-            : nested?.status,
+            : typeof nested?.status === 'number'
+              ? nested.status
+              : typeof nestedError?.status === 'number'
+                ? nestedError.status
+                : tryExtractStatus(message),
     };
   }
 
@@ -141,6 +160,20 @@ const normalizeSignal = (error: unknown): LLMErrorSignal => {
 };
 
 const classifyKind = ({ code, errorType, message, status }: LLMErrorSignal): LLMErrorKind => {
+  if (errorType === 'ProviderBizError') {
+    if (status === 400 || status === 422) return 'stop';
+    if (message.includes('invalid_request_error') || message.includes('invalid request')) {
+      return 'stop';
+    }
+    if (
+      message.includes('input_schema') ||
+      message.includes('field required') ||
+      message.includes('missing required')
+    ) {
+      return 'stop';
+    }
+  }
+
   if (errorType) {
     if (STOP_ERROR_TYPES.has(errorType)) return 'stop';
     if (RETRY_ERROR_TYPES.has(errorType)) return 'retry';

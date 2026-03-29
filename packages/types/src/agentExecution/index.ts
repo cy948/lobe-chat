@@ -36,8 +36,8 @@ export interface ExecAgentParams {
   model?: string;
   /** Parent message ID to continue from. Only takes effect when resume is true */
   parentMessageId?: string;
-  /** The user input/prompt. Not used as the continuation source in resume mode */
-  prompt?: string;
+  /** The user input/prompt */
+  prompt: string;
   /** Override the agent's default provider */
   provider?: string;
   /** Whether to resume execution from an existing message */

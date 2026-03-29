@@ -1009,6 +1009,7 @@ export class AiAgentService {
         appContext: {
           agentId: resolvedAgentId,
           groupId: appContext?.groupId,
+          taskId,
           threadId: appContext?.threadId,
           topicId,
           trigger,

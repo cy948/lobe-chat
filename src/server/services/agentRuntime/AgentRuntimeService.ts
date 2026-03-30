@@ -280,6 +280,7 @@ export class AgentRuntimeService {
       operationSkillSet,
       signal,
       userTimezone,
+      initialStepCount = 0,
     } = params;
 
     const operationToolSet = toolSet;
@@ -341,7 +342,7 @@ export class AgentRuntimeService {
         operationId,
         operationToolSet,
         status: 'idle',
-        stepCount: 0,
+        stepCount: initialStepCount,
         // Backward-compat: resolved tool fields read by RuntimeExecutors
         toolManifestMap: operationToolSet.manifestMap,
         toolSourceMap: operationToolSet.sourceMap,

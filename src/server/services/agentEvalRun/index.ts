@@ -231,57 +231,101 @@ export class AgentEvalRunService {
     await this.runModel.update(runId, { status: 'running' });
   }
 
-  async getRunRetryInfo(
-    runId: string,
-  ): Promise<{ canRetry: boolean; reason?: string; retryableCount: number }> {
-    const run = await this.runModel.findById(runId);
-    if (!run) return { canRetry: false, reason: 'Run not found', retryableCount: 0 };
+  async canResumeTrajectory(params: { runId: string; testCaseId: string; threadId?: string }) {
+    const run = await this.runModel.findById(params.runId);
+    if (!run) return { canResume: false, reason: 'Run not found' };
 
-    if (!['completed', 'failed', 'aborted'].includes(run.status)) {
-      return {
-        canRetry: false,
-        reason: 'Only completed, failed, or aborted runs can resume trajectories',
-        retryableCount: 0,
-      };
+    if (!['running', 'failed', 'aborted'].includes(run.status)) {
+      return { canResume: false, reason: `Cannot resume trajectory: run status=${run.status}` };
     }
 
-    const runTopics = await this.runTopicModel.findByRunId(runId);
-    const retryableCount = runTopics.filter((topic) => topic.status === 'timeout').length;
+    const runTopic = await this.runTopicModel.findByRunAndTestCase(params.runId, params.testCaseId);
+    if (!runTopic) return { canResume: false, reason: 'RunTopic not found' };
 
-    if (retryableCount === 0) {
-      return {
-        canRetry: false,
-        reason: 'No timeout trajectories available to resume',
-        retryableCount,
-      };
+    if (runTopic.status !== 'timeout') {
+      return { canResume: false, reason: 'Only timeout trajectories can be resumed' };
     }
 
-    return { canRetry: true, retryableCount };
+    const k = run.config?.k ?? 1;
+    if (k === 1 && params.threadId) {
+      return { canResume: false, reason: 'threadId is only supported when k > 1' };
+    }
+
+    if (k > 1 && !params.threadId) {
+      return { canResume: false, reason: 'threadId is required when k > 1' };
+    }
+
+    if (!runTopic.topicId) {
+      return { canResume: false, reason: 'RunTopic topicId is required' };
+    }
+
+    if (params.threadId) {
+      const thread = await this.threadModel.findById(params.threadId);
+
+      if (!thread || thread.topicId !== runTopic.topicId || thread.type !== 'eval') {
+        return { canResume: false, reason: 'Thread does not belong to the target eval trajectory' };
+      }
+    }
+
+    return { canResume: true as const };
   }
 
   async resumeTrajectory(params: { runId: string; testCaseId: string; threadId?: string }) {
-    const target = await this.resolveTrajectoryResumeTarget(params);
-    const { envPrompt, parentMessageId, run, runTopic, thread, topicId } = target;
-
-    if (!['completed', 'failed', 'aborted'].includes(run.status)) {
-      throw new Error(`Cannot resume trajectory: run status=${run.status}`);
+    const resumeCheck = await this.canResumeTrajectory(params);
+    if (!resumeCheck.canResume) {
+      throw new Error(resumeCheck.reason);
     }
 
-    const previousRunStatus = run.status;
-    const previousRunStartedAt = run.startedAt;
-    const previousRunMetrics = run.metrics;
-    const previousRunTopic = {
-      evalResult: runTopic.evalResult,
-      passed: runTopic.passed,
-      score: runTopic.score,
-      status: runTopic.status,
-    };
-    const previousThreadMetadata = thread?.metadata;
+    const target = await this.resolveTrajectoryResumeTarget(params);
+    const { envPrompt, parentMessageId, run, thread, topicId } = target;
 
-    await this.db
+    if (thread) {
+      await AgentEvalRunWorkflow.triggerResumeThreadTrajectory({
+        appContext: { threadId: thread.id, topicId },
+        envPrompt,
+        maxSteps: run.config?.maxSteps,
+        parentMessageId,
+        runId: run.id,
+        testCaseId: params.testCaseId,
+        threadId: thread.id,
+        topicId,
+        userId: this.userId,
+      });
+    } else {
+      await AgentEvalRunWorkflow.triggerResumeAgentTrajectory({
+        appContext: { topicId },
+        envPrompt,
+        maxSteps: run.config?.maxSteps,
+        parentMessageId,
+        runId: run.id,
+        testCaseId: params.testCaseId,
+        topicId,
+        userId: this.userId,
+      });
+    }
+
+    return {
+      mode: thread ? ('thread' as const) : ('single' as const),
+      runId: run.id,
+      testCaseId: params.testCaseId,
+      threadId: thread?.id,
+      topicId,
+      triggered: true,
+    };
+  }
+
+  async executeResumedTrajectory(params: ResumeAgentTrajectoryPayload) {
+    const { appContext, envPrompt, maxSteps, parentMessageId, runId, testCaseId, topicId } = params;
+    const resumeCheck = await this.canResumeTrajectory({ runId, testCaseId });
+    if (!resumeCheck.canResume) {
+      return { cancelled: true, reason: resumeCheck.reason, topicId };
+    }
+
+    const claimedAt = new Date();
+    const [claimedRunTopic] = await this.db
       .update(agentEvalRunTopics)
       .set({
-        createdAt: new Date(),
+        createdAt: claimedAt,
         evalResult: null,
         passed: null,
         score: null,
@@ -289,121 +333,18 @@ export class AgentEvalRunService {
       })
       .where(
         and(
-          eq(agentEvalRunTopics.runId, run.id),
+          eq(agentEvalRunTopics.runId, runId),
           eq(agentEvalRunTopics.topicId, topicId),
           eq(agentEvalRunTopics.userId, this.userId),
+          eq(agentEvalRunTopics.status, 'timeout'),
         ),
-      );
+      )
+      .returning();
 
-    if (thread) {
-      await this.threadModel.update(thread.id, {
-        metadata: { testCaseId: params.testCaseId } as any,
-      });
+    if (!claimedRunTopic) {
+      return { cancelled: true, reason: 'Trajectory resume already claimed', topicId };
     }
 
-    await this.runModel.update(run.id, { startedAt: new Date(), status: 'running' });
-    await this.refreshRunProgress(run.id);
-
-    try {
-      if (thread) {
-        await AgentEvalRunWorkflow.triggerResumeThreadTrajectory({
-          appContext: { threadId: thread.id, topicId },
-          envPrompt,
-          maxSteps: run.config?.maxSteps,
-          parentMessageId,
-          runId: run.id,
-          testCaseId: params.testCaseId,
-          threadId: thread.id,
-          topicId,
-          userId: this.userId,
-        });
-      } else {
-        await AgentEvalRunWorkflow.triggerResumeAgentTrajectory({
-          appContext: { topicId },
-          envPrompt,
-          maxSteps: run.config?.maxSteps,
-          parentMessageId,
-          runId: run.id,
-          testCaseId: params.testCaseId,
-          topicId,
-          userId: this.userId,
-        });
-      }
-
-      return {
-        mode: thread ? ('thread' as const) : ('single' as const),
-        runId: run.id,
-        testCaseId: params.testCaseId,
-        threadId: thread?.id,
-        topicId,
-        triggered: true,
-      };
-    } catch (error) {
-      await this.runTopicModel.updateByRunAndTopic(run.id, topicId, previousRunTopic);
-
-      await this.db
-        .update(agentEvalRunTopics)
-        .set({ createdAt: runTopic.createdAt })
-        .where(
-          and(
-            eq(agentEvalRunTopics.runId, run.id),
-            eq(agentEvalRunTopics.topicId, topicId),
-            eq(agentEvalRunTopics.userId, this.userId),
-          ),
-        );
-
-      if (thread) {
-        await this.threadModel.update(thread.id, { metadata: previousThreadMetadata as any });
-      }
-
-      await this.runModel.update(run.id, {
-        metrics: previousRunMetrics as EvalRunMetrics | null | undefined,
-        startedAt: previousRunStartedAt,
-        status: previousRunStatus,
-      });
-
-      throw error;
-    }
-  }
-
-  async markResumeLoadError(params: {
-    errorMessage: string;
-    runId: string;
-    testCaseId: string;
-    threadId?: string;
-    topicId?: string;
-  }) {
-    const { errorMessage, runId, testCaseId, threadId, topicId } = params;
-
-    const runTopic = await this.runTopicModel.findByRunAndTestCase(runId, testCaseId);
-    const resolvedTopicId = topicId ?? runTopic?.topicId;
-
-    if (!runTopic || !resolvedTopicId) return;
-
-    await this.runTopicModel.updateByRunAndTopic(runId, resolvedTopicId, {
-      evalResult: { completionReason: 'error', error: errorMessage, rubricScores: [] },
-      passed: false,
-      score: 0,
-      status: 'error',
-    });
-
-    if (threadId) {
-      await this.threadModel.update(threadId, {
-        metadata: {
-          completedAt: new Date().toISOString(),
-          error: errorMessage,
-          passed: false,
-          score: 0,
-          testCaseId,
-        },
-      } as any);
-    }
-
-    await this.refreshRunProgress(runId);
-  }
-
-  async executeResumedTrajectory(params: ResumeAgentTrajectoryPayload) {
-    const { appContext, envPrompt, maxSteps, parentMessageId, runId, testCaseId, topicId } = params;
     const loaded = await this.loadTrajectoryData(runId, testCaseId);
 
     if ('error' in loaded) {
@@ -411,6 +352,12 @@ export class AgentEvalRunService {
     }
 
     const { run } = loaded;
+    await this.runModel.update(runId, {
+      startedAt: run.status === 'running' ? run.startedAt : claimedAt,
+      status: 'running',
+    });
+    await this.refreshRunProgress(runId);
+
     const aiAgentService = new AiAgentService(this.db, this.userId);
     const webhookUrl = '/api/workflows/agent-eval-run/on-trajectory-complete';
     const userId = this.userId;
@@ -495,6 +442,39 @@ export class AgentEvalRunService {
       threadId,
       topicId,
     } = params;
+    const resumeCheck = await this.canResumeTrajectory({ runId, testCaseId, threadId });
+    if (!resumeCheck.canResume) {
+      return { cancelled: true, reason: resumeCheck.reason, threadId, topicId };
+    }
+
+    const claimedAt = new Date();
+    const [claimedRunTopic] = await this.db
+      .update(agentEvalRunTopics)
+      .set({
+        createdAt: claimedAt,
+        evalResult: null,
+        passed: null,
+        score: null,
+        status: 'running',
+      })
+      .where(
+        and(
+          eq(agentEvalRunTopics.runId, runId),
+          eq(agentEvalRunTopics.topicId, topicId),
+          eq(agentEvalRunTopics.userId, this.userId),
+          eq(agentEvalRunTopics.status, 'timeout'),
+        ),
+      )
+      .returning();
+
+    if (!claimedRunTopic) {
+      return { cancelled: true, reason: 'Trajectory resume already claimed', threadId, topicId };
+    }
+
+    await this.threadModel.update(threadId, {
+      metadata: { testCaseId } as any,
+    });
+
     const loaded = await this.loadTrajectoryData(runId, testCaseId);
 
     if ('error' in loaded) {
@@ -502,6 +482,12 @@ export class AgentEvalRunService {
     }
 
     const { run } = loaded;
+    await this.runModel.update(runId, {
+      startedAt: run.status === 'running' ? run.startedAt : claimedAt,
+      status: 'running',
+    });
+    await this.refreshRunProgress(runId);
+
     const aiAgentService = new AiAgentService(this.db, this.userId);
     const webhookUrl = '/api/workflows/agent-eval-run/on-thread-complete';
     const userId = this.userId;
@@ -591,35 +577,13 @@ export class AgentEvalRunService {
 
     const { envPrompt, run } = loaded;
     const runTopic = await this.runTopicModel.findByRunAndTestCase(params.runId, params.testCaseId);
-    if (!runTopic) {
-      throw new Error('RunTopic not found');
-    }
-
-    if (runTopic.status !== 'timeout') {
-      throw new Error('Only timeout trajectories can be resumed');
-    }
-
-    const k = run.config?.k ?? 1;
-    if (k === 1 && params.threadId) {
-      throw new Error('threadId is only supported when k > 1');
-    }
-
-    if (k > 1 && !params.threadId) {
-      throw new Error('threadId is required when k > 1');
-    }
-
-    if (!runTopic.topicId) {
-      throw new Error('RunTopic topicId is required');
-    }
+    if (!runTopic?.topicId) throw new Error('RunTopic topicId is required');
 
     let thread: Awaited<ReturnType<ThreadModel['findById']>> | undefined;
 
     if (params.threadId) {
       thread = await this.threadModel.findById(params.threadId);
-
-      if (!thread || thread.topicId !== runTopic.topicId || thread.type !== 'eval') {
-        throw new Error('Thread does not belong to the target eval trajectory');
-      }
+      if (!thread) throw new Error('Thread not found');
     }
 
     const parentMessageId = await this.resolveResumeParentMessageId({

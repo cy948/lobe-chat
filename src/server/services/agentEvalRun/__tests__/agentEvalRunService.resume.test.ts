@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentEvalRunModel, AgentEvalRunTopicModel } from '@/database/models/agentEval';
 import { ThreadModel } from '@/database/models/thread';
-import { messages } from '@/database/schemas';
+import { messages, topics } from '@/database/schemas';
 import { AgentEvalRunService } from '@/server/services/agentEvalRun';
 import type * as AgentEvalRunWorkflowModule from '@/server/workflows/agentEvalRun';
 import { AgentEvalRunWorkflow } from '@/server/workflows/agentEvalRun';
@@ -40,6 +40,19 @@ vi.mock('@/server/services/agentRuntime/AgentRuntimeService', () => ({
   })),
 }));
 
+const markTopicTimeout = async (params: { runId: string; testCaseId: string; topicId: string }) => {
+  const runTopicModel = new AgentEvalRunTopicModel(serverDB, userId);
+
+  await runTopicModel.updateByRunAndTopic(params.runId, params.topicId, {
+    evalResult: { completionReason: 'timeout', duration: 1000, rubricScores: [] },
+    passed: false,
+    score: 0,
+    status: 'timeout',
+  });
+
+  return runTopicModel.findByRunAndTestCase(params.runId, params.testCaseId);
+};
+
 beforeEach(async () => {
   await cleanupDB();
   mockExecAgent.mockReset();
@@ -48,31 +61,110 @@ beforeEach(async () => {
 });
 
 describe('AgentEvalRunService', () => {
-  describe('getRunRetryInfo', () => {
-    it('should return retryable timeout count for terminal runs', async () => {
-      const { run, topic } = await setupEvalChain({ totalCases: 1 });
+  describe('canResumeTrajectory', () => {
+    it.each(['running', 'failed', 'aborted'] as const)(
+      'should allow timeout trajectory resume when run status is %s',
+      async (status) => {
+        const { run, testCase, topic } = await setupEvalChain({ totalCases: 1 });
 
-      const runModel = new AgentEvalRunModel(serverDB, userId);
-      await runModel.update(run.id, { status: 'failed' });
+        await new AgentEvalRunModel(serverDB, userId).update(run.id, { status });
+        await markTopicTimeout({ runId: run.id, testCaseId: testCase.id, topicId: topic.id });
 
-      const runTopicModel = new AgentEvalRunTopicModel(serverDB, userId);
-      await runTopicModel.updateByRunAndTopic(run.id, topic.id, {
-        evalResult: { completionReason: 'timeout', rubricScores: [] },
-        passed: false,
-        score: 0,
-        status: 'timeout',
+        await expect(
+          new AgentEvalRunService(serverDB, userId).canResumeTrajectory({
+            runId: run.id,
+            testCaseId: testCase.id,
+          }),
+        ).resolves.toEqual({ canResume: true });
+      },
+    );
+
+    it('should reject completed runs', async () => {
+      const { run, testCase, topic } = await setupEvalChain({ totalCases: 1 });
+
+      await new AgentEvalRunModel(serverDB, userId).update(run.id, { status: 'completed' });
+      await markTopicTimeout({ runId: run.id, testCaseId: testCase.id, topicId: topic.id });
+
+      await expect(
+        new AgentEvalRunService(serverDB, userId).canResumeTrajectory({
+          runId: run.id,
+          testCaseId: testCase.id,
+        }),
+      ).resolves.toEqual({
+        canResume: false,
+        reason: 'Cannot resume trajectory: run status=completed',
+      });
+    });
+
+    it('should reject non-timeout trajectories', async () => {
+      const { run, testCase } = await setupEvalChain({ totalCases: 1 });
+
+      await new AgentEvalRunModel(serverDB, userId).update(run.id, { status: 'failed' });
+
+      await expect(
+        new AgentEvalRunService(serverDB, userId).canResumeTrajectory({
+          runId: run.id,
+          testCaseId: testCase.id,
+        }),
+      ).resolves.toEqual({
+        canResume: false,
+        reason: 'Only timeout trajectories can be resumed',
+      });
+    });
+
+    it('should require threadId for pass@k resume', async () => {
+      const { run, testCase, topic } = await setupEvalChain({ totalCases: 1 });
+
+      await new AgentEvalRunModel(serverDB, userId).update(run.id, {
+        config: { k: 2 },
+        status: 'failed',
+      });
+      await markTopicTimeout({ runId: run.id, testCaseId: testCase.id, topicId: topic.id });
+
+      await expect(
+        new AgentEvalRunService(serverDB, userId).canResumeTrajectory({
+          runId: run.id,
+          testCaseId: testCase.id,
+        }),
+      ).resolves.toEqual({
+        canResume: false,
+        reason: 'threadId is required when k > 1',
+      });
+    });
+
+    it('should reject threads outside the target eval trajectory', async () => {
+      const { run, testCase, topic } = await setupEvalChain({ totalCases: 1 });
+
+      await new AgentEvalRunModel(serverDB, userId).update(run.id, {
+        config: { k: 2 },
+        status: 'failed',
+      });
+      await markTopicTimeout({ runId: run.id, testCaseId: testCase.id, topicId: topic.id });
+
+      const [{ id: otherTopicId }] = await serverDB
+        .insert(topics)
+        .values({ mode: 'test', title: 'Other Eval Topic', trigger: 'eval', userId })
+        .returning({ id: topics.id });
+      const otherThread = await new ThreadModel(serverDB, userId).create({
+        topicId: otherTopicId,
+        type: 'eval',
       });
 
-      const service = new AgentEvalRunService(serverDB, userId);
-      await expect(service.getRunRetryInfo(run.id)).resolves.toEqual({
-        canRetry: true,
-        retryableCount: 1,
+      await expect(
+        new AgentEvalRunService(serverDB, userId).canResumeTrajectory({
+          runId: run.id,
+          testCaseId: testCase.id,
+          threadId: otherThread!.id,
+        }),
+      ).resolves.toEqual({
+        canResume: false,
+        reason: 'Thread does not belong to the target eval trajectory',
       });
     });
   });
 
   describe('resumeTrajectory', () => {
-    it('should prepare and trigger a timed-out pass@1 trajectory resume from the persisted message chain', async () => {
+    it('should only trigger workflow for a timed-out pass@1 trajectory without mutating state', async () => {
       const { run, testCase, topic } = await setupEvalChain({ totalCases: 1 });
 
       const [userMessage] = await serverDB
@@ -94,6 +186,8 @@ describe('AgentEvalRunService', () => {
       });
 
       const runModel = new AgentEvalRunModel(serverDB, userId);
+      const runTopicModel = new AgentEvalRunTopicModel(serverDB, userId);
+
       await runModel.update(run.id, {
         metrics: {
           averageScore: 0,
@@ -106,14 +200,7 @@ describe('AgentEvalRunService', () => {
         },
         status: 'failed',
       });
-
-      const runTopicModel = new AgentEvalRunTopicModel(serverDB, userId);
-      await runTopicModel.updateByRunAndTopic(run.id, topic.id, {
-        evalResult: { completionReason: 'timeout', duration: 1000, rubricScores: [] },
-        passed: false,
-        score: 0,
-        status: 'timeout',
-      });
+      await markTopicTimeout({ runId: run.id, testCaseId: testCase.id, topicId: topic.id });
 
       const service = new AgentEvalRunService(serverDB, userId);
       const result = await service.resumeTrajectory({ runId: run.id, testCaseId: testCase.id });
@@ -142,56 +229,52 @@ describe('AgentEvalRunService', () => {
       expect(mockExecAgent).not.toHaveBeenCalled();
 
       const refreshedRun = await runModel.findById(run.id);
-      expect(refreshedRun?.status).toBe('running');
+      expect(refreshedRun?.status).toBe('failed');
       expect(refreshedRun?.metrics).toMatchObject({
-        completedCases: 0,
-        timeoutCases: 0,
+        completedCases: 1,
+        timeoutCases: 1,
       });
 
       const refreshedRunTopic = await runTopicModel.findByRunAndTestCase(run.id, testCase.id);
-      expect(refreshedRunTopic?.status).toBe('running');
-      expect(refreshedRunTopic?.evalResult).toBeNull();
+      expect(refreshedRunTopic?.status).toBe('timeout');
+      expect(refreshedRunTopic?.evalResult).toEqual({
+        completionReason: 'timeout',
+        duration: 1000,
+        rubricScores: [],
+      });
     });
 
-    it('should prepare and trigger a timed-out pass@k thread resume without touching other threads', async () => {
+    it('should only trigger workflow for the target pass@k thread without mutating thread state', async () => {
       const { run, testCase, topic } = await setupEvalChain({ totalCases: 1 });
 
-      const runModel = new AgentEvalRunModel(serverDB, userId);
-      await runModel.update(run.id, {
+      await new AgentEvalRunModel(serverDB, userId).update(run.id, {
         config: { k: 2 },
-        metrics: {
-          averageScore: 0,
-          completedCases: 1,
-          failedCases: 0,
-          passRate: 0,
-          passedCases: 0,
-          timeoutCases: 1,
-          totalCases: 1,
-        },
         status: 'failed',
       });
-
-      const runTopicModel = new AgentEvalRunTopicModel(serverDB, userId);
-      await runTopicModel.updateByRunAndTopic(run.id, topic.id, {
-        evalResult: { completionReason: 'timeout' },
-        passed: false,
-        score: 0,
-        status: 'timeout',
-      });
+      await markTopicTimeout({ runId: run.id, testCaseId: testCase.id, topicId: topic.id });
 
       const threadModel = new ThreadModel(serverDB, userId);
       const thread = await threadModel.create({ topicId: topic.id, type: 'eval' });
       const otherThread = await threadModel.create({ topicId: topic.id, type: 'eval' });
 
+      await threadModel.update(thread!.id, {
+        metadata: {
+          completedAt: new Date('2026-03-30T00:00:00.000Z').toISOString(),
+          operationId: 'op-target-old',
+          passed: false,
+          score: 0,
+          testCaseId: testCase.id,
+        },
+      } as any);
       await threadModel.update(otherThread!.id, {
         metadata: {
-          completedAt: new Date().toISOString(),
+          completedAt: new Date('2026-03-30T00:00:01.000Z').toISOString(),
           operationId: 'op-other-thread',
           passed: true,
           score: 1,
           testCaseId: testCase.id,
-        } as any,
-      });
+        },
+      } as any);
 
       const [threadUserMessage] = await serverDB
         .insert(messages)
@@ -244,130 +327,25 @@ describe('AgentEvalRunService', () => {
       );
       expect(mockExecAgent).not.toHaveBeenCalled();
 
-      const updatedThread = await threadModel.findById(thread!.id);
-      expect(updatedThread?.metadata).toEqual({ testCaseId: testCase.id });
-
-      const untouchedThread = await threadModel.findById(otherThread!.id);
-      expect(untouchedThread?.metadata).toMatchObject({
+      expect((await threadModel.findById(thread!.id))?.metadata).toMatchObject({
+        operationId: 'op-target-old',
+        testCaseId: testCase.id,
+      });
+      expect((await threadModel.findById(otherThread!.id))?.metadata).toMatchObject({
         operationId: 'op-other-thread',
         passed: true,
         score: 1,
         testCaseId: testCase.id,
       });
-
-      const refreshedRunTopic = await runTopicModel.findByRunAndTestCase(run.id, testCase.id);
-      expect(refreshedRunTopic?.status).toBe('running');
-    });
-
-    it('should reject resume when run is still active', async () => {
-      const { run, testCase, topic } = await setupEvalChain({ totalCases: 1 });
-
-      const runModel = new AgentEvalRunModel(serverDB, userId);
-      await runModel.update(run.id, { status: 'running' });
-
-      const runTopicModel = new AgentEvalRunTopicModel(serverDB, userId);
-      await runTopicModel.updateByRunAndTopic(run.id, topic.id, {
-        evalResult: { completionReason: 'timeout', rubricScores: [] },
-        passed: false,
-        score: 0,
-        status: 'timeout',
-      });
-
-      const [userMessage] = await serverDB
-        .insert(messages)
-        .values({
-          content: 'What is 6*7?',
-          role: 'user',
-          topicId: topic.id,
-          userId,
-        })
-        .returning();
-
-      await expect(
-        new AgentEvalRunService(serverDB, userId).resumeTrajectory({
-          runId: run.id,
-          testCaseId: testCase.id,
-        }),
-      ).rejects.toThrow('Cannot resume trajectory: run status=running');
-
-      expect(AgentEvalRunWorkflow.triggerResumeAgentTrajectory).not.toHaveBeenCalled();
-
-      const refreshedRunTopic = await runTopicModel.findByRunAndTestCase(run.id, testCase.id);
-      expect(refreshedRunTopic?.status).toBe('timeout');
-      expect(userMessage.id).toBeTruthy();
-    });
-
-    it('should restore previous startedAt when workflow trigger fails', async () => {
-      const { run, testCase, topic } = await setupEvalChain({ totalCases: 1 });
-
-      const previousStartedAt = new Date('2026-03-30T00:00:00.000Z');
-      const runModel = new AgentEvalRunModel(serverDB, userId);
-      await runModel.update(run.id, {
-        metrics: {
-          averageScore: 0,
-          completedCases: 1,
-          failedCases: 0,
-          passRate: 0,
-          passedCases: 0,
-          timeoutCases: 1,
-          totalCases: 1,
-        },
-        startedAt: previousStartedAt,
-        status: 'failed',
-      });
-
-      const runTopicModel = new AgentEvalRunTopicModel(serverDB, userId);
-      await runTopicModel.updateByRunAndTopic(run.id, topic.id, {
-        evalResult: { completionReason: 'timeout', duration: 1000, rubricScores: [] },
-        passed: false,
-        score: 0,
-        status: 'timeout',
-      });
-
-      const [userMessage] = await serverDB
-        .insert(messages)
-        .values({
-          content: 'What is 6*7?',
-          role: 'user',
-          topicId: topic.id,
-          userId,
-        })
-        .returning();
-
-      vi.mocked(AgentEvalRunWorkflow.triggerResumeAgentTrajectory).mockRejectedValueOnce(
-        new Error('workflow unavailable'),
-      );
-
-      await expect(
-        new AgentEvalRunService(serverDB, userId).resumeTrajectory({
-          runId: run.id,
-          testCaseId: testCase.id,
-        }),
-      ).rejects.toThrow('workflow unavailable');
-
-      const refreshedRun = await runModel.findById(run.id);
-      expect(refreshedRun?.startedAt?.toISOString()).toBe(previousStartedAt.toISOString());
-      expect(refreshedRun?.status).toBe('failed');
-
-      const refreshedRunTopic = await runTopicModel.findByRunAndTestCase(run.id, testCase.id);
-      expect(refreshedRunTopic?.status).toBe('timeout');
-      expect(refreshedRunTopic?.evalResult).toEqual({
-        completionReason: 'timeout',
-        duration: 1000,
-        rubricScores: [],
-      });
-      expect(userMessage.id).toBeTruthy();
     });
   });
 
   describe('executeResumedTrajectory', () => {
-    it('should call execAgent in resume mode and store operationId on runTopic', async () => {
+    it('should claim a timeout trajectory, switch run back to running, and store operationId', async () => {
       const { run, testCase, topic } = await setupEvalChain({ totalCases: 1 });
 
-      const runTopicModel = new AgentEvalRunTopicModel(serverDB, userId);
-      await runTopicModel.updateByRunAndTopic(run.id, topic.id, {
-        status: 'running',
-      });
+      await new AgentEvalRunModel(serverDB, userId).update(run.id, { status: 'failed' });
+      await markTopicTimeout({ runId: run.id, testCaseId: testCase.id, topicId: topic.id });
 
       mockExecAgent.mockResolvedValue({ operationId: 'op-resume-1' });
 
@@ -391,36 +369,91 @@ describe('AgentEvalRunService', () => {
         }),
       );
 
-      const refreshedRunTopic = await runTopicModel.findByRunAndTestCase(run.id, testCase.id);
+      const refreshedRun = await new AgentEvalRunModel(serverDB, userId).findById(run.id);
+      expect(refreshedRun?.status).toBe('running');
+      expect(refreshedRun?.startedAt).toBeTruthy();
+
+      const refreshedRunTopic = await new AgentEvalRunTopicModel(
+        serverDB,
+        userId,
+      ).findByRunAndTestCase(run.id, testCase.id);
+      expect(refreshedRunTopic?.status).toBe('running');
       expect(refreshedRunTopic?.evalResult).toEqual({
         operationId: 'op-resume-1',
         rubricScores: [],
       });
     });
-  });
 
-  describe('executeResumedThreadTrajectory', () => {
-    it('should call execAgent in resume mode and store operationId on target thread metadata', async () => {
+    it('should cancel when the trajectory is not resumable', async () => {
       const { run, testCase, topic } = await setupEvalChain({ totalCases: 1 });
 
-      const runModel = new AgentEvalRunModel(serverDB, userId);
-      await runModel.update(run.id, { config: { k: 2 } });
+      await new AgentEvalRunModel(serverDB, userId).update(run.id, { status: 'completed' });
+      await markTopicTimeout({ runId: run.id, testCaseId: testCase.id, topicId: topic.id });
 
-      const threadModel = new ThreadModel(serverDB, userId);
-      const thread = await threadModel.create({ topicId: topic.id, type: 'eval' });
-
-      mockExecAgent.mockResolvedValue({ operationId: 'op-thread-resume-1' });
-
-      const service = new AgentEvalRunService(serverDB, userId);
-      const result = await service.executeResumedThreadTrajectory({
-        appContext: { threadId: thread!.id, topicId: topic.id },
+      const result = await new AgentEvalRunService(serverDB, userId).executeResumedTrajectory({
+        appContext: { topicId: topic.id },
         parentMessageId: 'parent-message-id',
         runId: run.id,
         testCaseId: testCase.id,
-        threadId: thread!.id,
         topicId: topic.id,
         userId,
       });
+
+      expect(result).toEqual({
+        cancelled: true,
+        reason: 'Cannot resume trajectory: run status=completed',
+        topicId: topic.id,
+      });
+      expect(mockExecAgent).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('executeResumedThreadTrajectory', () => {
+    it('should claim only the target timeout thread and store operationId on that thread', async () => {
+      const { run, testCase, topic } = await setupEvalChain({ totalCases: 1 });
+
+      await new AgentEvalRunModel(serverDB, userId).update(run.id, {
+        config: { k: 2 },
+        status: 'failed',
+      });
+      await markTopicTimeout({ runId: run.id, testCaseId: testCase.id, topicId: topic.id });
+
+      const threadModel = new ThreadModel(serverDB, userId);
+      const thread = await threadModel.create({ topicId: topic.id, type: 'eval' });
+      const otherThread = await threadModel.create({ topicId: topic.id, type: 'eval' });
+
+      await threadModel.update(thread!.id, {
+        metadata: {
+          completedAt: new Date('2026-03-30T00:00:00.000Z').toISOString(),
+          operationId: 'op-old-target',
+          passed: false,
+          score: 0,
+          testCaseId: testCase.id,
+        },
+      } as any);
+      await threadModel.update(otherThread!.id, {
+        metadata: {
+          completedAt: new Date('2026-03-30T00:00:01.000Z').toISOString(),
+          operationId: 'op-other-thread',
+          passed: true,
+          score: 1,
+          testCaseId: testCase.id,
+        },
+      } as any);
+
+      mockExecAgent.mockResolvedValue({ operationId: 'op-thread-resume-1' });
+
+      const result = await new AgentEvalRunService(serverDB, userId).executeResumedThreadTrajectory(
+        {
+          appContext: { threadId: thread!.id, topicId: topic.id },
+          parentMessageId: 'parent-message-id',
+          runId: run.id,
+          testCaseId: testCase.id,
+          threadId: thread!.id,
+          topicId: topic.id,
+          userId,
+        },
+      );
 
       expect(result).toEqual({ threadId: thread!.id, topicId: topic.id });
       expect(mockExecAgent).toHaveBeenCalledWith(
@@ -435,6 +468,14 @@ describe('AgentEvalRunService', () => {
       const updatedThread = await threadModel.findById(thread!.id);
       expect(updatedThread?.metadata).toEqual({
         operationId: 'op-thread-resume-1',
+        testCaseId: testCase.id,
+      });
+
+      const untouchedThread = await threadModel.findById(otherThread!.id);
+      expect(untouchedThread?.metadata).toMatchObject({
+        operationId: 'op-other-thread',
+        passed: true,
+        score: 1,
         testCaseId: testCase.id,
       });
     });

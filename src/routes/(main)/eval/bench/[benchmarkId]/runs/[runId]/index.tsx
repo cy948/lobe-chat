@@ -191,6 +191,7 @@ const RunDetail = memo(() => {
             k={runDetail.config?.k ?? 1}
             results={runResults.results}
             runId={runId!}
+            runStatus={runDetail.status}
             onResumeCase={(testCaseId) => resumeRunCase(runId!, testCaseId)}
             onRetryCase={(testCaseId) => retryRunCase(runId!, testCaseId)}
           />

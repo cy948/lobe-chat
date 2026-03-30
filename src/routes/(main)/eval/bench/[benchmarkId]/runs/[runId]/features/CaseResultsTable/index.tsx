@@ -51,6 +51,7 @@ interface CaseResultsTableProps {
   onRetryCase?: (testCaseId: string) => Promise<void>;
   results: any[];
   runId: string;
+  runStatus?: string;
 }
 
 const badgeTextStyle = createStaticStyles(({ css, cssVar }) => ({
@@ -176,10 +177,11 @@ const RunningTimer = memo<{ startTime: string }>(({ startTime }) => {
 });
 
 const RETRYABLE_STATUSES = new Set(['error', 'failed', 'timeout']);
+const FINISHED_RUN_STATUSES = new Set(['completed', 'failed', 'aborted']);
 const RESUMABLE_STATUSES = new Set(['error', 'timeout']);
 
 const CaseResultsTable = memo<CaseResultsTableProps>(
-  ({ results, benchmarkId, runId, k = 1, onRetryCase, onResumeCase }) => {
+  ({ results, benchmarkId, runId, k = 1, onRetryCase, onResumeCase, runStatus }) => {
     const { t } = useTranslation('eval');
     const [searchText, setSearchText] = useState('');
     const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -188,7 +190,7 @@ const CaseResultsTable = memo<CaseResultsTableProps>(
     const [resumingCaseId, setResumingCaseId] = useState<string | null>(null);
 
     const isMultiK = k > 1;
-    const canRetryCase = !!onRetryCase;
+    const canRetryCase = !!onRetryCase && !!runStatus && FINISHED_RUN_STATUSES.has(runStatus);
     const canResumeCase = !!onResumeCase;
 
     const filteredResults = useMemo(() => {

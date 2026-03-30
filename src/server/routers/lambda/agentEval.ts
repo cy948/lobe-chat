@@ -824,6 +824,28 @@ export const agentEvalRouter = router({
       return result;
     }),
 
+  batchResumeRunCases: agentEvalProcedure
+    .input(z.object({ runId: z.string(), testCaseIds: z.array(z.string()) }))
+    .mutation(async ({ input, ctx }) => {
+      log('batchResumeRunCases: runId=%s count=%d', input.runId, input.testCaseIds.length);
+      const results = await Promise.allSettled(
+        input.testCaseIds.map((testCaseId) =>
+          ctx.runService.resumeTrajectory({ runId: input.runId, testCaseId }),
+        ),
+      );
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      log('batchResumeRunCases: succeeded=%d failed=%d', succeeded, failed);
+      return { failed, succeeded, total: input.testCaseIds.length };
+    }),
+
+  getResumableCases: agentEvalProcedure
+    .input(z.object({ runId: z.string() }))
+    .query(async ({ input, ctx }) => {
+      log('getResumableCases: runId=%s', input.runId);
+      return ctx.runService.getResumableCases(input.runId);
+    }),
+
   /**
    * Get real-time progress of a running evaluation
    */

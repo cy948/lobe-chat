@@ -16,6 +16,7 @@ const FETCH_RUN_RESULTS_KEY = 'FETCH_EVAL_RUN_RESULTS';
 
 export interface RunAction {
   abortRun: (id: string) => Promise<void>;
+  batchResumeRunCases: (runId: string, testCaseIds: string[]) => Promise<void>;
   createRun: (params: {
     config?: EvalRunInputConfig;
     datasetId: string;
@@ -128,6 +129,11 @@ export const createRunSlice: StateCreator<
       // Revalidate all benchmark-level run list entries
       await mutate((key) => Array.isArray(key) && key[0] === FETCH_RUNS_KEY);
     }
+  },
+
+  batchResumeRunCases: async (runId, testCaseIds) => {
+    await agentEvalService.batchResumeRunCases(runId, testCaseIds);
+    await Promise.all([get().refreshRunDetail(runId), mutate([FETCH_RUN_RESULTS_KEY, runId])]);
   },
 
   retryRunCase: async (runId, testCaseId) => {

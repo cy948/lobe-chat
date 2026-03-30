@@ -285,6 +285,34 @@ export class AgentEvalRunService {
     return { canResume: true as const };
   }
 
+  /**
+   * Batch-check which error/timeout cases in a run can be resumed.
+   * Returns one entry per candidate case with canResume + optional reason.
+   */
+  async getResumableCases(runId: string) {
+    const run = await this.runModel.findById(runId);
+    if (!run) return [];
+
+    const allTopics = await this.runTopicModel.findByRunId(runId);
+    const candidates = allTopics.filter((t) => t.status === 'error' || t.status === 'timeout');
+
+    const results = await Promise.all(
+      candidates.map(async (t) => {
+        const check = await this.canResumeTrajectory({ runId, testCaseId: t.testCaseId });
+        return {
+          canResume: check.canResume,
+          input: (t.testCase as any)?.content?.input ?? '',
+          reason: 'reason' in check ? check.reason : undefined,
+          sortOrder: (t.testCase as any)?.sortOrder ?? null,
+          status: t.status,
+          testCaseId: t.testCaseId,
+        };
+      }),
+    );
+
+    return results;
+  }
+
   async resumeTrajectory(params: { runId: string; testCaseId: string; threadId?: string }) {
     log('resumeTrajectory: %O', params);
     const resumeCheck = await this.canResumeTrajectory(params);

@@ -38,52 +38,14 @@ const roundCost = (v: number): number => Math.round(v * 1e6) / 1e6;
 const EVAL_AGENT_RUNTIME_QSTASH_RETRIES = 10;
 const EVAL_AGENT_RUNTIME_QSTASH_RETRY_DELAY = '10000 * (1 + retried)';
 
-interface ResumeTrajectoryStartedResult {
-  status: 'started';
-  topicId: string;
-}
+type ResumeTrajectoryExecutionResult<T extends { threadId?: string } = object> =
+  | ({ status: 'started'; topicId: string } & T)
+  | ({ reason: string; status: 'cancelled'; topicId: string } & T)
+  | ({ error: string; status: 'error'; topicId: string } & T);
 
-interface ResumeTrajectoryCancelledResult {
-  reason: string;
-  status: 'cancelled';
-  topicId: string;
-}
-
-interface ResumeTrajectoryErrorResult {
-  error: string;
-  status: 'error';
-  topicId: string;
-}
-
-type ResumeTrajectoryExecutionResult =
-  | ResumeTrajectoryCancelledResult
-  | ResumeTrajectoryErrorResult
-  | ResumeTrajectoryStartedResult;
-
-interface ResumeThreadTrajectoryStartedResult {
-  status: 'started';
+type ResumeThreadTrajectoryExecutionResult = ResumeTrajectoryExecutionResult<{
   threadId: string;
-  topicId: string;
-}
-
-interface ResumeThreadTrajectoryCancelledResult {
-  reason: string;
-  status: 'cancelled';
-  threadId: string;
-  topicId: string;
-}
-
-interface ResumeThreadTrajectoryErrorResult {
-  error: string;
-  status: 'error';
-  threadId: string;
-  topicId: string;
-}
-
-type ResumeThreadTrajectoryExecutionResult =
-  | ResumeThreadTrajectoryCancelledResult
-  | ResumeThreadTrajectoryErrorResult
-  | ResumeThreadTrajectoryStartedResult;
+}>;
 
 export class AgentEvalRunService {
   private readonly db: LobeChatDatabase;

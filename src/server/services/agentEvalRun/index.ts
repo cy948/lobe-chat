@@ -36,6 +36,53 @@ import {
 /** Round cost to at most 6 decimal places to avoid floating-point noise */
 const roundCost = (v: number): number => Math.round(v * 1e6) / 1e6;
 
+interface ResumeTrajectoryStartedResult {
+  status: 'started';
+  topicId: string;
+}
+
+interface ResumeTrajectoryCancelledResult {
+  reason: string;
+  status: 'cancelled';
+  topicId: string;
+}
+
+interface ResumeTrajectoryErrorResult {
+  error: string;
+  status: 'error';
+  topicId: string;
+}
+
+type ResumeTrajectoryExecutionResult =
+  | ResumeTrajectoryCancelledResult
+  | ResumeTrajectoryErrorResult
+  | ResumeTrajectoryStartedResult;
+
+interface ResumeThreadTrajectoryStartedResult {
+  status: 'started';
+  threadId: string;
+  topicId: string;
+}
+
+interface ResumeThreadTrajectoryCancelledResult {
+  reason: string;
+  status: 'cancelled';
+  threadId: string;
+  topicId: string;
+}
+
+interface ResumeThreadTrajectoryErrorResult {
+  error: string;
+  status: 'error';
+  threadId: string;
+  topicId: string;
+}
+
+type ResumeThreadTrajectoryExecutionResult =
+  | ResumeThreadTrajectoryCancelledResult
+  | ResumeThreadTrajectoryErrorResult
+  | ResumeThreadTrajectoryStartedResult;
+
 export class AgentEvalRunService {
   private readonly db: LobeChatDatabase;
   private readonly userId: string;
@@ -312,11 +359,17 @@ export class AgentEvalRunService {
     };
   }
 
-  async executeResumedTrajectory(params: ResumeAgentTrajectoryPayload) {
+  async executeResumedTrajectory(
+    params: ResumeAgentTrajectoryPayload,
+  ): Promise<ResumeTrajectoryExecutionResult> {
     const { appContext, envPrompt, maxSteps, parentMessageId, runId, testCaseId, topicId } = params;
     const resumeCheck = await this.canResumeTrajectory({ runId, testCaseId });
     if (!resumeCheck.canResume) {
-      return { cancelled: true, reason: resumeCheck.reason, topicId };
+      return {
+        reason: resumeCheck.reason ?? 'Trajectory cannot be resumed',
+        status: 'cancelled',
+        topicId,
+      };
     }
 
     const claimedAt = new Date();
@@ -340,13 +393,13 @@ export class AgentEvalRunService {
       .returning();
 
     if (!claimedRunTopic) {
-      return { cancelled: true, reason: 'Trajectory resume already claimed', topicId };
+      return { reason: 'Trajectory resume already claimed', status: 'cancelled', topicId };
     }
 
     const loaded = await this.loadTrajectoryData(runId, testCaseId);
 
     if ('error' in loaded) {
-      return { error: loaded.error, topicId };
+      return { error: loaded.error ?? 'Load trajectory data failed', status: 'error', topicId };
     }
 
     const { run } = loaded;
@@ -409,7 +462,7 @@ export class AgentEvalRunService {
         });
       }
 
-      return { topicId };
+      return { status: 'started', topicId };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Agent execution failed to start';
@@ -425,11 +478,13 @@ export class AgentEvalRunService {
         status: 'error',
       });
 
-      return { error: errorMessage, topicId };
+      return { error: errorMessage, status: 'error', topicId };
     }
   }
 
-  async executeResumedThreadTrajectory(params: ResumeThreadTrajectoryPayload) {
+  async executeResumedThreadTrajectory(
+    params: ResumeThreadTrajectoryPayload,
+  ): Promise<ResumeThreadTrajectoryExecutionResult> {
     const {
       appContext,
       envPrompt,
@@ -442,7 +497,12 @@ export class AgentEvalRunService {
     } = params;
     const resumeCheck = await this.canResumeTrajectory({ runId, testCaseId, threadId });
     if (!resumeCheck.canResume) {
-      return { cancelled: true, reason: resumeCheck.reason, threadId, topicId };
+      return {
+        reason: resumeCheck.reason ?? 'Trajectory cannot be resumed',
+        status: 'cancelled',
+        threadId,
+        topicId,
+      };
     }
 
     const claimedAt = new Date();
@@ -466,7 +526,12 @@ export class AgentEvalRunService {
       .returning();
 
     if (!claimedRunTopic) {
-      return { cancelled: true, reason: 'Trajectory resume already claimed', threadId, topicId };
+      return {
+        reason: 'Trajectory resume already claimed',
+        status: 'cancelled',
+        threadId,
+        topicId,
+      };
     }
 
     await this.threadModel.update(threadId, {
@@ -476,7 +541,12 @@ export class AgentEvalRunService {
     const loaded = await this.loadTrajectoryData(runId, testCaseId);
 
     if ('error' in loaded) {
-      return { error: loaded.error, threadId, topicId };
+      return {
+        error: loaded.error ?? 'Load trajectory data failed',
+        status: 'error',
+        threadId,
+        topicId,
+      };
     }
 
     const { run } = loaded;
@@ -540,7 +610,7 @@ export class AgentEvalRunService {
         });
       }
 
-      return { threadId, topicId };
+      return { status: 'started', threadId, topicId };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Thread execution failed to start';
@@ -559,7 +629,7 @@ export class AgentEvalRunService {
         },
       } as any);
 
-      return { error: errorMessage, threadId, topicId };
+      return { error: errorMessage, status: 'error', threadId, topicId };
     }
   }
 

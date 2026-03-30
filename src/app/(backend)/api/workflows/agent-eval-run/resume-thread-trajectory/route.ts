@@ -34,26 +34,11 @@ export const { POST } = serve<ResumeThreadTrajectoryPayload>(
     const db = await getServerDB();
     const service = new AgentEvalRunService(db, userId);
 
-    const resumeCheck = await context.run('resume-thread-trajectory:can-resume', () =>
-      service.canResumeTrajectory({ runId, testCaseId, threadId }),
-    );
-
-    if (!resumeCheck.canResume) {
-      log(
-        'Resume cancelled: runId=%s testCaseId=%s threadId=%s reason=%s',
-        runId,
-        testCaseId,
-        threadId,
-        resumeCheck.reason,
-      );
-      return { cancelled: true, reason: resumeCheck.reason, testCaseId, threadId, topicId };
-    }
-
     const result = await context.run('resume-thread-trajectory:exec-agent', () =>
       service.executeResumedThreadTrajectory(payload),
     );
 
-    if ('cancelled' in result) {
+    if (result.status === 'cancelled') {
       log(
         'Resume cancelled during execution: runId=%s testCaseId=%s threadId=%s reason=%s',
         runId,
@@ -64,7 +49,7 @@ export const { POST } = serve<ResumeThreadTrajectoryPayload>(
       return { cancelled: true, reason: result.reason, testCaseId, threadId, topicId };
     }
 
-    if ('error' in result) {
+    if (result.status === 'error') {
       await context.run('resume-thread-trajectory:handle-exec-error', async () => {
         const { allRunDone } = await service.recordThreadCompletion({
           runId,

@@ -359,7 +359,7 @@ describe('AgentEvalRunService', () => {
         userId,
       });
 
-      expect(result).toEqual({ topicId: topic.id });
+      expect(result).toEqual({ status: 'started', topicId: topic.id });
       expect(mockExecAgent).toHaveBeenCalledWith(
         expect.objectContaining({
           appContext: { topicId: topic.id },
@@ -400,8 +400,8 @@ describe('AgentEvalRunService', () => {
       });
 
       expect(result).toEqual({
-        cancelled: true,
         reason: 'Cannot resume trajectory: run status=completed',
+        status: 'cancelled',
         topicId: topic.id,
       });
       expect(mockExecAgent).not.toHaveBeenCalled();
@@ -455,7 +455,7 @@ describe('AgentEvalRunService', () => {
         },
       );
 
-      expect(result).toEqual({ threadId: thread!.id, topicId: topic.id });
+      expect(result).toEqual({ status: 'started', threadId: thread!.id, topicId: topic.id });
       expect(mockExecAgent).toHaveBeenCalledWith(
         expect.objectContaining({
           appContext: { threadId: thread!.id, topicId: topic.id },

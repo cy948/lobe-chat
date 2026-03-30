@@ -37,7 +37,18 @@ export const { POST } = serve<ResumeAgentTrajectoryPayload>(
     );
 
     if ('error' in data) {
-      return { error: data.error, success: false };
+      const errorMessage = data.error ?? 'Load trajectory data failed';
+
+      await context.run('resume-agent-trajectory:handle-load-error', async () => {
+        await service.markResumeLoadError({
+          errorMessage,
+          runId,
+          testCaseId,
+          topicId: topicId!,
+        });
+      });
+
+      return { error: errorMessage, success: false };
     }
 
     if (data.run.status === 'aborted') {

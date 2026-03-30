@@ -293,6 +293,7 @@ export class AgentEvalRunService {
         maxSteps: run.config?.maxSteps,
         parentMessageId,
         runId: run.id,
+        targetAgentId: run.targetAgentId ?? undefined,
         testCaseId: params.testCaseId,
         threadId: thread.id,
         topicId,
@@ -305,6 +306,7 @@ export class AgentEvalRunService {
         maxSteps: run.config?.maxSteps,
         parentMessageId,
         runId: run.id,
+        targetAgentId: run.targetAgentId ?? undefined,
         testCaseId: params.testCaseId,
         topicId,
         userId: this.userId,
@@ -324,15 +326,16 @@ export class AgentEvalRunService {
   async executeResumedTrajectory(
     params: ResumeAgentTrajectoryPayload,
   ): Promise<ResumeTrajectoryExecutionResult> {
-    const { appContext, envPrompt, maxSteps, parentMessageId, runId, testCaseId, topicId } = params;
-    const resumeCheck = await this.canResumeTrajectory({ runId, testCaseId });
-    if (!resumeCheck.canResume) {
-      return {
-        reason: resumeCheck.reason ?? 'Trajectory cannot be resumed',
-        status: 'cancelled',
-        topicId,
-      };
-    }
+    const {
+      appContext,
+      envPrompt,
+      maxSteps,
+      parentMessageId,
+      runId,
+      targetAgentId,
+      testCaseId,
+      topicId,
+    } = params;
 
     const claimedAt = new Date();
     const [claimedRunTopic] = await this.db
@@ -358,18 +361,7 @@ export class AgentEvalRunService {
       return { reason: 'Trajectory resume already claimed', status: 'cancelled', topicId };
     }
 
-    const loaded = await this.loadTrajectoryData(runId, testCaseId);
-
-    if ('error' in loaded) {
-      return { error: loaded.error ?? 'Load trajectory data failed', status: 'error', topicId };
-    }
-
-    const { run } = loaded;
-    await this.runModel.update(runId, {
-      startedAt: run.status === 'running' ? run.startedAt : claimedAt,
-      status: 'running',
-    });
-    await this.refreshRunProgress(runId);
+    await this.runModel.update(runId, { status: 'running' });
 
     const aiAgentService = new AiAgentService(this.db, this.userId);
     const webhookUrl = '/api/workflows/agent-eval-run/on-trajectory-complete';
@@ -378,7 +370,7 @@ export class AgentEvalRunService {
 
     try {
       const execResult = await aiAgentService.execAgent({
-        agentId: run.targetAgentId ?? undefined,
+        agentId: targetAgentId,
         appContext,
         autoStart: true,
         hooks: [
@@ -453,19 +445,11 @@ export class AgentEvalRunService {
       maxSteps,
       parentMessageId,
       runId,
+      targetAgentId,
       testCaseId,
       threadId,
       topicId,
     } = params;
-    const resumeCheck = await this.canResumeTrajectory({ runId, testCaseId, threadId });
-    if (!resumeCheck.canResume) {
-      return {
-        reason: resumeCheck.reason ?? 'Trajectory cannot be resumed',
-        status: 'cancelled',
-        threadId,
-        topicId,
-      };
-    }
 
     const claimedAt = new Date();
     const [claimedRunTopic] = await this.db
@@ -500,23 +484,7 @@ export class AgentEvalRunService {
       metadata: { testCaseId } as any,
     });
 
-    const loaded = await this.loadTrajectoryData(runId, testCaseId);
-
-    if ('error' in loaded) {
-      return {
-        error: loaded.error ?? 'Load trajectory data failed',
-        status: 'error',
-        threadId,
-        topicId,
-      };
-    }
-
-    const { run } = loaded;
-    await this.runModel.update(runId, {
-      startedAt: run.status === 'running' ? run.startedAt : claimedAt,
-      status: 'running',
-    });
-    await this.refreshRunProgress(runId);
+    await this.runModel.update(runId, { status: 'running' });
 
     const aiAgentService = new AiAgentService(this.db, this.userId);
     const webhookUrl = '/api/workflows/agent-eval-run/on-thread-complete';
@@ -525,7 +493,7 @@ export class AgentEvalRunService {
 
     try {
       const execResult = await aiAgentService.execAgent({
-        agentId: run.targetAgentId ?? undefined,
+        agentId: targetAgentId,
         appContext,
         autoStart: true,
         hooks: [
@@ -654,105 +622,6 @@ export class AgentEvalRunService {
     }
 
     throw new Error('Unable to resolve a valid resume parent message');
-  }
-
-  private async refreshRunProgress(runId: string) {
-    const run = await this.runModel.findById(runId);
-    if (!run) return;
-
-    const totalCases = run.metrics?.totalCases;
-    if (!totalCases) return;
-
-    const allTopics = await this.runTopicModel.findByRunId(runId);
-    const completedCount = allTopics.filter(
-      (t) =>
-        (t.evalResult && 'completionReason' in t.evalResult) ||
-        t.status === 'timeout' ||
-        t.status === 'external',
-    ).length;
-    const passedCases = allTopics.filter((t) => t.status === 'passed').length;
-    const failedCases = allTopics.filter((t) => t.status === 'failed').length;
-    const errorCases = allTopics.filter((t) => t.status === 'error').length;
-    const externalCases = allTopics.filter((t) => t.status === 'external').length;
-    const timeoutCases = allTopics.filter((t) => t.status === 'timeout').length;
-
-    let sumCost = 0;
-    let sumTokens = 0;
-    let sumSteps = 0;
-    let sumLlmCalls = 0;
-    let sumToolCalls = 0;
-    let actualTotalCost = 0;
-    let actualTotalTokens = 0;
-    let actualTotalDuration = 0;
-
-    for (const topic of allTopics) {
-      const result = topic.evalResult as Record<string, unknown> | null;
-      if (result && ('completionReason' in result || topic.status === 'timeout')) {
-        if (typeof result.cost === 'number') sumCost += result.cost;
-        if (typeof result.tokens === 'number') sumTokens += result.tokens;
-        if (typeof result.steps === 'number') sumSteps += result.steps;
-        if (typeof result.llmCalls === 'number') sumLlmCalls += result.llmCalls;
-        if (typeof result.toolCalls === 'number') sumToolCalls += result.toolCalls;
-
-        const topicTotalCost =
-          typeof result.totalCost === 'number'
-            ? result.totalCost
-            : typeof result.cost === 'number'
-              ? result.cost
-              : 0;
-        const topicTotalTokens =
-          typeof result.totalTokens === 'number'
-            ? result.totalTokens
-            : typeof result.tokens === 'number'
-              ? result.tokens
-              : 0;
-        const topicTotalDuration =
-          typeof result.totalDuration === 'number'
-            ? result.totalDuration
-            : typeof result.duration === 'number'
-              ? result.duration
-              : 0;
-
-        actualTotalCost += topicTotalCost;
-        actualTotalTokens += topicTotalTokens;
-        actualTotalDuration += topicTotalDuration;
-      }
-    }
-
-    await this.runModel.update(runId, {
-      metrics: {
-        ...(run.metrics as EvalRunMetrics),
-        completedCases: completedCount,
-        cost: sumCost ? roundCost(sumCost) : undefined,
-        errorCases,
-        externalCases: externalCases || undefined,
-        failedCases,
-        llmCalls: sumLlmCalls || undefined,
-        passedCases,
-        perCaseCost: sumCost && completedCount ? roundCost(sumCost / completedCount) : undefined,
-        perCaseLlmCalls:
-          sumLlmCalls && completedCount
-            ? Math.round((sumLlmCalls / completedCount) * 10) / 10
-            : undefined,
-        perCaseSteps:
-          sumSteps && completedCount
-            ? Math.round((sumSteps / completedCount) * 10) / 10
-            : undefined,
-        perCaseTokens:
-          sumTokens && completedCount ? Math.round(sumTokens / completedCount) : undefined,
-        perCaseToolCalls:
-          sumToolCalls && completedCount
-            ? Math.round((sumToolCalls / completedCount) * 10) / 10
-            : undefined,
-        steps: sumSteps || undefined,
-        timeoutCases,
-        tokens: sumTokens || undefined,
-        toolCalls: sumToolCalls || undefined,
-        totalCost: actualTotalCost ? roundCost(actualTotalCost) : undefined,
-        totalDuration: actualTotalDuration || undefined,
-        totalTokens: actualTotalTokens || undefined,
-      },
-    });
   }
 
   async loadTrajectoryData(runId: string, testCaseId: string) {

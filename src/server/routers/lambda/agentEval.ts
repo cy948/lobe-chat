@@ -813,12 +813,18 @@ export const agentEvalRouter = router({
     }),
 
   resumeRunCase: agentEvalProcedure
-    .input(z.object({ runId: z.string(), testCaseId: z.string() }))
+    .input(z.object({ runId: z.string(), testCaseId: z.string(), threadId: z.string().optional() }))
     .mutation(async ({ input, ctx }) => {
-      log('resumeRunCase: runId=%s testCaseId=%s', input.runId, input.testCaseId);
+      log(
+        'resumeRunCase: runId=%s testCaseId=%s threadId=%s',
+        input.runId,
+        input.testCaseId,
+        input.threadId,
+      );
       const result = await ctx.runService.resumeTrajectory({
         runId: input.runId,
         testCaseId: input.testCaseId,
+        threadId: input.threadId,
       });
       log('resumeRunCase: result %O', result);
       return result;

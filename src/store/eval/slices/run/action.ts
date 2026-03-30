@@ -30,7 +30,7 @@ export interface RunAction {
   refreshDatasetRuns: (datasetId: string) => Promise<void>;
   refreshRunDetail: (id: string) => Promise<void>;
   refreshRuns: (benchmarkId?: string) => Promise<void>;
-  resumeRunCase: (runId: string, testCaseId: string) => Promise<void>;
+  resumeRunCase: (runId: string, testCaseId: string, threadId?: string) => Promise<void>;
   retryRunCase: (runId: string, testCaseId: string) => Promise<void>;
   retryRunErrors: (id: string) => Promise<void>;
   startRun: (id: string, force?: boolean) => Promise<void>;
@@ -141,8 +141,8 @@ export const createRunSlice: StateCreator<
     await get().refreshRunDetail(runId);
   },
 
-  resumeRunCase: async (runId, testCaseId) => {
-    await agentEvalService.resumeRunCase(runId, testCaseId);
+  resumeRunCase: async (runId, testCaseId, threadId) => {
+    await agentEvalService.resumeRunCase(runId, testCaseId, threadId);
     await get().refreshRunDetail(runId);
   },
 

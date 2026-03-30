@@ -192,7 +192,7 @@ const RunDetail = memo(() => {
             results={runResults.results}
             runId={runId!}
             runStatus={runDetail.status}
-            onResumeCase={(testCaseId) => resumeRunCase(runId!, testCaseId)}
+            onResumeCase={(testCaseId, threadId) => resumeRunCase(runId!, testCaseId, threadId)}
             onRetryCase={(testCaseId) => retryRunCase(runId!, testCaseId)}
           />
         </Card>

@@ -47,7 +47,7 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
 interface CaseResultsTableProps {
   benchmarkId: string;
   k?: number;
-  onResumeCase?: (testCaseId: string) => Promise<void>;
+  onResumeCase?: (testCaseId: string, threadId?: string) => Promise<void>;
   onRetryCase?: (testCaseId: string) => Promise<void>;
   results: any[];
   runId: string;
@@ -179,6 +179,9 @@ const RunningTimer = memo<{ startTime: string }>(({ startTime }) => {
 const RETRYABLE_STATUSES = new Set(['error', 'failed', 'timeout']);
 const FINISHED_RUN_STATUSES = new Set(['completed', 'failed', 'aborted']);
 const RESUMABLE_STATUSES = new Set(['error', 'timeout']);
+
+const getResumableThreadId = (threads?: EvalThreadResult[]) =>
+  threads?.find((thread) => RESUMABLE_STATUSES.has(thread.status ?? ''))?.threadId;
 
 const CaseResultsTable = memo<CaseResultsTableProps>(
   ({ results, benchmarkId, runId, k = 1, onRetryCase, onResumeCase, runStatus }) => {
@@ -390,7 +393,13 @@ const CaseResultsTable = memo<CaseResultsTableProps>(
           key: 'actions',
           render: (_: any, record: any) => {
             const showRetry = canRetryCase && RETRYABLE_STATUSES.has(record.status);
-            const showResume = canResumeCase && RESUMABLE_STATUSES.has(record.status);
+            const resumableThreadId = isMultiK
+              ? getResumableThreadId(record.evalResult?.threads)
+              : undefined;
+            const showResume =
+              canResumeCase &&
+              RESUMABLE_STATUSES.has(record.status) &&
+              (!isMultiK || !!resumableThreadId);
             if (!showRetry && !showResume) return null;
             const isRetrying = retryingCaseId === record.testCaseId;
             const isResuming = resumingCaseId === record.testCaseId;
@@ -422,7 +431,7 @@ const CaseResultsTable = memo<CaseResultsTableProps>(
                       onClick={async () => {
                         setResumingCaseId(record.testCaseId);
                         try {
-                          await onResumeCase!(record.testCaseId);
+                          await onResumeCase!(record.testCaseId, resumableThreadId);
                         } finally {
                           setResumingCaseId(null);
                         }

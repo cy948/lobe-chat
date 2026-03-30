@@ -4,10 +4,7 @@ import debug from 'debug';
 import { getServerDB } from '@/database/server';
 import { qstashClient } from '@/libs/qstash';
 import { AgentEvalRunService } from '@/server/services/agentEvalRun';
-import {
-  AgentEvalRunWorkflow,
-  type ResumeAgentTrajectoryPayload,
-} from '@/server/workflows/agentEvalRun';
+import type { ResumeAgentTrajectoryPayload } from '@/server/workflows/agentEvalRun';
 
 const log = debug('lobe-server:workflows:resume-agent-trajectory');
 
@@ -32,37 +29,9 @@ export const { POST } = serve<ResumeAgentTrajectoryPayload>(
     const db = await getServerDB();
     const service = new AgentEvalRunService(db, userId);
 
-    const result = await context.run('resume-agent-trajectory:exec-agent', () =>
+    await context.run('resume-agent-trajectory:exec-agent', () =>
       service.executeResumedTrajectory(payload),
     );
-
-    if (result.status === 'cancelled') {
-      log(
-        'Resume cancelled during execution: runId=%s testCaseId=%s reason=%s',
-        runId,
-        testCaseId,
-        result.reason,
-      );
-      return { cancelled: true, reason: result.reason, testCaseId, topicId };
-    }
-
-    if (result.status === 'error') {
-      await context.run('resume-agent-trajectory:handle-exec-error', async () => {
-        const { allDone } = await service.recordTrajectoryCompletion({
-          runId,
-          status: 'error',
-          telemetry: { completionReason: 'error', errorMessage: result.error },
-          testCaseId,
-        });
-
-        if (allDone) {
-          log('All test cases done after resume exec error, triggering finalize: runId=%s', runId);
-          await AgentEvalRunWorkflow.triggerFinalizeRun({ runId, userId });
-        }
-      });
-
-      return { error: result.error, success: false, testCaseId, topicId };
-    }
 
     log(
       'Resumed agent started (async): runId=%s testCaseId=%s topicId=%s',

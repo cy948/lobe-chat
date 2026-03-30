@@ -406,7 +406,7 @@ export class AgentRuntimeService {
           priority: 'high',
           retryDelay: queueRetryDelay,
           retries: queueRetries,
-          stepIndex: 0,
+          stepIndex: initialStepCount,
         });
         autoStarted = true;
         log('[%s] Scheduled first step (messageId: %s)', operationId, messageId);

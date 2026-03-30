@@ -184,4 +184,5 @@ const BatchResumeModal = memo<BatchResumeModalProps>(({ open, onClose, onConfirm
   );
 });
 
+export { BatchResumeModal };
 export default BatchResumeModal;

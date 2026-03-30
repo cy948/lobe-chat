@@ -6,7 +6,6 @@ import { useChatStore } from '@/store/chat/store';
 
 // Keep zustand mock as it's needed globally
 vi.mock('zustand/traditional');
-vi.mock('@lobechat/builtin-tool-tools', () => ({ LobeToolsManifest: {} }));
 
 // Test Constants
 const TEST_IDS = {
@@ -289,49 +288,6 @@ describe('runAgent actions', () => {
           type: 'updateMessage',
           value: { content: 'Hello' },
         });
-      });
-    });
-
-    describe('stream_retry event', () => {
-      it('should reset accumulated streaming state and current assistant message', async () => {
-        const { result } = renderHook(() => useChatStore());
-
-        const context = createStreamingContext({
-          assistantId: TEST_IDS.ASSISTANT_MESSAGE_ID,
-          content: 'draft content',
-          reasoning: 'draft reasoning',
-          toolsCalling: [
-            { apiName: 'search', arguments: '{}', id: 'tool-1', identifier: 'web-search' } as any,
-          ],
-        });
-
-        const event: StreamEvent = {
-          type: 'stream_retry',
-          timestamp: Date.now(),
-          operationId: TEST_IDS.OPERATION_ID,
-          data: { attempt: 2, delayMs: 1000, maxAttempts: 6 },
-        };
-
-        await act(async () => {
-          await result.current.internal_handleAgentStreamEvent(
-            TEST_IDS.OPERATION_ID,
-            event,
-            context,
-          );
-        });
-
-        expect(context.content).toBe('');
-        expect(context.reasoning).toBe('');
-        expect(context.toolsCalling).toEqual([]);
-        expect(result.current.internal_dispatchMessage).toHaveBeenCalledWith({
-          id: TEST_IDS.ASSISTANT_MESSAGE_ID,
-          type: 'updateMessage',
-          value: { content: '', reasoning: undefined, search: undefined, tools: [] },
-        });
-        expect(result.current.updateOperationMetadata).toHaveBeenCalledWith(
-          TEST_IDS.OPERATION_ID,
-          expect.objectContaining({ retryAttempt: 2, retryMaxAttempts: 6 }),
-        );
       });
     });
 

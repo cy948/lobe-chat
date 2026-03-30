@@ -176,6 +176,10 @@ class AgentEvalService {
     return lambdaClient.agentEval.retryRunCase.mutate({ runId, testCaseId });
   }
 
+  async resumeRunCase(runId: string, testCaseId: string) {
+    return lambdaClient.agentEval.resumeRunCase.mutate({ runId, testCaseId });
+  }
+
   async updateRun(params: {
     config?: EvalRunInputConfig;
     datasetId?: string;

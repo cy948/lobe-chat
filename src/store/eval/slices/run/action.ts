@@ -116,6 +116,11 @@ export class RunActionImpl {
     await this.#get().refreshRunDetail(runId);
   };
 
+  resumeRunCase = async (runId: string, testCaseId: string): Promise<void> => {
+    await agentEvalService.resumeRunCase(runId, testCaseId);
+    await this.#get().refreshRunDetail(runId);
+  };
+
   retryRunErrors = async (id: string): Promise<void> => {
     await agentEvalService.retryRunErrors(id);
     await this.#get().refreshRunDetail(id);

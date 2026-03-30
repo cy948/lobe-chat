@@ -53,6 +53,7 @@ export interface ResumeAgentTrajectoryPayload {
   maxSteps?: number;
   parentMessageId: string;
   runId: string;
+  targetAgentId?: string;
   testCaseId: string;
   topicId: string;
   userId: string;
@@ -94,6 +95,7 @@ export interface ResumeThreadTrajectoryPayload {
   maxSteps?: number;
   parentMessageId: string;
   runId: string;
+  targetAgentId?: string;
   testCaseId: string;
   threadId: string;
   topicId: string;

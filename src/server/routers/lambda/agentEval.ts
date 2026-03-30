@@ -1,5 +1,6 @@
 import { parseDataset } from '@lobechat/eval-dataset-parser';
 import { TRPCError } from '@trpc/server';
+import debug from 'debug';
 import { z } from 'zod';
 
 import {
@@ -48,6 +49,8 @@ const evalRunInputConfigSchema = z.object({
     .max(6 * 3_600_000)
     .optional(),
 });
+
+const log = debug('lobe-lambda-router:agent-eval');
 
 const agentEvalProcedure = authedProcedure.use(serverDatabase).use(async (opts) => {
   const { ctx } = opts;
@@ -812,10 +815,12 @@ export const agentEvalRouter = router({
   resumeRunCase: agentEvalProcedure
     .input(z.object({ runId: z.string(), testCaseId: z.string() }))
     .mutation(async ({ input, ctx }) => {
+      log('resumeRunCase: runId=%s testCaseId=%s', input.runId, input.testCaseId);
       const result = await ctx.runService.resumeTrajectory({
         runId: input.runId,
         testCaseId: input.testCaseId,
       });
+      log('resumeRunCase: result %O', result);
       return result;
     }),
 

@@ -237,11 +237,6 @@ export class AgentEvalRunService {
     const run = await this.runModel.findById(params.runId);
     if (!run) return { canResume: false, reason: 'Run not found' };
 
-    if (!['running', 'failed', 'aborted', 'completed'].includes(run.status)) {
-      log('canResumeTrajectory: rejected — run.status=%s', run.status);
-      return { canResume: false, reason: `Cannot resume trajectory: run status=${run.status}` };
-    }
-
     const runTopic = await this.runTopicModel.findByRunAndTestCase(params.runId, params.testCaseId);
     if (!runTopic) return { canResume: false, reason: 'RunTopic not found' };
 

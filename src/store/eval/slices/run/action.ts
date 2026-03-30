@@ -111,6 +111,14 @@ export class RunActionImpl {
     }
   };
 
+  batchResumeRunCases = async (runId: string, testCaseIds: string[]): Promise<void> => {
+    await agentEvalService.batchResumeRunCases(runId, testCaseIds);
+    await Promise.all([
+      this.#get().refreshRunDetail(runId),
+      mutate([FETCH_RUN_RESULTS_KEY, runId]),
+    ]);
+  };
+
   retryRunCase = async (runId: string, testCaseId: string): Promise<void> => {
     await agentEvalService.retryRunCase(runId, testCaseId);
     await this.#get().refreshRunDetail(runId);

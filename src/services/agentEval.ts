@@ -180,6 +180,14 @@ class AgentEvalService {
     return lambdaClient.agentEval.resumeRunCase.mutate({ runId, testCaseId });
   }
 
+  async batchResumeRunCases(runId: string, testCaseIds: string[]) {
+    return lambdaClient.agentEval.batchResumeRunCases.mutate({ runId, testCaseIds });
+  }
+
+  async getResumableCases(runId: string) {
+    return lambdaClient.agentEval.getResumableCases.query({ runId });
+  }
+
   async updateRun(params: {
     config?: EvalRunInputConfig;
     datasetId?: string;

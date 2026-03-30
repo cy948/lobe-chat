@@ -203,6 +203,11 @@ export default {
   'run.actions.retryErrors': 'Retry Errors',
   'run.actions.retryErrors.confirm':
     'This will re-run all error and timeout cases. Passed and failed cases will not be affected.',
+  'run.actions.batchResume': 'Batch Resume',
+  'run.actions.batchResume.modal.title': 'Batch Resume Cases',
+  'run.actions.batchResume.modal.confirm': 'Resume Selected',
+  'run.actions.batchResume.modal.selectAll': 'Select All',
+  'run.actions.batchResume.modal.selected': '{{count}} selected',
   'run.actions.run': 'Run',
   'run.edit.error': 'Failed to update evaluation',
   'run.edit.success': 'Evaluation updated successfully',

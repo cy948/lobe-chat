@@ -119,6 +119,8 @@ interface InternalExecAgentParams extends ExecAgentParams {
   }>;
   /** External lifecycle hooks (auto-adapt to local/production mode) */
   hooks?: AgentHook[];
+  /** Initial step count offset for resumed operations (accumulated from previous runs) */
+  initialStepCount?: number;
   /** Maximum steps for the agent operation */
   maxSteps?: number;
   /** Parent message ID to continue from. Only takes effect when resume is true */
@@ -242,6 +244,7 @@ export class AiAgentService {
       taskId,
       evalContext,
       maxSteps,
+      initialStepCount,
       signal,
       userInterventionConfig,
       completionWebhook,
@@ -961,6 +964,7 @@ export class AiAgentService {
         evalContext,
         initialContext,
         initialMessages: allMessages,
+        initialStepCount,
         maxSteps,
         modelRuntimeConfig: { model, provider },
         hooks,

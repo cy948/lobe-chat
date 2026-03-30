@@ -250,6 +250,17 @@ export class AgentEvalRunService {
       return { canResume: false, reason: 'Only timeout or error trajectories can be resumed' };
     }
 
+    // Reject if the previous run already exhausted maxSteps
+    const maxSteps = run.config?.maxSteps;
+    const prevSteps = runTopic.evalResult?.steps ?? 0;
+    if (maxSteps && prevSteps >= maxSteps) {
+      log('canResumeTrajectory: rejected — prevSteps=%d >= maxSteps=%d', prevSteps, maxSteps);
+      return {
+        canResume: false,
+        reason: `Cannot resume: already reached maxSteps (${prevSteps}/${maxSteps})`,
+      };
+    }
+
     const k = run.config?.k ?? 1;
     if (k === 1 && params.threadId) {
       return { canResume: false, reason: 'threadId is only supported when k > 1' };
@@ -362,7 +373,16 @@ export class AgentEvalRunService {
       throw new Error(`RunTopic not found for run=${runId} testCase=${testCaseId}`);
     }
 
+    // Capture accumulated telemetry from previous runs before clearing evalResult
+    const prevSteps = runTopic.evalResult?.steps ?? 0;
+    const prevCost = runTopic.evalResult?.cost ?? 0;
+    const prevLlmCalls = runTopic.evalResult?.llmCalls ?? 0;
+    const prevToolCalls = runTopic.evalResult?.toolCalls ?? 0;
+    const prevTokens = runTopic.evalResult?.tokens ?? 0;
+    log('executeResumedTrajectory: prev telemetry steps=%d cost=%d', prevSteps, prevCost);
+
     await this.runTopicModel.updateByRunAndTopic(runId, topicId, {
+      createdAt: new Date(), // reset for timeout tracking — resume is a fresh time window
       evalResult: null,
       passed: null,
       score: null,
@@ -389,14 +409,14 @@ export class AgentEvalRunService {
                 status: event.status || event.reason || 'done',
                 telemetry: {
                   completionReason: event.reason,
-                  cost: event.cost,
+                  cost: (event.cost ?? 0) + prevCost,
                   duration: event.duration,
                   errorDetail: event.errorDetail,
                   errorMessage: event.errorMessage,
-                  llmCalls: event.llmCalls,
-                  steps: event.steps,
-                  toolCalls: event.toolCalls,
-                  totalTokens: event.totalTokens,
+                  llmCalls: (event.llmCalls ?? 0) + prevLlmCalls,
+                  steps: (event.steps ?? 0) + prevSteps,
+                  toolCalls: (event.toolCalls ?? 0) + prevToolCalls,
+                  totalTokens: (event.totalTokens ?? 0) + prevTokens,
                 },
                 testCaseId,
               });
@@ -410,6 +430,7 @@ export class AgentEvalRunService {
           },
         ],
         ...(envPrompt && { evalContext: { envPrompt } }),
+        initialStepCount: prevSteps,
         maxSteps,
         parentMessageId,
         prompt: '',
@@ -468,6 +489,13 @@ export class AgentEvalRunService {
       throw new Error(`RunTopic not found for run=${runId} testCase=${testCaseId}`);
     }
 
+    // Capture accumulated telemetry from previous runs before clearing evalResult
+    const prevSteps = runTopic.evalResult?.steps ?? 0;
+    const prevCost = runTopic.evalResult?.cost ?? 0;
+    const prevLlmCalls = runTopic.evalResult?.llmCalls ?? 0;
+    const prevToolCalls = runTopic.evalResult?.toolCalls ?? 0;
+    const prevTokens = runTopic.evalResult?.tokens ?? 0;
+
     await this.runTopicModel.updateByRunAndTopic(runId, topicId, {
       evalResult: null,
       passed: null,
@@ -501,13 +529,13 @@ export class AgentEvalRunService {
                 status: event.status || event.reason || 'done',
                 telemetry: {
                   completionReason: event.reason,
-                  cost: event.cost,
+                  cost: (event.cost ?? 0) + prevCost,
                   duration: event.duration,
                   errorMessage: event.errorMessage,
-                  llmCalls: event.llmCalls,
-                  steps: event.steps,
-                  toolCalls: event.toolCalls,
-                  totalTokens: event.totalTokens,
+                  llmCalls: (event.llmCalls ?? 0) + prevLlmCalls,
+                  steps: (event.steps ?? 0) + prevSteps,
+                  toolCalls: (event.toolCalls ?? 0) + prevToolCalls,
+                  totalTokens: (event.totalTokens ?? 0) + prevTokens,
                 },
                 testCaseId,
                 threadId,
@@ -523,6 +551,7 @@ export class AgentEvalRunService {
           },
         ],
         ...(envPrompt && { evalContext: { envPrompt } }),
+        initialStepCount: prevSteps,
         maxSteps,
         parentMessageId,
         prompt: '',

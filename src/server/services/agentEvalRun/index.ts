@@ -231,15 +231,15 @@ export class AgentEvalRunService {
     const run = await this.runModel.findById(params.runId);
     if (!run) return { canResume: false, reason: 'Run not found' };
 
-    if (!['running', 'failed', 'aborted'].includes(run.status)) {
+    if (!['running', 'failed', 'aborted', 'completed'].includes(run.status)) {
       return { canResume: false, reason: `Cannot resume trajectory: run status=${run.status}` };
     }
 
     const runTopic = await this.runTopicModel.findByRunAndTestCase(params.runId, params.testCaseId);
     if (!runTopic) return { canResume: false, reason: 'RunTopic not found' };
 
-    if (runTopic.status !== 'timeout') {
-      return { canResume: false, reason: 'Only timeout trajectories can be resumed' };
+    if (!['timeout', 'error'].includes(runTopic.status ?? '')) {
+      return { canResume: false, reason: 'Only timeout or error trajectories can be resumed' };
     }
 
     const k = run.config?.k ?? 1;

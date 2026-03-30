@@ -27,6 +27,7 @@ const RunDetail = memo(() => {
   const useFetchRunResults = useEvalStore((s) => s.useFetchRunResults);
   const retryRunErrors = useEvalStore((s) => s.retryRunErrors);
   const retryRunCase = useEvalStore((s) => s.retryRunCase);
+  const resumeRunCase = useEvalStore((s) => s.resumeRunCase);
   const runDetail = useEvalStore(runSelectors.getRunDetailById(runId!));
   const runResults = useEvalStore(runSelectors.getRunResultsById(runId!));
   const isActive = useEvalStore(runSelectors.isRunActive(runId!));
@@ -169,7 +170,7 @@ const RunDetail = memo(() => {
             k={runDetail.config?.k ?? 1}
             results={runResults.results}
             runId={runId!}
-            runStatus={runDetail.status}
+            onResumeCase={(testCaseId) => resumeRunCase(runId!, testCaseId)}
             onRetryCase={(testCaseId) => retryRunCase(runId!, testCaseId)}
           />
         </Card>

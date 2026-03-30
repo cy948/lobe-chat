@@ -6,7 +6,7 @@ import { ActionIcon, Flexbox, Icon, Tag } from '@lobehub/ui';
 import { Badge, Input, Select, Table, Tooltip } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { createStaticStyles, cssVar } from 'antd-style';
-import { Footprints, RotateCcw } from 'lucide-react';
+import { Footprints, Play, RotateCcw } from 'lucide-react';
 import { memo, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
@@ -47,10 +47,10 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
 interface CaseResultsTableProps {
   benchmarkId: string;
   k?: number;
+  onResumeCase?: (testCaseId: string) => Promise<void>;
   onRetryCase?: (testCaseId: string) => Promise<void>;
   results: any[];
   runId: string;
-  runStatus?: string;
 }
 
 const badgeTextStyle = createStaticStyles(({ css, cssVar }) => ({
@@ -176,18 +176,20 @@ const RunningTimer = memo<{ startTime: string }>(({ startTime }) => {
 });
 
 const RETRYABLE_STATUSES = new Set(['error', 'failed', 'timeout']);
-const FINISHED_RUN_STATUSES = new Set(['completed', 'failed', 'aborted']);
+const RESUMABLE_STATUSES = new Set(['error', 'timeout']);
 
 const CaseResultsTable = memo<CaseResultsTableProps>(
-  ({ results, benchmarkId, runId, k = 1, onRetryCase, runStatus }) => {
+  ({ results, benchmarkId, runId, k = 1, onRetryCase, onResumeCase }) => {
     const { t } = useTranslation('eval');
     const [searchText, setSearchText] = useState('');
     const [statusFilter, setStatusFilter] = useState<string>('all');
     const [pageSize, setPageSize] = useState(20);
     const [retryingCaseId, setRetryingCaseId] = useState<string | null>(null);
+    const [resumingCaseId, setResumingCaseId] = useState<string | null>(null);
 
     const isMultiK = k > 1;
-    const canRetryCase = onRetryCase && runStatus && FINISHED_RUN_STATUSES.has(runStatus);
+    const canRetryCase = !!onRetryCase;
+    const canResumeCase = !!onResumeCase;
 
     const filteredResults = useMemo(() => {
       let filtered = results;
@@ -381,37 +383,73 @@ const CaseResultsTable = memo<CaseResultsTableProps>(
         });
       }
 
-      if (canRetryCase) {
+      if (canRetryCase || canResumeCase) {
         cols.push({
           key: 'actions',
           render: (_: any, record: any) => {
-            if (!RETRYABLE_STATUSES.has(record.status)) return null;
+            const showRetry = canRetryCase && RETRYABLE_STATUSES.has(record.status);
+            const showResume = canResumeCase && RESUMABLE_STATUSES.has(record.status);
+            if (!showRetry && !showResume) return null;
             const isRetrying = retryingCaseId === record.testCaseId;
+            const isResuming = resumingCaseId === record.testCaseId;
             return (
-              <Tooltip title={t('run.actions.retryCase')}>
-                <ActionIcon
-                  icon={RotateCcw}
-                  loading={isRetrying}
-                  size="small"
-                  onClick={async () => {
-                    setRetryingCaseId(record.testCaseId);
-                    try {
-                      await onRetryCase!(record.testCaseId);
-                    } finally {
-                      setRetryingCaseId(null);
-                    }
-                  }}
-                />
-              </Tooltip>
+              <Flexbox horizontal gap={4}>
+                {showRetry && (
+                  <Tooltip title={t('run.actions.retryCase')}>
+                    <ActionIcon
+                      icon={RotateCcw}
+                      loading={isRetrying}
+                      size="small"
+                      onClick={async () => {
+                        setRetryingCaseId(record.testCaseId);
+                        try {
+                          await onRetryCase!(record.testCaseId);
+                        } finally {
+                          setRetryingCaseId(null);
+                        }
+                      }}
+                    />
+                  </Tooltip>
+                )}
+                {showResume && (
+                  <Tooltip title={t('run.actions.resumeCase')}>
+                    <ActionIcon
+                      icon={Play}
+                      loading={isResuming}
+                      size="small"
+                      onClick={async () => {
+                        setResumingCaseId(record.testCaseId);
+                        try {
+                          await onResumeCase!(record.testCaseId);
+                        } finally {
+                          setResumingCaseId(null);
+                        }
+                      }}
+                    />
+                  </Tooltip>
+                )}
+              </Flexbox>
             );
           },
           title: '',
-          width: 48,
+          width: 80,
         });
       }
 
       return cols;
-    }, [benchmarkId, runId, t, isMultiK, k, canRetryCase, retryingCaseId, onRetryCase]);
+    }, [
+      benchmarkId,
+      runId,
+      t,
+      isMultiK,
+      k,
+      canRetryCase,
+      canResumeCase,
+      retryingCaseId,
+      resumingCaseId,
+      onRetryCase,
+      onResumeCase,
+    ]);
 
     return (
       <Flexbox gap={0}>

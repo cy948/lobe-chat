@@ -809,6 +809,16 @@ export const agentEvalRouter = router({
       return { runId: input.runId, success: true, testCaseId: input.testCaseId };
     }),
 
+  resumeRunCase: agentEvalProcedure
+    .input(z.object({ runId: z.string(), testCaseId: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const result = await ctx.runService.resumeTrajectory({
+        runId: input.runId,
+        testCaseId: input.testCaseId,
+      });
+      return result;
+    }),
+
   /**
    * Get real-time progress of a running evaluation
    */

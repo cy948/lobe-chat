@@ -199,6 +199,7 @@ export default {
   'run.actions.delete': 'Delete',
   'run.actions.delete.confirm': 'Are you sure you want to delete this evaluation?',
   'run.actions.retryCase': 'Retry',
+  'run.actions.resumeCase': 'Resume',
   'run.actions.retryErrors': 'Retry Errors',
   'run.actions.retryErrors.confirm':
     'This will re-run all error and timeout cases. Passed and failed cases will not be affected.',

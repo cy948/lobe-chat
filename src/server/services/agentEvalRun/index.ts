@@ -11,6 +11,7 @@ import type {
   RubricType,
 } from '@lobechat/types';
 import { RequestTrigger } from '@lobechat/types';
+import debug from 'debug';
 
 import {
   AgentEvalBenchmarkModel,
@@ -33,6 +34,8 @@ import {
 
 /** Round cost to at most 6 decimal places to avoid floating-point noise */
 const roundCost = (v: number): number => Math.round(v * 1e6) / 1e6;
+
+const log = debug('lobe-server:eval-run-service');
 
 export class AgentEvalRunService {
   private readonly db: LobeChatDatabase;
@@ -228,17 +231,22 @@ export class AgentEvalRunService {
   }
 
   async canResumeTrajectory(params: { runId: string; testCaseId: string; threadId?: string }) {
+    log('canResumeTrajectory: %O', params);
     const run = await this.runModel.findById(params.runId);
     if (!run) return { canResume: false, reason: 'Run not found' };
 
     if (!['running', 'failed', 'aborted', 'completed'].includes(run.status)) {
+      log('canResumeTrajectory: rejected — run.status=%s', run.status);
       return { canResume: false, reason: `Cannot resume trajectory: run status=${run.status}` };
     }
 
     const runTopic = await this.runTopicModel.findByRunAndTestCase(params.runId, params.testCaseId);
     if (!runTopic) return { canResume: false, reason: 'RunTopic not found' };
 
+    log('canResumeTrajectory: runTopic.status=%s topicId=%s', runTopic.status, runTopic.topicId);
+
     if (!['timeout', 'error'].includes(runTopic.status ?? '')) {
+      log('canResumeTrajectory: rejected — runTopic.status=%s', runTopic.status);
       return { canResume: false, reason: 'Only timeout or error trajectories can be resumed' };
     }
 
@@ -267,15 +275,24 @@ export class AgentEvalRunService {
   }
 
   async resumeTrajectory(params: { runId: string; testCaseId: string; threadId?: string }) {
+    log('resumeTrajectory: %O', params);
     const resumeCheck = await this.canResumeTrajectory(params);
     if (!resumeCheck.canResume) {
+      log('resumeTrajectory: canResume=false reason=%s', resumeCheck.reason);
       throw new Error(resumeCheck.reason);
     }
 
     const target = await this.resolveTrajectoryResumeTarget(params);
     const { envPrompt, parentMessageId, run, thread, topicId } = target;
+    log(
+      'resumeTrajectory: resolved target — topicId=%s parentMessageId=%s threadId=%s',
+      topicId,
+      parentMessageId,
+      thread?.id,
+    );
 
     if (thread) {
+      log('resumeTrajectory: triggering resume-thread-trajectory');
       await AgentEvalRunWorkflow.triggerResumeThreadTrajectory({
         appContext: { threadId: thread.id, topicId },
         envPrompt,
@@ -289,6 +306,7 @@ export class AgentEvalRunService {
         userId: this.userId,
       });
     } else {
+      log('resumeTrajectory: triggering resume-agent-trajectory');
       await AgentEvalRunWorkflow.triggerResumeAgentTrajectory({
         appContext: { topicId },
         envPrompt,
@@ -302,7 +320,7 @@ export class AgentEvalRunService {
       });
     }
 
-    return {
+    const result = {
       mode: thread ? ('thread' as const) : ('single' as const),
       runId: run.id,
       testCaseId: params.testCaseId,
@@ -310,6 +328,8 @@ export class AgentEvalRunService {
       topicId,
       triggered: true,
     };
+    log('resumeTrajectory: done %O', result);
+    return result;
   }
 
   /**
@@ -330,6 +350,13 @@ export class AgentEvalRunService {
     } = params;
 
     // Look up the pre-created RunTopic and reset it for resume
+    log(
+      'executeResumedTrajectory: run=%s testCase=%s topicId=%s parentMessageId=%s',
+      runId,
+      testCaseId,
+      topicId,
+      parentMessageId,
+    );
     const runTopic = await this.runTopicModel.findByRunAndTestCase(runId, testCaseId);
     if (!runTopic) {
       throw new Error(`RunTopic not found for run=${runId} testCase=${testCaseId}`);
@@ -538,6 +565,12 @@ export class AgentEvalRunService {
     testCaseId: string;
     threadId?: string;
   }) {
+    log(
+      'resolveTrajectoryResumeTarget: run=%s testCase=%s thread=%s',
+      params.runId,
+      params.testCaseId,
+      params.threadId,
+    );
     const loaded = await this.loadTrajectoryData(params.runId, params.testCaseId);
     if ('error' in loaded) {
       throw new Error(loaded.error);
@@ -547,6 +580,12 @@ export class AgentEvalRunService {
     const runTopic = await this.runTopicModel.findByRunAndTestCase(params.runId, params.testCaseId);
     if (!runTopic?.topicId) throw new Error('RunTopic topicId is required');
 
+    log(
+      'resolveTrajectoryResumeTarget: topicId=%s runTopic.status=%s',
+      runTopic.topicId,
+      runTopic.status,
+    );
+
     let thread: Awaited<ReturnType<ThreadModel['findById']>> | undefined;
 
     if (params.threadId) {
@@ -554,10 +593,27 @@ export class AgentEvalRunService {
       if (!thread) throw new Error('Thread not found');
     }
 
-    const parentMessageId = await this.resolveResumeParentMessageId({
+    const { danglingIds, parentMessageId } = await this.resolveResumeParentMessageId({
       threadId: thread?.id,
       topicId: runTopic.topicId,
     });
+
+    log(
+      'resolveTrajectoryResumeTarget: parentMessageId=%s danglingIds=%d',
+      parentMessageId,
+      danglingIds.length,
+    );
+
+    // Remove dangling partial messages before resume so the context engine (which
+    // re-fetches all topic messages after every tool-call batch) cannot include them.
+    if (danglingIds.length > 0) {
+      log(
+        'resolveTrajectoryResumeTarget: deleting %d dangling messages: %O',
+        danglingIds.length,
+        danglingIds,
+      );
+      await this.messageModel.deleteMessages(danglingIds);
+    }
 
     return {
       appContext: thread
@@ -573,25 +629,91 @@ export class AgentEvalRunService {
   }
 
   private async resolveResumeParentMessageId(params: { threadId?: string; topicId: string }) {
+    log('resolveResumeParentMessageId: topicId=%s threadId=%s', params.topicId, params.threadId);
     const messages = await this.messageModel.query({
       threadId: params.threadId,
       topicId: params.topicId,
     });
 
+    log('resolveResumeParentMessageId: total messages=%d', messages.length);
+    log(
+      'resolveResumeParentMessageId: messages (role, id, contentLen, parentId) = %O',
+      messages.map((m) => ({
+        role: m.role,
+        id: m.id,
+        contentLen: m.content?.length ?? 0,
+        parentId: (m as any).parentId ?? null,
+      })),
+    );
+
+    // Strategy:
+    // - tool results are always complete (atomic, written after execution succeeds)
+    // - assistant messages may be partial (LLM stream interrupted mid-way)
+    // So: prefer the last tool result with content as the resume point.
+    // Only fall back to assistant / user if no tool result exists.
+
+    let parentMessageId: string | undefined;
+
+    // Pass 1: find the last tool result with content
     for (let index = messages.length - 1; index >= 0; index--) {
       const message = messages[index];
-
-      if (message.role === 'assistant') {
-        if (message.parentId) return message.parentId;
-        if (!message.content || message.content === LOADING_FLAT) continue;
-      }
-
-      if (message.role === 'tool' || message.role === 'user') {
-        return message.id;
+      if (message.role === 'tool' && message.content) {
+        log(
+          'resolveResumeParentMessageId: found via tool id=%s contentLen=%d',
+          message.id,
+          message.content.length,
+        );
+        parentMessageId = message.id;
+        break;
       }
     }
 
-    throw new Error('Unable to resolve a valid resume parent message');
+    // Pass 2: no tool result — fall back to last substantive assistant, then user
+    if (!parentMessageId) {
+      for (let index = messages.length - 1; index >= 0; index--) {
+        const message = messages[index];
+
+        if (message.role === 'assistant') {
+          if (!message.content || message.content === LOADING_FLAT) {
+            log('resolveResumeParentMessageId: skip empty/loading assistant msgId=%s', message.id);
+            continue;
+          }
+          log(
+            'resolveResumeParentMessageId: fallback via assistant id=%s contentLen=%d',
+            message.id,
+            message.content.length,
+          );
+          parentMessageId = message.id;
+          break;
+        }
+
+        if (message.role === 'user') {
+          log('resolveResumeParentMessageId: fallback via user id=%s', message.id);
+          parentMessageId = message.id;
+          break;
+        }
+      }
+    }
+
+    if (!parentMessageId) throw new Error('Unable to resolve a valid resume parent message');
+
+    // Build the valid ancestor chain from parentMessageId up to root.
+    // Return danglingIds for the caller to delete — keeping this method side-effect-free.
+    const parentIdMap = new Map<string, string | null>();
+    for (const m of messages) {
+      parentIdMap.set(m.id, (m as any).parentId ?? null);
+    }
+
+    const ancestorSet = new Set<string>();
+    let cursor: string | null = parentMessageId;
+    while (cursor) {
+      ancestorSet.add(cursor);
+      cursor = parentIdMap.get(cursor) ?? null;
+    }
+
+    const danglingIds = messages.map((m) => m.id).filter((id) => !ancestorSet.has(id));
+
+    return { danglingIds, parentMessageId };
   }
 
   async loadTrajectoryData(runId: string, testCaseId: string) {

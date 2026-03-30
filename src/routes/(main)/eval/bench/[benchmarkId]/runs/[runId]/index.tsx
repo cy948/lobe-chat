@@ -9,7 +9,7 @@ import { useParams } from 'react-router-dom';
 
 import { runSelectors, useEvalStore } from '@/store/eval';
 
-import BatchResumeModal from './features/BatchResumeModal';
+import { BatchResumeModal } from './features/BatchResumeModal';
 import CaseResultsTable from './features/CaseResultsTable';
 import BenchmarkCharts from './features/Charts/BenchmarkCharts';
 import IdleState from './features/IdleState';

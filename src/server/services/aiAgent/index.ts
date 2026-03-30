@@ -224,7 +224,7 @@ export class AiAgentService {
       additionalPluginIds,
       agentId,
       slug,
-      prompt: rawPrompt,
+      prompt,
       appContext,
       autoStart = true,
       botContext,
@@ -250,7 +250,6 @@ export class AiAgentService {
       parentMessageId,
       resume,
     } = params;
-    const prompt = rawPrompt ?? '';
 
     // Validate that either agentId or slug is provided
     if (!agentId && !slug) {
@@ -260,13 +259,7 @@ export class AiAgentService {
     // Determine the identifier to use (agentId takes precedence)
     const identifier = agentId || slug!;
 
-    log(
-      'execAgent: identifier=%s, prompt=%s, resume=%s, parentMessageId=%s',
-      identifier,
-      prompt.slice(0, 50),
-      !!resume,
-      parentMessageId || 'none',
-    );
+    log('execAgent: identifier=%s, prompt=%s', identifier, prompt.slice(0, 50));
 
     const assistantMessageRef: { current?: string } = {};
     const updateAbortedAssistantMessage = async (errorMessage: string) => {
@@ -1044,7 +1037,7 @@ export class AiAgentService {
         success: false,
         timestamp: new Date().toISOString(),
         topicId,
-        userMessageId: userMessageRecord?.id ?? resumeParentMessage?.id ?? parentMessageId ?? '',
+        userMessageId: userMessageRecord?.id ?? parentMessageId ?? '',
       };
     }
   }

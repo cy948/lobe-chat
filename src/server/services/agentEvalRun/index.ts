@@ -261,7 +261,12 @@ export class AgentEvalRunService {
     const target = await this.resolveTrajectoryResumeTarget(params);
     const { envPrompt, parentMessageId, run, runTopic, thread, topicId } = target;
 
+    if (!['completed', 'failed', 'aborted'].includes(run.status)) {
+      throw new Error(`Cannot resume trajectory: run status=${run.status}`);
+    }
+
     const previousRunStatus = run.status;
+    const previousRunStartedAt = run.startedAt;
     const previousRunMetrics = run.metrics;
     const previousRunTopic = {
       evalResult: runTopic.evalResult,
@@ -351,11 +356,48 @@ export class AgentEvalRunService {
 
       await this.runModel.update(run.id, {
         metrics: previousRunMetrics as EvalRunMetrics | null | undefined,
+        startedAt: previousRunStartedAt,
         status: previousRunStatus,
       });
 
       throw error;
     }
+  }
+
+  async markResumeLoadError(params: {
+    errorMessage: string;
+    runId: string;
+    testCaseId: string;
+    threadId?: string;
+    topicId?: string;
+  }) {
+    const { errorMessage, runId, testCaseId, threadId, topicId } = params;
+
+    const runTopic = await this.runTopicModel.findByRunAndTestCase(runId, testCaseId);
+    const resolvedTopicId = topicId ?? runTopic?.topicId;
+
+    if (!runTopic || !resolvedTopicId) return;
+
+    await this.runTopicModel.updateByRunAndTopic(runId, resolvedTopicId, {
+      evalResult: { completionReason: 'error', error: errorMessage, rubricScores: [] },
+      passed: false,
+      score: 0,
+      status: 'error',
+    });
+
+    if (threadId) {
+      await this.threadModel.update(threadId, {
+        metadata: {
+          completedAt: new Date().toISOString(),
+          error: errorMessage,
+          passed: false,
+          score: 0,
+          testCaseId,
+        },
+      } as any);
+    }
+
+    await this.refreshRunProgress(runId);
   }
 
   async executeResumedTrajectory(params: ResumeAgentTrajectoryPayload) {

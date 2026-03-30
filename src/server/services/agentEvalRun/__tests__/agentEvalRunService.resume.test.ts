@@ -258,6 +258,106 @@ describe('AgentEvalRunService', () => {
       const refreshedRunTopic = await runTopicModel.findByRunAndTestCase(run.id, testCase.id);
       expect(refreshedRunTopic?.status).toBe('running');
     });
+
+    it('should reject resume when run is still active', async () => {
+      const { run, testCase, topic } = await setupEvalChain({ totalCases: 1 });
+
+      const runModel = new AgentEvalRunModel(serverDB, userId);
+      await runModel.update(run.id, { status: 'running' });
+
+      const runTopicModel = new AgentEvalRunTopicModel(serverDB, userId);
+      await runTopicModel.updateByRunAndTopic(run.id, topic.id, {
+        evalResult: { completionReason: 'timeout', rubricScores: [] },
+        passed: false,
+        score: 0,
+        status: 'timeout',
+      });
+
+      const [userMessage] = await serverDB
+        .insert(messages)
+        .values({
+          content: 'What is 6*7?',
+          role: 'user',
+          topicId: topic.id,
+          userId,
+        })
+        .returning();
+
+      await expect(
+        new AgentEvalRunService(serverDB, userId).resumeTrajectory({
+          runId: run.id,
+          testCaseId: testCase.id,
+        }),
+      ).rejects.toThrow('Cannot resume trajectory: run status=running');
+
+      expect(AgentEvalRunWorkflow.triggerResumeAgentTrajectory).not.toHaveBeenCalled();
+
+      const refreshedRunTopic = await runTopicModel.findByRunAndTestCase(run.id, testCase.id);
+      expect(refreshedRunTopic?.status).toBe('timeout');
+      expect(userMessage.id).toBeTruthy();
+    });
+
+    it('should restore previous startedAt when workflow trigger fails', async () => {
+      const { run, testCase, topic } = await setupEvalChain({ totalCases: 1 });
+
+      const previousStartedAt = new Date('2026-03-30T00:00:00.000Z');
+      const runModel = new AgentEvalRunModel(serverDB, userId);
+      await runModel.update(run.id, {
+        metrics: {
+          averageScore: 0,
+          completedCases: 1,
+          failedCases: 0,
+          passRate: 0,
+          passedCases: 0,
+          timeoutCases: 1,
+          totalCases: 1,
+        },
+        startedAt: previousStartedAt,
+        status: 'failed',
+      });
+
+      const runTopicModel = new AgentEvalRunTopicModel(serverDB, userId);
+      await runTopicModel.updateByRunAndTopic(run.id, topic.id, {
+        evalResult: { completionReason: 'timeout', duration: 1000, rubricScores: [] },
+        passed: false,
+        score: 0,
+        status: 'timeout',
+      });
+
+      const [userMessage] = await serverDB
+        .insert(messages)
+        .values({
+          content: 'What is 6*7?',
+          role: 'user',
+          topicId: topic.id,
+          userId,
+        })
+        .returning();
+
+      vi.mocked(AgentEvalRunWorkflow.triggerResumeAgentTrajectory).mockRejectedValueOnce(
+        new Error('workflow unavailable'),
+      );
+
+      await expect(
+        new AgentEvalRunService(serverDB, userId).resumeTrajectory({
+          runId: run.id,
+          testCaseId: testCase.id,
+        }),
+      ).rejects.toThrow('workflow unavailable');
+
+      const refreshedRun = await runModel.findById(run.id);
+      expect(refreshedRun?.startedAt?.toISOString()).toBe(previousStartedAt.toISOString());
+      expect(refreshedRun?.status).toBe('failed');
+
+      const refreshedRunTopic = await runTopicModel.findByRunAndTestCase(run.id, testCase.id);
+      expect(refreshedRunTopic?.status).toBe('timeout');
+      expect(refreshedRunTopic?.evalResult).toEqual({
+        completionReason: 'timeout',
+        duration: 1000,
+        rubricScores: [],
+      });
+      expect(userMessage.id).toBeTruthy();
+    });
   });
 
   describe('executeResumedTrajectory', () => {

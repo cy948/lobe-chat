@@ -237,6 +237,10 @@ export class AgentEvalRunService {
     const run = await this.runModel.findById(params.runId);
     if (!run) return { canResume: false, reason: 'Run not found' };
 
+    if (!['aborted', 'failed', 'running'].includes(run.status)) {
+      return { canResume: false, reason: `Cannot resume trajectory: run status=${run.status}` };
+    }
+
     const runTopic = await this.runTopicModel.findByRunAndTestCase(params.runId, params.testCaseId);
     if (!runTopic) return { canResume: false, reason: 'RunTopic not found' };
 
@@ -373,7 +377,7 @@ export class AgentEvalRunService {
    * Claims the runTopic via CAS (timeout → running) for idempotency, then
    * calls execAgent with resume=true so the runtime continues from parentMessageId.
    */
-  async executeResumedTrajectory(params: ResumeAgentTrajectoryPayload): Promise<void> {
+  async executeResumedTrajectory(params: ResumeAgentTrajectoryPayload) {
     const {
       appContext,
       envPrompt,
@@ -384,6 +388,11 @@ export class AgentEvalRunService {
       testCaseId,
       topicId,
     } = params;
+
+    const resumeCheck = await this.canResumeTrajectory({ runId, testCaseId });
+    if (!resumeCheck.canResume) {
+      return { reason: resumeCheck.reason, status: 'cancelled' as const, topicId };
+    }
 
     // Look up the pre-created RunTopic and reset it for resume
     log(
@@ -405,14 +414,17 @@ export class AgentEvalRunService {
     const prevToolCalls = runTopic.evalResult?.toolCalls ?? 0;
     const prevTokens = runTopic.evalResult?.tokens ?? 0;
     log('executeResumedTrajectory: prev telemetry steps=%d cost=%d', prevSteps, prevCost);
+    const now = new Date();
 
     await this.runTopicModel.updateByRunAndTopic(runId, topicId, {
-      createdAt: new Date(), // reset for timeout tracking — resume is a fresh time window
+      createdAt: now, // reset for timeout tracking — resume is a fresh time window
       evalResult: null,
       passed: null,
       score: null,
       status: 'running',
     });
+
+    await this.runModel.update(runId, { startedAt: now, status: 'running' });
 
     const aiAgentService = new AiAgentService(this.db, this.userId);
     const webhookUrl = '/api/workflows/agent-eval-run/on-trajectory-complete';
@@ -468,6 +480,8 @@ export class AgentEvalRunService {
           evalResult: { operationId: execResult.operationId, rubricScores: [] },
         });
       }
+
+      return { status: 'started' as const, topicId };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Agent execution failed to start';
@@ -487,6 +501,8 @@ export class AgentEvalRunService {
       if (allDone) {
         await AgentEvalRunWorkflow.triggerFinalizeRun({ runId, userId: this.userId });
       }
+
+      return { reason: errorMessage, status: 'error' as const, topicId };
     }
   }
 
@@ -495,7 +511,7 @@ export class AgentEvalRunService {
    * Claims the runTopic via CAS (timeout → running) for idempotency, then
    * calls execAgent with resume=true so the runtime continues from parentMessageId.
    */
-  async executeResumedThreadTrajectory(params: ResumeThreadTrajectoryPayload): Promise<void> {
+  async executeResumedThreadTrajectory(params: ResumeThreadTrajectoryPayload) {
     const {
       appContext,
       envPrompt,
@@ -507,6 +523,11 @@ export class AgentEvalRunService {
       threadId,
       topicId,
     } = params;
+
+    const resumeCheck = await this.canResumeTrajectory({ runId, testCaseId, threadId });
+    if (!resumeCheck.canResume) {
+      return { reason: resumeCheck.reason, status: 'cancelled' as const, threadId, topicId };
+    }
 
     // Look up the pre-created RunTopic and reset it for resume
     const runTopic = await this.runTopicModel.findByRunAndTestCase(runId, testCaseId);
@@ -520,8 +541,10 @@ export class AgentEvalRunService {
     const prevLlmCalls = runTopic.evalResult?.llmCalls ?? 0;
     const prevToolCalls = runTopic.evalResult?.toolCalls ?? 0;
     const prevTokens = runTopic.evalResult?.tokens ?? 0;
+    const now = new Date();
 
     await this.runTopicModel.updateByRunAndTopic(runId, topicId, {
+      createdAt: now,
       evalResult: null,
       passed: null,
       score: null,
@@ -532,7 +555,7 @@ export class AgentEvalRunService {
       metadata: { testCaseId } as any,
     });
 
-    await this.runModel.update(runId, { status: 'running' });
+    await this.runModel.update(runId, { startedAt: now, status: 'running' });
 
     const aiAgentService = new AiAgentService(this.db, this.userId);
     const webhookUrl = '/api/workflows/agent-eval-run/on-thread-complete';
@@ -590,6 +613,8 @@ export class AgentEvalRunService {
           metadata: { operationId: execResult.operationId, testCaseId } as any,
         });
       }
+
+      return { status: 'started' as const, threadId, topicId };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Thread execution failed to start';
@@ -611,6 +636,8 @@ export class AgentEvalRunService {
       if (allRunDone) {
         await AgentEvalRunWorkflow.triggerFinalizeRun({ runId, userId: this.userId });
       }
+
+      return { reason: errorMessage, status: 'error' as const, threadId, topicId };
     }
   }
 

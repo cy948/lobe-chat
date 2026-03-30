@@ -96,7 +96,7 @@ describe('AgentEvalRunService', () => {
       });
     });
 
-    it('should reject non-timeout trajectories', async () => {
+    it('should reject trajectories that are neither timeout nor error', async () => {
       const { run, testCase } = await setupEvalChain({ totalCases: 1 });
 
       await new AgentEvalRunModel(serverDB, userId).update(run.id, { status: 'failed' });
@@ -108,7 +108,7 @@ describe('AgentEvalRunService', () => {
         }),
       ).resolves.toEqual({
         canResume: false,
-        reason: 'Only timeout trajectories can be resumed',
+        reason: 'Only timeout or error trajectories can be resumed',
       });
     });
 
@@ -175,7 +175,7 @@ describe('AgentEvalRunService', () => {
           topicId: topic.id,
           userId,
         })
-        .returning();
+        .returning({ id: messages.id });
 
       await serverDB.insert(messages).values({
         content: '...',
@@ -285,7 +285,7 @@ describe('AgentEvalRunService', () => {
           topicId: topic.id,
           userId,
         })
-        .returning();
+        .returning({ id: messages.id });
 
       await serverDB.insert(messages).values({
         content: '...',
@@ -387,8 +387,7 @@ describe('AgentEvalRunService', () => {
     it('should cancel when the trajectory is not resumable', async () => {
       const { run, testCase, topic } = await setupEvalChain({ totalCases: 1 });
 
-      await new AgentEvalRunModel(serverDB, userId).update(run.id, { status: 'completed' });
-      await markTopicTimeout({ runId: run.id, testCaseId: testCase.id, topicId: topic.id });
+      await new AgentEvalRunModel(serverDB, userId).update(run.id, { status: 'failed' });
 
       const result = await new AgentEvalRunService(serverDB, userId).executeResumedTrajectory({
         appContext: { topicId: topic.id },
@@ -400,7 +399,7 @@ describe('AgentEvalRunService', () => {
       });
 
       expect(result).toEqual({
-        reason: 'Cannot resume trajectory: run status=completed',
+        reason: 'Only timeout or error trajectories can be resumed',
         status: 'cancelled',
         topicId: topic.id,
       });

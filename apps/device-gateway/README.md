@@ -1,7 +1,5 @@
 # Device Gateway
 
-**English** · [简体中文](./README.zh-CN.md)
-
 Device Gateway is a local service for development and debugging.
 
 ## Gateway Startup

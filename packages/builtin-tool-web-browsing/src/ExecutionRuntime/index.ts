@@ -46,24 +46,8 @@ export class WebBrowsingExecutionRuntime {
           success: false,
         };
       }
-
-      const estimatedContentChars = data.results.reduce(
-        (total, item) => total + (item.content?.length || 0),
-        0,
-      );
-      const maxContentLength = data.results.reduce(
-        (max, item) => Math.max(max, item.content?.length || 0),
-        0,
-      );
-
       try {
-        log(
-          'search:prepare-results results=%d chars=%d max=%d mem=%s',
-          data.results.length,
-          estimatedContentChars,
-          maxContentLength,
-          getMemorySnapshot(),
-        );
+        log('search:prepare-results results=%d mem=%s', data.results.length, getMemorySnapshot());
       } catch {}
 
       // add LIMITED_COUNT search results to message content
@@ -101,24 +85,8 @@ export class WebBrowsingExecutionRuntime {
 
     const { results } = response;
 
-    const estimatedContentChars = results.reduce((total, item) => {
-      if ('errorMessage' in item.data) return total;
-
-      return total + (item.data.content?.length || 0);
-    }, 0);
-    const maxContentLength = results.reduce((max, item) => {
-      if ('errorMessage' in item.data) return max;
-
-      return Math.max(max, item.data.content?.length || 0);
-    }, 0);
     try {
-      log(
-        'crawl:prepare-results results=%d chars=%d max=%d mem=%s',
-        results.length,
-        estimatedContentChars,
-        maxContentLength,
-        getMemorySnapshot(),
-      );
+      log('crawl:prepare-results results=%d mem=%s', results.length, getMemorySnapshot());
     } catch {}
 
     const content = results.map((item) =>

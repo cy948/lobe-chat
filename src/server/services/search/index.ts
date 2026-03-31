@@ -28,13 +28,6 @@ const getMemorySnapshot = () => {
   return `rss=${rss} heap=${heapUsed}`;
 };
 
-interface SearchLogContext {
-  phase: 'drop-all-filters' | 'drop-engines' | 'initial' | 'query';
-}
-
-const getProviderName = (impl: SearchServiceImpl) =>
-  impl.constructor.name || 'UnknownSearchProvider';
-
 /**
  * Search service class
  * Uses different implementations for different search operations
@@ -64,16 +57,12 @@ export class SearchService {
 
   async crawlPages(input: { impls?: CrawlImplType[]; urls: string[] }) {
     const crawlerImpls = input.impls || this.crawlerImpls;
-    const firstUrl = input.urls[0] || '-';
 
     try {
       log(
-        'crawlPages:start impls=%s urls=%d url=%s cc=%d retry=%d mem=%s',
-        crawlerImpls.join(',') || '-',
+        'crawlPages:start urls=%d impls=%d mem=%s',
         input.urls.length,
-        firstUrl,
-        this.crawlConcurrency,
-        this.crawlerRetry,
+        crawlerImpls.length,
         getMemorySnapshot(),
       );
     } catch {}
@@ -104,13 +93,7 @@ export class SearchService {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         try {
-          log(
-            'crawlWithRetry:attempt attempt=%d impls=%s url=%s mem=%s',
-            attempt,
-            (impls || this.crawlerImpls).join(',') || '-',
-            url,
-            getMemorySnapshot(),
-          );
+          log('crawlWithRetry:attempt attempt=%d mem=%s', attempt, getMemorySnapshot());
         } catch {}
         const result = await crawler.crawl({ impls, url });
         lastResult = result;
@@ -153,25 +136,7 @@ export class SearchService {
   /**
    * Query for search results using the specified impl
    */
-  private async queryWithImpl(
-    impl: SearchServiceImpl,
-    query: string,
-    params?: SearchParams,
-    context?: SearchLogContext,
-  ) {
-    try {
-      log(
-        'webSearch:provider-attempt phase=%s provider=%s q=%d c=%d e=%d t=%s mem=%s',
-        context?.phase || 'query',
-        getProviderName(impl),
-        query.length,
-        params?.searchCategories?.length || 0,
-        params?.searchEngines?.length || 0,
-        params?.searchTimeRange || 'anytime',
-        getMemorySnapshot(),
-      );
-    } catch {}
-
+  private async queryWithImpl(impl: SearchServiceImpl, query: string, params?: SearchParams) {
     try {
       return await impl.query(query, params);
     } catch (e) {
@@ -190,61 +155,40 @@ export class SearchService {
    * Query for search results (uses the first provider)
    */
   async query(query: string, params?: SearchParams) {
-    return this.queryWithImpl(this.searchImpList[0], query, params, {
-      phase: 'query',
-    });
+    return this.queryWithImpl(this.searchImpList[0], query, params);
   }
 
   async webSearch({ query, searchCategories, searchEngines, searchTimeRange }: SearchQuery) {
-    const providers = this.searchImpList.map(getProviderName).join(',') || '-';
-
     try {
       log(
-        'webSearch:start providers=%s q=%d c=%d e=%d t=%s mem=%s',
-        providers,
+        'webSearch:start providers=%d q=%d c=%d e=%d mem=%s',
+        this.searchImpList.length,
         query.length,
         searchCategories?.length || 0,
         searchEngines?.length || 0,
-        searchTimeRange || 'anytime',
         getMemorySnapshot(),
       );
     } catch {}
 
     for (const impl of this.searchImpList) {
-      let data = await this.queryWithImpl(
-        impl,
-        query,
-        {
-          searchCategories,
-          searchEngines,
-          searchTimeRange,
-        },
-        {
-          phase: 'initial',
-        },
-      );
+      let data = await this.queryWithImpl(impl, query, {
+        searchCategories,
+        searchEngines,
+        searchTimeRange,
+      });
 
       // First retry: remove search engine restrictions if no results found
       if (data.results.length === 0 && searchEngines && searchEngines?.length > 0) {
-        data = await this.queryWithImpl(
-          impl,
-          query,
-          {
-            searchCategories,
-            searchEngines: undefined,
-            searchTimeRange,
-          },
-          {
-            phase: 'drop-engines',
-          },
-        );
+        data = await this.queryWithImpl(impl, query, {
+          searchCategories,
+          searchEngines: undefined,
+          searchTimeRange,
+        });
       }
 
       // Second retry: remove all restrictions if still no results found
       if (data.results.length === 0) {
-        data = await this.queryWithImpl(impl, query, undefined, {
-          phase: 'drop-all-filters',
-        });
+        data = await this.queryWithImpl(impl, query);
       }
 
       // If this provider returned results, use them

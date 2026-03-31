@@ -90,7 +90,7 @@ export class WebBrowsingExecutionRuntime {
     } catch {}
 
     const content = results.map((item) =>
-      'errorMessage' in item.data
+      'errorMessage' in item
         ? item
         : {
             ...item.data,

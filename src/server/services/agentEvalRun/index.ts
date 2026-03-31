@@ -943,6 +943,16 @@ export class AgentEvalRunService {
       if (thread) threadIds.push(thread.id);
     }
 
+    await this.runTopicModel.updateByRunAndTopic(runId, topicId, {
+      evalResult: {
+        ...(runTopic.evalResult as EvalRunTopicResult | null),
+        threads: threadIds.map((threadId) => ({
+          status: 'running' as const,
+          threadId,
+        })),
+      } satisfies EvalRunTopicResult,
+    });
+
     // Trigger K run-thread-trajectory workflows in parallel
     await Promise.all(
       threadIds.map((threadId) =>

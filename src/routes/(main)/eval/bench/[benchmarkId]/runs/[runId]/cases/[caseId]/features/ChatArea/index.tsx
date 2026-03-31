@@ -1,6 +1,7 @@
 'use client';
 
 import { Flexbox } from '@lobehub/ui';
+import debug from 'debug';
 import { memo, useCallback } from 'react';
 
 import { ChatList, ConversationProvider } from '@/features/Conversation';
@@ -13,6 +14,8 @@ interface ChatAreaProps {
   topicId: string;
 }
 
+const log = debug('lobe-client:eval-case');
+
 const ChatArea = memo<ChatAreaProps>(({ agentId, topicId, threadId }) => {
   useInitAgentConfig(agentId);
 
@@ -23,6 +26,14 @@ const ChatArea = memo<ChatAreaProps>(({ agentId, topicId, threadId }) => {
 
   // Use threadId as part of key to force re-render when switching threads
   const contextKey = threadId ? `${topicId}-${threadId}` : topicId;
+
+  log(
+    '[ChatArea] mount | topicId=%s | threadId=%s | agentId=%s | contextKey=%s',
+    topicId,
+    threadId,
+    agentId,
+    contextKey,
+  );
 
   return (
     <ConversationProvider context={{ agentId, threadId, topicId }} key={contextKey}>

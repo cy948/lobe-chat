@@ -57,12 +57,14 @@ export class SearchService {
 
   async crawlPages(input: { impls?: CrawlImplType[]; urls: string[] }) {
     try {
-      log(
-        'crawlPages:start urls=%d impls=%s mem=%s',
-        input.urls.length,
-        (input.impls || this.crawlerImpls).join(',') || '-',
-        getMemorySnapshot(),
-      );
+      if (log.enabled) {
+        log(
+          'crawlPages:start urls=%d impls=%s mem=%s',
+          input.urls.length,
+          (input.impls || this.crawlerImpls).join(',') || '-',
+          getMemorySnapshot(),
+        );
+      }
     } catch {}
 
     const { Crawler } = await import('@lobechat/web-crawler');
@@ -92,7 +94,9 @@ export class SearchService {
       try {
         const result = await crawler.crawl({ impls, url });
         try {
-          log('crawlWithRetry:result crawler=%s mem=%s', result.crawler, getMemorySnapshot());
+          if (log.enabled) {
+            log('crawlWithRetry:result crawler=%s mem=%s', result.crawler, getMemorySnapshot());
+          }
         } catch {}
         lastResult = result;
 
@@ -158,23 +162,27 @@ export class SearchService {
 
   async webSearch({ query, searchCategories, searchEngines, searchTimeRange }: SearchQuery) {
     try {
-      log(
-        'webSearch:start providers=%d q=%d c=%d e=%d mem=%s',
-        this.searchImpList.length,
-        query.length,
-        searchCategories?.length || 0,
-        searchEngines?.length || 0,
-        getMemorySnapshot(),
-      );
+      if (log.enabled) {
+        log(
+          'webSearch:start providers=%d q=%d c=%d e=%d mem=%s',
+          this.searchImpList.length,
+          query.length,
+          searchCategories?.length || 0,
+          searchEngines?.length || 0,
+          getMemorySnapshot(),
+        );
+      }
     } catch {}
 
     for (const impl of this.searchImpList) {
       try {
-        log(
-          'webSearch:impl impl=%s mem=%s',
-          impl.constructor.name || 'UnknownSearchImpl',
-          getMemorySnapshot(),
-        );
+        if (log.enabled) {
+          log(
+            'webSearch:impl impl=%s mem=%s',
+            impl.constructor.name || 'UnknownSearchImpl',
+            getMemorySnapshot(),
+          );
+        }
       } catch {}
 
       let data = await this.queryWithImpl(impl, query, {

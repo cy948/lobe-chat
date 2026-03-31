@@ -28,6 +28,9 @@ const getMemorySnapshot = () => {
   return `rss=${rss} heap=${heapUsed}`;
 };
 
+const getSearchImplLabel = (impl: SearchServiceImpl) =>
+  impl.constructor.name || 'UnknownSearchImpl';
+
 /**
  * Search service class
  * Uses different implementations for different search operations
@@ -60,9 +63,9 @@ export class SearchService {
 
     try {
       log(
-        'crawlPages:start urls=%d impls=%d mem=%s',
+        'crawlPages:start urls=%d impls=%s mem=%s',
         input.urls.length,
-        crawlerImpls.length,
+        crawlerImpls.join(',') || '-',
         getMemorySnapshot(),
       );
     } catch {}
@@ -92,10 +95,10 @@ export class SearchService {
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        try {
-          log('crawlWithRetry:attempt attempt=%d mem=%s', attempt, getMemorySnapshot());
-        } catch {}
         const result = await crawler.crawl({ impls, url });
+        try {
+          log('crawlWithRetry:result crawler=%s mem=%s', result.crawler, getMemorySnapshot());
+        } catch {}
         lastResult = result;
 
         if (!this.isFailedCrawlResult(result)) {
@@ -171,6 +174,10 @@ export class SearchService {
     } catch {}
 
     for (const impl of this.searchImpList) {
+      try {
+        log('webSearch:impl impl=%s mem=%s', getSearchImplLabel(impl), getMemorySnapshot());
+      } catch {}
+
       let data = await this.queryWithImpl(impl, query, {
         searchCategories,
         searchEngines,

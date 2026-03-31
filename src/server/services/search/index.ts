@@ -18,24 +18,14 @@ const parseImplEnv = (envString: string = '') => {
   return envValue.split(',').filter(Boolean);
 };
 
-const formatMB = (value: number) => `${Math.round(value / 1024 / 1024)}MB`;
-
 const getMemorySnapshot = () => {
   if (typeof process === 'undefined' || typeof process.memoryUsage !== 'function') {
     return 'non-node';
   }
 
-  const memory = process.memoryUsage();
+  const { heapUsed, rss } = process.memoryUsage();
 
-  return `rss=${formatMB(memory.rss)} heap=${formatMB(memory.heapUsed)}`;
-};
-
-const getUrlHost = (url: string) => {
-  try {
-    return new URL(url).host;
-  } catch {
-    return 'invalid-url';
-  }
+  return `rss=${rss} heap=${heapUsed}`;
 };
 
 interface SearchLogContext {
@@ -74,17 +64,19 @@ export class SearchService {
 
   async crawlPages(input: { impls?: CrawlImplType[]; urls: string[] }) {
     const crawlerImpls = input.impls || this.crawlerImpls;
-    const firstHost = input.urls[0] ? getUrlHost(input.urls[0]) : '-';
+    const firstUrl = input.urls[0] || '-';
 
-    log(
-      'crawlPages:start impls=%s urls=%d host=%s cc=%d retry=%d mem=%s',
-      crawlerImpls.join(',') || '-',
-      input.urls.length,
-      firstHost,
-      this.crawlConcurrency,
-      this.crawlerRetry,
-      getMemorySnapshot(),
-    );
+    try {
+      log(
+        'crawlPages:start impls=%s urls=%d url=%s cc=%d retry=%d mem=%s',
+        crawlerImpls.join(',') || '-',
+        input.urls.length,
+        firstUrl,
+        this.crawlConcurrency,
+        this.crawlerRetry,
+        getMemorySnapshot(),
+      );
+    } catch {}
 
     const { Crawler } = await import('@lobechat/web-crawler');
     const crawler = new Crawler({ impls: this.crawlerImpls });
@@ -111,13 +103,15 @@ export class SearchService {
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        log(
-          'crawlWithRetry:attempt attempt=%d impls=%s host=%s mem=%s',
-          attempt,
-          (impls || this.crawlerImpls).join(',') || '-',
-          getUrlHost(url),
-          getMemorySnapshot(),
-        );
+        try {
+          log(
+            'crawlWithRetry:attempt attempt=%d impls=%s url=%s mem=%s',
+            attempt,
+            (impls || this.crawlerImpls).join(',') || '-',
+            url,
+            getMemorySnapshot(),
+          );
+        } catch {}
         const result = await crawler.crawl({ impls, url });
         lastResult = result;
 
@@ -165,16 +159,18 @@ export class SearchService {
     params?: SearchParams,
     context?: SearchLogContext,
   ) {
-    log(
-      'webSearch:provider-attempt phase=%s provider=%s q=%d c=%d e=%d t=%s mem=%s',
-      context?.phase || 'query',
-      getProviderName(impl),
-      query.length,
-      params?.searchCategories?.length || 0,
-      params?.searchEngines?.length || 0,
-      params?.searchTimeRange || 'anytime',
-      getMemorySnapshot(),
-    );
+    try {
+      log(
+        'webSearch:provider-attempt phase=%s provider=%s q=%d c=%d e=%d t=%s mem=%s',
+        context?.phase || 'query',
+        getProviderName(impl),
+        query.length,
+        params?.searchCategories?.length || 0,
+        params?.searchEngines?.length || 0,
+        params?.searchTimeRange || 'anytime',
+        getMemorySnapshot(),
+      );
+    } catch {}
 
     try {
       return await impl.query(query, params);
@@ -202,15 +198,17 @@ export class SearchService {
   async webSearch({ query, searchCategories, searchEngines, searchTimeRange }: SearchQuery) {
     const providers = this.searchImpList.map(getProviderName).join(',') || '-';
 
-    log(
-      'webSearch:start providers=%s q=%d c=%d e=%d t=%s mem=%s',
-      providers,
-      query.length,
-      searchCategories?.length || 0,
-      searchEngines?.length || 0,
-      searchTimeRange || 'anytime',
-      getMemorySnapshot(),
-    );
+    try {
+      log(
+        'webSearch:start providers=%s q=%d c=%d e=%d t=%s mem=%s',
+        providers,
+        query.length,
+        searchCategories?.length || 0,
+        searchEngines?.length || 0,
+        searchTimeRange || 'anytime',
+        getMemorySnapshot(),
+      );
+    } catch {}
 
     for (const impl of this.searchImpList) {
       let data = await this.queryWithImpl(

@@ -13,26 +13,15 @@ import { CRAWL_CONTENT_LIMITED_COUNT, SEARCH_ITEM_LIMITED_COUNT } from '../const
 
 const log = debug('lobe-oom:web-browsing');
 
-const formatMB = (value: number) => `${Math.round(value / 1024 / 1024)}MB`;
-
 const getMemorySnapshot = () => {
   if (typeof process === 'undefined' || typeof process.memoryUsage !== 'function') {
     return 'non-node';
   }
 
-  const memory = process.memoryUsage();
+  const { heapUsed, rss } = process.memoryUsage();
 
-  return `rss=${formatMB(memory.rss)} heap=${formatMB(memory.heapUsed)}`;
+  return `rss=${rss} heap=${heapUsed}`;
 };
-
-const getUrlHosts = (urls: string[]) =>
-  urls.map((url) => {
-    try {
-      return new URL(url).host;
-    } catch {
-      return 'invalid-url';
-    }
-  });
 
 export class WebBrowsingExecutionRuntime {
   private searchService: SearchServiceImpl;
@@ -67,13 +56,15 @@ export class WebBrowsingExecutionRuntime {
         0,
       );
 
-      log(
-        'search:prepare-results results=%d chars=%d max=%d mem=%s',
-        data.results.length,
-        estimatedContentChars,
-        maxContentLength,
-        getMemorySnapshot(),
-      );
+      try {
+        log(
+          'search:prepare-results results=%d chars=%d max=%d mem=%s',
+          data.results.length,
+          estimatedContentChars,
+          maxContentLength,
+          getMemorySnapshot(),
+        );
+      } catch {}
 
       // add LIMITED_COUNT search results to message content
       const searchContent: SearchContent[] = data.results
@@ -88,7 +79,9 @@ export class WebBrowsingExecutionRuntime {
         }));
 
       // Convert to XML format to save tokens
-      log('search:before-xml items=%d mem=%s', searchContent.length, getMemorySnapshot());
+      try {
+        log('search:before-xml items=%d mem=%s', searchContent.length, getMemorySnapshot());
+      } catch {}
       const xmlContent = searchResultsPrompt(searchContent);
 
       return { content: xmlContent, state: data, success: true };
@@ -118,13 +111,15 @@ export class WebBrowsingExecutionRuntime {
 
       return Math.max(max, item.data.content?.length || 0);
     }, 0);
-    log(
-      'crawl:prepare-results results=%d chars=%d max=%d mem=%s',
-      results.length,
-      estimatedContentChars,
-      maxContentLength,
-      getMemorySnapshot(),
-    );
+    try {
+      log(
+        'crawl:prepare-results results=%d chars=%d max=%d mem=%s',
+        results.length,
+        estimatedContentChars,
+        maxContentLength,
+        getMemorySnapshot(),
+      );
+    } catch {}
 
     const content = results.map((item) =>
       'errorMessage' in item.data
@@ -137,7 +132,9 @@ export class WebBrowsingExecutionRuntime {
           },
     );
 
-    log('crawl:before-xml items=%d mem=%s', content.length, getMemorySnapshot());
+    try {
+      log('crawl:before-xml items=%d mem=%s', content.length, getMemorySnapshot());
+    } catch {}
     const xmlContent = crawlResultsPrompt(content as any);
 
     return {

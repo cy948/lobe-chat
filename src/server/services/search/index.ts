@@ -25,11 +25,8 @@ const getMemorySnapshot = () => {
 
   const { heapUsed, rss } = process.memoryUsage();
 
-  return `rss=${rss} heap=${heapUsed}`;
+  return `rss=${(rss / 1024 / 1024).toFixed(1)}MB heap=${(heapUsed / 1024 / 1024).toFixed(1)}MB`;
 };
-
-const getSearchImplLabel = (impl: SearchServiceImpl) =>
-  impl.constructor.name || 'UnknownSearchImpl';
 
 /**
  * Search service class
@@ -175,7 +172,11 @@ export class SearchService {
 
     for (const impl of this.searchImpList) {
       try {
-        log('webSearch:impl impl=%s mem=%s', getSearchImplLabel(impl), getMemorySnapshot());
+        log(
+          'webSearch:impl impl=%s mem=%s',
+          impl.constructor.name || 'UnknownSearchImpl',
+          getMemorySnapshot(),
+        );
       } catch {}
 
       let data = await this.queryWithImpl(impl, query, {

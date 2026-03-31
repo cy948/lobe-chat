@@ -56,13 +56,11 @@ export class SearchService {
   }
 
   async crawlPages(input: { impls?: CrawlImplType[]; urls: string[] }) {
-    const crawlerImpls = input.impls || this.crawlerImpls;
-
     try {
       log(
         'crawlPages:start urls=%d impls=%s mem=%s',
         input.urls.length,
-        crawlerImpls.join(',') || '-',
+        (input.impls || this.crawlerImpls).join(',') || '-',
         getMemorySnapshot(),
       );
     } catch {}

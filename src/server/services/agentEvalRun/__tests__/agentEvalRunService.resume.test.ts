@@ -196,6 +196,54 @@ describe('AgentEvalRunService', () => {
         }),
       ).resolves.toEqual({ canResume: true });
     });
+
+    it('should enforce maxSteps using the target thread history for pass@k resume', async () => {
+      const { run, testCase, topic } = await setupEvalChain({ totalCases: 1 });
+
+      await new AgentEvalRunModel(serverDB, userId).update(run.id, {
+        config: { k: 2, maxSteps: 5 },
+        status: 'failed',
+      });
+
+      const threadModel = new ThreadModel(serverDB, userId);
+      const errorThread = await threadModel.create({ topicId: topic.id, type: 'eval' });
+      const passedThread = await threadModel.create({ topicId: topic.id, type: 'eval' });
+
+      await new AgentEvalRunTopicModel(serverDB, userId).updateByRunAndTopic(run.id, topic.id, {
+        evalResult: {
+          passAllK: false,
+          passAtK: true,
+          steps: 3,
+          threads: [
+            { status: 'error', threadId: errorThread!.id },
+            { passed: true, status: 'passed', threadId: passedThread!.id },
+          ],
+        },
+        passed: true,
+        score: 1,
+        status: 'passed',
+      });
+
+      await threadModel.update(errorThread!.id, {
+        metadata: {
+          completedAt: new Date('2026-03-30T00:00:00.000Z').toISOString(),
+          status: 'error',
+          steps: 5,
+          testCaseId: testCase.id,
+        },
+      } as any);
+
+      await expect(
+        new AgentEvalRunService(serverDB, userId).canResumeTrajectory({
+          runId: run.id,
+          testCaseId: testCase.id,
+          threadId: errorThread!.id,
+        }),
+      ).resolves.toEqual({
+        canResume: false,
+        reason: 'Resume limit reached',
+      });
+    });
   });
 
   describe('getResumableCases', () => {

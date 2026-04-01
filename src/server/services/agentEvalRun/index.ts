@@ -313,6 +313,19 @@ export class AgentEvalRunService {
       if (!targetThread || !RESUMABLE_THREAD_STATUSES.has(targetThread.status ?? '')) {
         return { canResume: false, reason: trajectoryNotResumableReason };
       }
+
+      const maxSteps = run.config?.maxSteps;
+      const prevSteps =
+        ((thread.metadata as Record<string, unknown> | null)?.steps as number | undefined) ?? 0;
+
+      if (maxSteps && prevSteps >= maxSteps) {
+        log(
+          'canResumeTrajectory: rejected thread — prevSteps=%d >= maxSteps=%d',
+          prevSteps,
+          maxSteps,
+        );
+        return { canResume: false, reason: resumeLimitReachedReason };
+      }
     }
 
     // Reject if the previous run already exhausted maxSteps

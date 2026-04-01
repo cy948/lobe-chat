@@ -631,7 +631,7 @@ export class AgentEvalRunService {
       ? prevThreads.map((thread) =>
           thread.threadId === threadId ? resetResumedThreadResult(thread) : thread,
         )
-      : [...prevThreads, { status: 'running', threadId }];
+      : [...prevThreads, { status: 'running' as const, threadId }];
 
     // Capture accumulated telemetry from the target thread only
     const prevSteps = (currentThreadMeta.steps as number | undefined) ?? 0;

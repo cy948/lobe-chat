@@ -92,7 +92,7 @@ describe('AgentEvalRunService', () => {
         }),
       ).resolves.toEqual({
         canResume: false,
-        reason: 'Cannot resume trajectory: run status=completed',
+        reason: 'Trajectory is not resumable',
       });
     });
 
@@ -108,7 +108,7 @@ describe('AgentEvalRunService', () => {
         }),
       ).resolves.toEqual({
         canResume: false,
-        reason: 'Only timeout or error trajectories can be resumed',
+        reason: 'Trajectory is not resumable',
       });
     });
 
@@ -128,7 +128,7 @@ describe('AgentEvalRunService', () => {
         }),
       ).resolves.toEqual({
         canResume: false,
-        reason: 'threadId is required when k > 1',
+        reason: 'Invalid resume target',
       });
     });
 
@@ -158,7 +158,7 @@ describe('AgentEvalRunService', () => {
         }),
       ).resolves.toEqual({
         canResume: false,
-        reason: 'Thread does not belong to the target eval trajectory',
+        reason: 'Invalid resume target',
       });
     });
 
@@ -492,7 +492,7 @@ describe('AgentEvalRunService', () => {
       });
 
       expect(result).toEqual({
-        reason: 'Only timeout or error trajectories can be resumed',
+        reason: 'Trajectory is not resumable',
         status: 'cancelled',
         topicId: topic.id,
       });

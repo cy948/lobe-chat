@@ -267,42 +267,43 @@ export class AgentEvalRunService {
   }
 
   async canResumeTrajectory(params: { runId: string; testCaseId: string; threadId?: string }) {
+    const invalidResumeTargetReason = 'Invalid resume target';
+    const trajectoryNotResumableReason = 'Trajectory is not resumable';
+    const resumeLimitReachedReason = 'Resume limit reached';
+
     log('canResumeTrajectory: %O', params);
     const run = await this.runModel.findById(params.runId);
-    if (!run) return { canResume: false, reason: 'Run not found' };
+    if (!run) return { canResume: false, reason: invalidResumeTargetReason };
 
     if (!['aborted', 'failed', 'running'].includes(run.status)) {
-      return { canResume: false, reason: `Cannot resume trajectory: run status=${run.status}` };
+      return { canResume: false, reason: trajectoryNotResumableReason };
     }
 
     const runTopic = await this.runTopicModel.findByRunAndTestCase(params.runId, params.testCaseId);
-    if (!runTopic) return { canResume: false, reason: 'RunTopic not found' };
+    if (!runTopic) return { canResume: false, reason: invalidResumeTargetReason };
 
     log('canResumeTrajectory: runTopic.status=%s topicId=%s', runTopic.status, runTopic.topicId);
 
     const k = run.config?.k ?? 1;
-    if (k === 1 && params.threadId) {
-      return { canResume: false, reason: 'threadId is only supported when k > 1' };
-    }
-
-    if (k > 1 && !params.threadId) {
-      return { canResume: false, reason: 'threadId is required when k > 1' };
+    const hasInvalidThreadTarget = (k === 1 && !!params.threadId) || (k > 1 && !params.threadId);
+    if (hasInvalidThreadTarget) {
+      return { canResume: false, reason: invalidResumeTargetReason };
     }
 
     if (!runTopic.topicId) {
-      return { canResume: false, reason: 'RunTopic topicId is required' };
+      return { canResume: false, reason: invalidResumeTargetReason };
     }
 
     if (k === 1 && !RESUMABLE_THREAD_STATUSES.has(runTopic.status ?? '')) {
       log('canResumeTrajectory: rejected — runTopic.status=%s', runTopic.status);
-      return { canResume: false, reason: 'Only timeout or error trajectories can be resumed' };
+      return { canResume: false, reason: trajectoryNotResumableReason };
     }
 
     if (params.threadId) {
       const thread = await this.threadModel.findById(params.threadId);
 
       if (!thread || thread.topicId !== runTopic.topicId || thread.type !== 'eval') {
-        return { canResume: false, reason: 'Thread does not belong to the target eval trajectory' };
+        return { canResume: false, reason: invalidResumeTargetReason };
       }
 
       const targetThread = runTopic.evalResult?.threads?.find(
@@ -310,7 +311,7 @@ export class AgentEvalRunService {
       );
 
       if (!targetThread || !RESUMABLE_THREAD_STATUSES.has(targetThread.status ?? '')) {
-        return { canResume: false, reason: 'Only timeout or error trajectories can be resumed' };
+        return { canResume: false, reason: trajectoryNotResumableReason };
       }
     }
 
@@ -319,10 +320,7 @@ export class AgentEvalRunService {
     const prevSteps = runTopic.evalResult?.steps ?? 0;
     if (maxSteps && prevSteps >= maxSteps) {
       log('canResumeTrajectory: rejected — prevSteps=%d >= maxSteps=%d', prevSteps, maxSteps);
-      return {
-        canResume: false,
-        reason: `Cannot resume: already reached maxSteps (${prevSteps}/${maxSteps})`,
-      };
+      return { canResume: false, reason: resumeLimitReachedReason };
     }
 
     return { canResume: true as const };
@@ -1049,6 +1047,7 @@ export class AgentEvalRunService {
 
     await this.runTopicModel.updateByRunAndTopic(runId, topicId, {
       evalResult: {
+        // Persist thread ids before fan-out so pass@k UIs can render attempts immediately.
         ...(runTopic.evalResult as EvalRunTopicResult | null),
         threads: threadIds.map((threadId) => ({
           status: 'running' as const,
@@ -1156,7 +1155,7 @@ export class AgentEvalRunService {
         error,
       );
 
-      // Write error to thread metadata so it counts as "completed" for aggregation
+      // Mark the thread explicitly as error; aggregation and resume-target selection rely on metadata.status.
       await this.threadModel.update(threadId, {
         metadata: {
           completedAt: new Date().toISOString(),
@@ -1211,6 +1210,7 @@ export class AgentEvalRunService {
       metadata: {
         ...evalResult,
         completedAt: new Date().toISOString(),
+        // Normalize status into metadata so later aggregation can reconstruct threads[] consistently.
         status: getThreadResultStatus(evalResult),
         testCaseId,
       },

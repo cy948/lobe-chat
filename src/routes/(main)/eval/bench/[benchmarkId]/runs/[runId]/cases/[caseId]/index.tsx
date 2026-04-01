@@ -2,7 +2,6 @@
 
 import type { EvalThreadResult } from '@lobechat/types';
 import { Flexbox, Tabs } from '@lobehub/ui';
-import debug from 'debug';
 import { memo, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -13,7 +12,6 @@ import CaseHeader from './features/CaseBanner';
 import ChatArea from './features/ChatArea';
 import InfoSidebar from './features/InfoSidebar';
 
-const log = debug('lobe-client:eval-case');
 const POLLING_INTERVAL = 3000;
 
 const CaseDetail = memo(() => {
@@ -74,27 +72,6 @@ const CaseDetail = memo(() => {
     () => (activeThreadId ? threads?.find((t) => t.threadId === activeThreadId) : undefined),
     [activeThreadId, threads],
   );
-
-  useEffect(() => {
-    log(
-      '[CaseDetail] render | benchmarkId=%s | runId=%s | caseId=%s | topicId=%s | agentId=%s | activeThreadId=%s | threads=%d',
-      benchmarkId,
-      runId,
-      caseId,
-      caseResult?.topicId,
-      caseResult?.topic?.agentId,
-      activeThreadId,
-      threads?.length ?? 0,
-    );
-  }, [
-    activeThreadId,
-    benchmarkId,
-    caseId,
-    caseResult?.topic?.agentId,
-    caseResult?.topicId,
-    runId,
-    threads?.length,
-  ]);
 
   if (!caseResult) return null;
 

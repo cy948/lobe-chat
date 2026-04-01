@@ -386,13 +386,6 @@ export class AiAgentService {
       );
     } else {
       log('execAgent: reusing existing topic %s', topicId);
-
-      if (requestedDeviceId) {
-        await this.topicModel.updateMetadata(topicId, { boundDeviceId: requestedDeviceId });
-      } else {
-        const topic = await this.topicModel.findById(topicId);
-        topicBoundDeviceId = topic?.metadata?.boundDeviceId;
-      }
     }
 
     await throwIfExecutionAborted('topic setup');

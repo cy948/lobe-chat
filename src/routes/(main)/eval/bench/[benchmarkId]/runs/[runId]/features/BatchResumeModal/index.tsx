@@ -11,7 +11,7 @@ type ResumableCase = Awaited<ReturnType<typeof agentEvalService.getResumableCase
 
 interface BatchResumeModalProps {
   onClose: () => void;
-  onConfirm: (testCaseIds: string[]) => Promise<void>;
+  onConfirm: (targets: Array<{ testCaseId: string; threadId?: string }>) => Promise<void>;
   open: boolean;
   runId: string;
 }
@@ -119,7 +119,7 @@ const BatchResumeModal = memo<BatchResumeModalProps>(({ open, onClose, onConfirm
         key: 'status',
         render: (_: any, record: ResumableCase) => (
           <Tooltip title={record.canResume ? undefined : record.reason}>
-            <StatusLabel status={record.status} />
+            <StatusLabel status={record.resumeStatus} />
           </Tooltip>
         ),
         title: t('table.columns.status'),
@@ -133,7 +133,11 @@ const BatchResumeModal = memo<BatchResumeModalProps>(({ open, onClose, onConfirm
     if (selectedIds.length === 0) return;
     setConfirming(true);
     try {
-      await onConfirm(selectedIds);
+      await onConfirm(
+        cases
+          .filter((item) => selectedIds.includes(item.testCaseId))
+          .map((item) => ({ testCaseId: item.testCaseId, threadId: item.threadId })),
+      );
       onClose();
     } finally {
       setConfirming(false);

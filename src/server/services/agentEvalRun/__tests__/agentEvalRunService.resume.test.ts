@@ -161,6 +161,85 @@ describe('AgentEvalRunService', () => {
         reason: 'Thread does not belong to the target eval trajectory',
       });
     });
+
+    it('should allow pass@k resume when the case passed but a thread errored', async () => {
+      const { run, testCase, topic } = await setupEvalChain({ totalCases: 1 });
+
+      await new AgentEvalRunModel(serverDB, userId).update(run.id, {
+        config: { k: 2 },
+        status: 'failed',
+      });
+
+      const threadModel = new ThreadModel(serverDB, userId);
+      const errorThread = await threadModel.create({ topicId: topic.id, type: 'eval' });
+      const passedThread = await threadModel.create({ topicId: topic.id, type: 'eval' });
+
+      await new AgentEvalRunTopicModel(serverDB, userId).updateByRunAndTopic(run.id, topic.id, {
+        evalResult: {
+          passAllK: false,
+          passAtK: true,
+          threads: [
+            { status: 'error', threadId: errorThread!.id },
+            { passed: true, status: 'passed', threadId: passedThread!.id },
+          ],
+        },
+        passed: true,
+        score: 1,
+        status: 'passed',
+      });
+
+      await expect(
+        new AgentEvalRunService(serverDB, userId).canResumeTrajectory({
+          runId: run.id,
+          testCaseId: testCase.id,
+          threadId: errorThread!.id,
+        }),
+      ).resolves.toEqual({ canResume: true });
+    });
+  });
+
+  describe('getResumableCases', () => {
+    it('should include pass@k cases that have resumable threads', async () => {
+      const { run, testCase, topic } = await setupEvalChain({ totalCases: 1 });
+
+      await new AgentEvalRunModel(serverDB, userId).update(run.id, {
+        config: { k: 2 },
+        status: 'failed',
+      });
+
+      const threadModel = new ThreadModel(serverDB, userId);
+      const errorThread = await threadModel.create({ topicId: topic.id, type: 'eval' });
+      const passedThread = await threadModel.create({ topicId: topic.id, type: 'eval' });
+
+      await new AgentEvalRunTopicModel(serverDB, userId).updateByRunAndTopic(run.id, topic.id, {
+        evalResult: {
+          passAllK: false,
+          passAtK: true,
+          threads: [
+            { status: 'error', threadId: errorThread!.id },
+            { passed: true, status: 'passed', threadId: passedThread!.id },
+          ],
+        },
+        passed: true,
+        score: 1,
+        status: 'passed',
+      });
+
+      await expect(
+        new AgentEvalRunService(serverDB, userId).getResumableCases(run.id),
+      ).resolves.toEqual([
+        {
+          canResume: true,
+          caseStatus: 'passed',
+          input: testCase.content.input,
+          reason: undefined,
+          resumeStatus: 'error',
+          sortOrder: testCase.sortOrder,
+          testCaseId: testCase.id,
+          threadId: errorThread!.id,
+        },
+      ]);
+    });
   });
 
   describe('resumeTrajectory', () => {
@@ -256,6 +335,20 @@ describe('AgentEvalRunService', () => {
       const threadModel = new ThreadModel(serverDB, userId);
       const thread = await threadModel.create({ topicId: topic.id, type: 'eval' });
       const otherThread = await threadModel.create({ topicId: topic.id, type: 'eval' });
+
+      await new AgentEvalRunTopicModel(serverDB, userId).updateByRunAndTopic(run.id, topic.id, {
+        evalResult: {
+          passAllK: false,
+          passAtK: true,
+          threads: [
+            { status: 'timeout', threadId: thread!.id },
+            { passed: true, status: 'passed', threadId: otherThread!.id },
+          ],
+        },
+        passed: true,
+        score: 1,
+        status: 'passed',
+      });
 
       await threadModel.update(thread!.id, {
         metadata: {
@@ -420,6 +513,20 @@ describe('AgentEvalRunService', () => {
       const threadModel = new ThreadModel(serverDB, userId);
       const thread = await threadModel.create({ topicId: topic.id, type: 'eval' });
       const otherThread = await threadModel.create({ topicId: topic.id, type: 'eval' });
+
+      await new AgentEvalRunTopicModel(serverDB, userId).updateByRunAndTopic(run.id, topic.id, {
+        evalResult: {
+          passAllK: false,
+          passAtK: true,
+          threads: [
+            { status: 'timeout', threadId: thread!.id },
+            { passed: true, status: 'passed', threadId: otherThread!.id },
+          ],
+        },
+        passed: true,
+        score: 1,
+        status: 'passed',
+      });
 
       await threadModel.update(thread!.id, {
         metadata: {

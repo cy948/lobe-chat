@@ -831,18 +831,27 @@ export const agentEvalRouter = router({
     }),
 
   batchResumeRunCases: agentEvalProcedure
-    .input(z.object({ runId: z.string(), testCaseIds: z.array(z.string()) }))
+    .input(
+      z.object({
+        runId: z.string(),
+        targets: z.array(z.object({ testCaseId: z.string(), threadId: z.string().optional() })),
+      }),
+    )
     .mutation(async ({ input, ctx }) => {
-      log('batchResumeRunCases: runId=%s count=%d', input.runId, input.testCaseIds.length);
+      log('batchResumeRunCases: runId=%s count=%d', input.runId, input.targets.length);
       const results = await Promise.allSettled(
-        input.testCaseIds.map((testCaseId) =>
-          ctx.runService.resumeTrajectory({ runId: input.runId, testCaseId }),
+        input.targets.map((target) =>
+          ctx.runService.resumeTrajectory({
+            runId: input.runId,
+            testCaseId: target.testCaseId,
+            threadId: target.threadId,
+          }),
         ),
       );
       const succeeded = results.filter((r) => r.status === 'fulfilled').length;
       const failed = results.filter((r) => r.status === 'rejected').length;
       log('batchResumeRunCases: succeeded=%d failed=%d', succeeded, failed);
-      return { failed, succeeded, total: input.testCaseIds.length };
+      return { failed, succeeded, total: input.targets.length };
     }),
 
   getResumableCases: agentEvalProcedure

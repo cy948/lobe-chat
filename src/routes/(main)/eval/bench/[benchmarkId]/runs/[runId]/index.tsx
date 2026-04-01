@@ -14,6 +14,7 @@ import CaseResultsTable from './features/CaseResultsTable';
 import BenchmarkCharts from './features/Charts/BenchmarkCharts';
 import IdleState from './features/IdleState';
 import PendingState from './features/PendingState';
+import { getResumeTarget } from './features/resumeTarget';
 import RunHeader from './features/RunHeader';
 import RunningState from './features/RunningState';
 import StatsCards from './features/StatsCards';
@@ -57,9 +58,9 @@ const RunDetail = memo(() => {
   const errorCount = (metrics?.errorCases ?? 0) + (metrics?.timeoutCases ?? 0);
   const canRetry = isFinished && errorCount > 0;
 
-  const RESUMABLE_STATUSES = new Set(['error', 'timeout']);
-  const canBatchResume = (runResults?.results ?? []).some((r: any) =>
-    RESUMABLE_STATUSES.has(r.status),
+  const k = runDetail.config?.k ?? 1;
+  const canBatchResume = (runResults?.results ?? []).some(
+    (result: any) => !!getResumeTarget(result, k),
   );
 
   return (
@@ -188,7 +189,7 @@ const RunDetail = memo(() => {
         >
           <CaseResultsTable
             benchmarkId={benchmarkId!}
-            k={runDetail.config?.k ?? 1}
+            k={k}
             results={runResults.results}
             runId={runId!}
             runStatus={runDetail.status}
@@ -202,7 +203,7 @@ const RunDetail = memo(() => {
         open={batchResumeOpen}
         runId={runId!}
         onClose={() => setBatchResumeOpen(false)}
-        onConfirm={(testCaseIds) => batchResumeRunCases(runId!, testCaseIds)}
+        onConfirm={(targets) => batchResumeRunCases(runId!, targets)}
       />
     </Flexbox>
   );

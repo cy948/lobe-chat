@@ -8,6 +8,7 @@ import type {
   EvalRunInputConfig,
   EvalRunMetrics,
   EvalRunTopicResult,
+  EvalThreadResult,
   RubricType,
 } from '@lobechat/types';
 import { RequestTrigger } from '@lobechat/types';
@@ -36,8 +37,22 @@ import {
 const roundCost = (v: number): number => Math.round(v * 1e6) / 1e6;
 const EVAL_AGENT_RUNTIME_QSTASH_RETRIES = 10;
 const EVAL_AGENT_RUNTIME_QSTASH_RETRY_DELAY = '10000 * (1 + retried)';
+const RESUMABLE_THREAD_STATUSES = new Set(['error', 'timeout']);
 
 const log = debug('lobe-server:eval-run-service');
+
+interface ResumableCaseTarget {
+  caseStatus?: string | null;
+  input: string;
+  resumeStatus?: 'error' | 'timeout';
+  sortOrder: number | null;
+  testCaseId: string;
+  threadId?: string;
+}
+
+interface ResumableThreadResult extends EvalThreadResult {
+  status: 'error' | 'timeout';
+}
 
 export class AgentEvalRunService {
   private readonly db: LobeChatDatabase;
@@ -246,22 +261,6 @@ export class AgentEvalRunService {
 
     log('canResumeTrajectory: runTopic.status=%s topicId=%s', runTopic.status, runTopic.topicId);
 
-    if (!['timeout', 'error'].includes(runTopic.status ?? '')) {
-      log('canResumeTrajectory: rejected — runTopic.status=%s', runTopic.status);
-      return { canResume: false, reason: 'Only timeout or error trajectories can be resumed' };
-    }
-
-    // Reject if the previous run already exhausted maxSteps
-    const maxSteps = run.config?.maxSteps;
-    const prevSteps = runTopic.evalResult?.steps ?? 0;
-    if (maxSteps && prevSteps >= maxSteps) {
-      log('canResumeTrajectory: rejected — prevSteps=%d >= maxSteps=%d', prevSteps, maxSteps);
-      return {
-        canResume: false,
-        reason: `Cannot resume: already reached maxSteps (${prevSteps}/${maxSteps})`,
-      };
-    }
-
     const k = run.config?.k ?? 1;
     if (k === 1 && params.threadId) {
       return { canResume: false, reason: 'threadId is only supported when k > 1' };
@@ -275,12 +274,36 @@ export class AgentEvalRunService {
       return { canResume: false, reason: 'RunTopic topicId is required' };
     }
 
+    if (k === 1 && !RESUMABLE_THREAD_STATUSES.has(runTopic.status ?? '')) {
+      log('canResumeTrajectory: rejected — runTopic.status=%s', runTopic.status);
+      return { canResume: false, reason: 'Only timeout or error trajectories can be resumed' };
+    }
+
     if (params.threadId) {
       const thread = await this.threadModel.findById(params.threadId);
 
       if (!thread || thread.topicId !== runTopic.topicId || thread.type !== 'eval') {
         return { canResume: false, reason: 'Thread does not belong to the target eval trajectory' };
       }
+
+      const targetThread = runTopic.evalResult?.threads?.find(
+        (item) => item.threadId === params.threadId,
+      );
+
+      if (!targetThread || !RESUMABLE_THREAD_STATUSES.has(targetThread.status ?? '')) {
+        return { canResume: false, reason: 'Only timeout or error trajectories can be resumed' };
+      }
+    }
+
+    // Reject if the previous run already exhausted maxSteps
+    const maxSteps = run.config?.maxSteps;
+    const prevSteps = runTopic.evalResult?.steps ?? 0;
+    if (maxSteps && prevSteps >= maxSteps) {
+      log('canResumeTrajectory: rejected — prevSteps=%d >= maxSteps=%d', prevSteps, maxSteps);
+      return {
+        canResume: false,
+        reason: `Cannot resume: already reached maxSteps (${prevSteps}/${maxSteps})`,
+      };
     }
 
     return { canResume: true as const };
@@ -295,18 +318,27 @@ export class AgentEvalRunService {
     if (!run) return [];
 
     const allTopics = await this.runTopicModel.findByRunId(runId);
-    const candidates = allTopics.filter((t) => t.status === 'error' || t.status === 'timeout');
+    const k = run.config?.k ?? 1;
+    const candidates = allTopics
+      .map((topic) => this.getResumableCaseTarget(topic, k))
+      .filter((topic): topic is ResumableCaseTarget => !!topic);
 
     const results = await Promise.all(
-      candidates.map(async (t) => {
-        const check = await this.canResumeTrajectory({ runId, testCaseId: t.testCaseId });
+      candidates.map(async (candidate) => {
+        const check = await this.canResumeTrajectory({
+          runId,
+          testCaseId: candidate.testCaseId,
+          threadId: candidate.threadId,
+        });
         return {
+          caseStatus: candidate.caseStatus,
           canResume: check.canResume,
-          input: (t.testCase as any)?.content?.input ?? '',
+          input: candidate.input,
           reason: 'reason' in check ? check.reason : undefined,
-          sortOrder: (t.testCase as any)?.sortOrder ?? null,
-          status: t.status,
-          testCaseId: t.testCaseId,
+          resumeStatus: candidate.resumeStatus,
+          sortOrder: candidate.sortOrder,
+          testCaseId: candidate.testCaseId,
+          threadId: candidate.threadId,
         };
       }),
     );
@@ -370,6 +402,46 @@ export class AgentEvalRunService {
     };
     log('resumeTrajectory: done %O', result);
     return result;
+  }
+
+  private getResumableCaseTarget(
+    runTopic: {
+      evalResult?: EvalRunTopicResult | null;
+      status?: string | null;
+      testCase?: { content?: { input?: string } | null; sortOrder?: number | null } | null;
+      testCaseId: string;
+    },
+    k: number,
+  ): ResumableCaseTarget | undefined {
+    if (k === 1) {
+      if (!RESUMABLE_THREAD_STATUSES.has(runTopic.status ?? '')) return undefined;
+
+      return {
+        caseStatus: runTopic.status,
+        input: runTopic.testCase?.content?.input ?? '',
+        resumeStatus: runTopic.status as 'error' | 'timeout',
+        sortOrder: runTopic.testCase?.sortOrder ?? null,
+        testCaseId: runTopic.testCaseId,
+      };
+    }
+
+    const resumableThread = this.getResumableThread(runTopic.evalResult?.threads);
+    if (!resumableThread?.status) return undefined;
+
+    return {
+      caseStatus: runTopic.status,
+      input: runTopic.testCase?.content?.input ?? '',
+      resumeStatus: resumableThread.status,
+      sortOrder: runTopic.testCase?.sortOrder ?? null,
+      testCaseId: runTopic.testCaseId,
+      threadId: resumableThread.threadId,
+    };
+  }
+
+  private getResumableThread(threads?: EvalThreadResult[]) {
+    return threads?.find((thread): thread is ResumableThreadResult =>
+      RESUMABLE_THREAD_STATUSES.has(thread.status ?? ''),
+    );
   }
 
   /**

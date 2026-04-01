@@ -111,8 +111,11 @@ export class RunActionImpl {
     }
   };
 
-  batchResumeRunCases = async (runId: string, testCaseIds: string[]): Promise<void> => {
-    await agentEvalService.batchResumeRunCases(runId, testCaseIds);
+  batchResumeRunCases = async (
+    runId: string,
+    targets: Array<{ testCaseId: string; threadId?: string }>,
+  ): Promise<void> => {
+    await agentEvalService.batchResumeRunCases(runId, targets);
     await Promise.all([
       this.#get().refreshRunDetail(runId),
       mutate([FETCH_RUN_RESULTS_KEY, runId]),
@@ -124,11 +127,7 @@ export class RunActionImpl {
     await this.#get().refreshRunDetail(runId);
   };
 
-  resumeRunCase = async (
-    runId: string,
-    testCaseId: string,
-    threadId?: string,
-  ): Promise<void> => {
+  resumeRunCase = async (runId: string, testCaseId: string, threadId?: string): Promise<void> => {
     await agentEvalService.resumeRunCase(runId, testCaseId, threadId);
     await this.#get().refreshRunDetail(runId);
   };

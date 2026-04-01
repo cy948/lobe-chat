@@ -328,6 +328,9 @@ export class AgentEvalRunService {
       }
     }
 
+    // pass@1 resumes track steps on the runTopic; pass@k uses per-thread metadata above.
+    if (k > 1) return { canResume: true as const };
+
     // Reject if the previous run already exhausted maxSteps
     const maxSteps = run.config?.maxSteps;
     const prevSteps = runTopic.evalResult?.steps ?? 0;

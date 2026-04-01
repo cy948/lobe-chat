@@ -128,24 +128,28 @@ const RunDetail = memo(() => {
         <Card
           styles={{ body: { padding: 0 }, header: { padding: '12px 20px' } }}
           extra={
-            showProgress ? (
+            showProgress || canRetry || canBatchResume ? (
               <Flexbox horizontal align="center" gap={8}>
-                <Typography.Text style={{ fontSize: 12, whiteSpace: 'nowrap' }} type="secondary">
-                  {completedCases}/{totalCases} {t('run.detail.progressCases')}
-                </Typography.Text>
-                <Progress
-                  percent={progress}
-                  showInfo={false}
-                  size="small"
-                  status={isActive ? 'active' : undefined}
-                  style={{ margin: 0, width: 120 }}
-                />
-                <Typography.Text style={{ fontSize: 12 }} type="secondary">
-                  {progress}%
-                </Typography.Text>
-              </Flexbox>
-            ) : canRetry || canBatchResume ? (
-              <Flexbox horizontal gap={8}>
+                {showProgress && (
+                  <>
+                    <Typography.Text
+                      style={{ fontSize: 12, whiteSpace: 'nowrap' }}
+                      type="secondary"
+                    >
+                      {completedCases}/{totalCases} {t('run.detail.progressCases')}
+                    </Typography.Text>
+                    <Progress
+                      percent={progress}
+                      showInfo={false}
+                      size="small"
+                      status={isActive ? 'active' : undefined}
+                      style={{ margin: 0, width: 120 }}
+                    />
+                    <Typography.Text style={{ fontSize: 12 }} type="secondary">
+                      {progress}%
+                    </Typography.Text>
+                  </>
+                )}
                 {canBatchResume && (
                   <Button
                     icon={<Play size={14} />}

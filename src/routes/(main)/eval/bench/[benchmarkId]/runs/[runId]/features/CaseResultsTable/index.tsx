@@ -113,7 +113,11 @@ const ThreadDots = memo<{ threads: EvalThreadResult[] }>(({ threads }) => (
     {threads.map((thread) => {
       let color: string = cssVar.colorTextTertiary;
 
-      if (thread.passed === true) {
+      if (thread.status === 'running') {
+        color = cssVar.colorPrimary;
+      } else if (thread.status === 'error') {
+        color = cssVar.colorError;
+      } else if (thread.passed === true) {
         color = cssVar.colorSuccess;
       } else if (thread.passed === false) {
         color = cssVar.colorError;
@@ -129,15 +133,19 @@ const ThreadDots = memo<{ threads: EvalThreadResult[] }>(({ threads }) => (
 
       const label = thread.error
         ? 'error'
-        : thread.passed === true
-          ? 'passed'
-          : thread.passed === false && thread.status !== 'completed'
-            ? 'failed'
-            : thread.status === 'external'
-              ? 'Awaiting for external evaluation'
-              : thread.status === 'completed'
-                ? 'completed'
-                : 'pending';
+        : thread.status === 'error'
+          ? 'error'
+          : thread.status === 'running'
+            ? 'running'
+            : thread.passed === true
+              ? 'passed'
+              : thread.passed === false && thread.status !== 'completed'
+                ? 'failed'
+                : thread.status === 'external'
+                  ? 'Awaiting for external evaluation'
+                  : thread.status === 'completed'
+                    ? 'completed'
+                    : 'pending';
 
       return (
         <Tooltip key={thread.threadId} title={label}>

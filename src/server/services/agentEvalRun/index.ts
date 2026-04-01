@@ -54,6 +54,25 @@ interface ResumableThreadResult extends EvalThreadResult {
   status: 'error' | 'timeout';
 }
 
+const getThreadResultStatus = (
+  evalResult: Record<string, unknown>,
+): EvalThreadResult['status'] | undefined => {
+  const { status } = evalResult;
+
+  if (status === 'completed' || status === 'error' || status === 'external' || status === 'timeout')
+    return status;
+
+  if (evalResult.passed === true) return 'passed';
+  if (evalResult.passed === false) return 'failed';
+
+  return undefined;
+};
+
+const resetResumedThreadResult = (thread: EvalThreadResult): EvalThreadResult => ({
+  threadId: thread.threadId,
+  status: thread.status === 'external' ? 'external' : 'running',
+});
+
 export class AgentEvalRunService {
   private readonly db: LobeChatDatabase;
   private readonly userId: string;
@@ -607,17 +626,26 @@ export class AgentEvalRunService {
       throw new Error(`RunTopic not found for run=${runId} testCase=${testCaseId}`);
     }
 
-    // Capture accumulated telemetry from previous runs before clearing evalResult
-    const prevSteps = runTopic.evalResult?.steps ?? 0;
-    const prevCost = runTopic.evalResult?.cost ?? 0;
-    const prevLlmCalls = runTopic.evalResult?.llmCalls ?? 0;
-    const prevToolCalls = runTopic.evalResult?.toolCalls ?? 0;
-    const prevTokens = runTopic.evalResult?.tokens ?? 0;
+    const currentThread = await this.threadModel.findById(threadId);
+    const currentThreadMeta = (currentThread?.metadata ?? {}) as Record<string, unknown>;
+    const prevThreads = runTopic.evalResult?.threads ?? [];
+    const nextThreads = prevThreads.some((thread) => thread.threadId === threadId)
+      ? prevThreads.map((thread) =>
+          thread.threadId === threadId ? resetResumedThreadResult(thread) : thread,
+        )
+      : [...prevThreads, { status: 'running', threadId }];
+
+    // Capture accumulated telemetry from the target thread only
+    const prevSteps = (currentThreadMeta.steps as number | undefined) ?? 0;
+    const prevCost = (currentThreadMeta.cost as number | undefined) ?? 0;
+    const prevLlmCalls = (currentThreadMeta.llmCalls as number | undefined) ?? 0;
+    const prevToolCalls = (currentThreadMeta.toolCalls as number | undefined) ?? 0;
+    const prevTokens = (currentThreadMeta.tokens as number | undefined) ?? 0;
     const now = new Date();
 
     await this.runTopicModel.updateByRunAndTopic(runId, topicId, {
       createdAt: now,
-      evalResult: null,
+      evalResult: { threads: nextThreads },
       passed: null,
       score: null,
       status: 'running',
@@ -1135,6 +1163,7 @@ export class AgentEvalRunService {
           error: errorMessage,
           passed: false,
           score: 0,
+          status: 'error',
           testCaseId,
         },
       } as any);
@@ -1182,6 +1211,7 @@ export class AgentEvalRunService {
       metadata: {
         ...evalResult,
         completedAt: new Date().toISOString(),
+        status: getThreadResultStatus(evalResult),
         testCaseId,
       },
     } as any);

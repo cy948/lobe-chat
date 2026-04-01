@@ -531,10 +531,16 @@ describe('AgentEvalRunService', () => {
       await threadModel.update(thread!.id, {
         metadata: {
           completedAt: new Date('2026-03-30T00:00:00.000Z').toISOString(),
+          cost: 1.2,
+          llmCalls: 3,
           operationId: 'op-old-target',
           passed: false,
           score: 0,
+          status: 'timeout',
+          steps: 7,
           testCaseId: testCase.id,
+          tokens: 123,
+          toolCalls: 2,
         },
       } as any);
       await threadModel.update(otherThread!.id, {
@@ -565,6 +571,7 @@ describe('AgentEvalRunService', () => {
       expect(mockExecAgent).toHaveBeenCalledWith(
         expect.objectContaining({
           appContext: { threadId: thread!.id, topicId: topic.id },
+          initialStepCount: 7,
           parentMessageId: 'parent-message-id',
           prompt: '',
           resume: true,
@@ -583,6 +590,18 @@ describe('AgentEvalRunService', () => {
         passed: true,
         score: 1,
         testCaseId: testCase.id,
+      });
+
+      const refreshedRunTopic = await new AgentEvalRunTopicModel(
+        serverDB,
+        userId,
+      ).findByRunAndTestCase(run.id, testCase.id);
+      expect(refreshedRunTopic?.status).toBe('running');
+      expect(refreshedRunTopic?.evalResult).toEqual({
+        threads: [
+          { status: 'running', threadId: thread!.id },
+          { passed: true, status: 'passed', threadId: otherThread!.id },
+        ],
       });
     });
   });

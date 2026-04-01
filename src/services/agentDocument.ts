@@ -1,4 +1,5 @@
-import type { DocumentLoadFormat, DocumentLoadRule } from '@/database/models/agentDocuments';
+import type { DocumentLoadFormat, DocumentLoadRule } from '@lobechat/agent-templates';
+
 import { lambdaClient } from '@/libs/trpc/client';
 
 class AgentDocumentService {
@@ -12,6 +13,22 @@ class AgentDocumentService {
 
   initializeFromTemplate = async (params: { agentId: string; templateSet: string }) => {
     return lambdaClient.agentDocument.initializeFromTemplate.mutate(params);
+  };
+
+  listDocuments = async (params: { agentId: string }) => {
+    return lambdaClient.agentDocument.listDocuments.query(params);
+  };
+
+  readDocumentByFilename = async (params: { agentId: string; filename: string }) => {
+    return lambdaClient.agentDocument.readDocumentByFilename.query(params);
+  };
+
+  upsertDocumentByFilename = async (params: {
+    agentId: string;
+    content: string;
+    filename: string;
+  }) => {
+    return lambdaClient.agentDocument.upsertDocumentByFilename.mutate(params);
   };
 
   createDocument = async (params: { agentId: string; content: string; title: string }) => {

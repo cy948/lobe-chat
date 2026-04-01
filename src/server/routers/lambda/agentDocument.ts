@@ -1,11 +1,11 @@
-import { z } from 'zod';
-
 import {
-  AgentDocumentModel,
+  DOCUMENT_TEMPLATES,
   DocumentLoadFormat,
   DocumentLoadRule,
-} from '@/database/models/agentDocuments';
-import { DOCUMENT_TEMPLATES } from '@/database/models/agentDocuments/templates';
+} from '@lobechat/agent-templates';
+import { z } from 'zod';
+
+import { AgentDocumentModel } from '@/database/models/agentDocuments';
 import { authedProcedure, router } from '@/libs/trpc/lambda';
 import { serverDatabase } from '@/libs/trpc/lambda/middleware';
 import { AgentDocumentsService } from '@/server/services/agentDocuments';
@@ -182,6 +182,48 @@ export const agentDocumentRouter = router({
     .input(z.object({ agentId: z.string() }))
     .query(async ({ ctx, input }) => {
       return ctx.agentDocumentService.hasDocuments(input.agentId);
+    }),
+
+  /**
+   * Tool-oriented: list documents for an agent
+   */
+  listDocuments: agentDocumentProcedure
+    .input(z.object({ agentId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      return ctx.agentDocumentService.listDocuments(input.agentId);
+    }),
+
+  /**
+   * Tool-oriented: read document by filename
+   */
+  readDocumentByFilename: agentDocumentProcedure
+    .input(
+      z.object({
+        agentId: z.string(),
+        filename: z.string(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      return ctx.agentDocumentService.getDocumentByFilename(input.agentId, input.filename);
+    }),
+
+  /**
+   * Tool-oriented: upsert document by filename
+   */
+  upsertDocumentByFilename: agentDocumentProcedure
+    .input(
+      z.object({
+        agentId: z.string(),
+        content: z.string(),
+        filename: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      return ctx.agentDocumentService.upsertDocumentByFilename({
+        agentId: input.agentId,
+        content: input.content,
+        filename: input.filename,
+      });
     }),
 
   /**

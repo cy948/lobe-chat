@@ -365,15 +365,29 @@ describe('AiAgentService.execAgent - device auto-activation', () => {
 
       const createOpArgs = mockCreateOperation.mock.calls[0][0];
       expect(createOpArgs.activeDeviceId).toBe('device-001');
-      expect(topicMock.updateMetadata).toHaveBeenCalledWith('topic-existing', {
-        boundDeviceId: 'device-001',
-      });
+      expect(topicMock.updateMetadata).not.toHaveBeenCalled();
     });
 
-    it('should use topic boundDeviceId when no explicit deviceId is provided', async () => {
+    it('should not reuse topic boundDeviceId when no explicit deviceId is provided', async () => {
       mockDeviceProxy.isConfigured = true;
       mockDeviceProxy.queryDeviceList.mockResolvedValue([onlineDevice, onlineDevice2]);
       topicMock.findById.mockResolvedValue({ metadata: { boundDeviceId: 'device-002' } });
+      const { AgentService } = await import('@/server/services/agent');
+      vi.mocked(AgentService).mockImplementation(
+        () =>
+          ({
+            getAgentConfig: vi.fn().mockResolvedValue({
+              chatConfig: {},
+              files: [],
+              id: 'agent-1',
+              knowledgeBases: [],
+              model: 'gpt-4',
+              plugins: [],
+              provider: 'openai',
+              systemRole: 'You are a helpful assistant',
+            }),
+          }) as any,
+      );
 
       service = new AiAgentService(mockDb, userId);
 
@@ -384,7 +398,7 @@ describe('AiAgentService.execAgent - device auto-activation', () => {
       });
 
       const createOpArgs = mockCreateOperation.mock.calls[0][0];
-      expect(createOpArgs.activeDeviceId).toBe('device-002');
+      expect(createOpArgs.activeDeviceId).toBeUndefined();
     });
 
     it('should keep explicit topic binding when the bound device is offline', async () => {
@@ -444,7 +458,7 @@ describe('AiAgentService.execAgent - device auto-activation', () => {
       expect(createOpArgs.activeDeviceId).toBe('device-001');
     });
 
-    it('should reuse topic metadata bound device when no deviceId is supplied', async () => {
+    it('should not reuse topic metadata bound device when no deviceId is supplied', async () => {
       mockDeviceProxy.isConfigured = true;
       mockDeviceProxy.queryDeviceList.mockResolvedValue([onlineDevice]);
       topicMock.findById.mockResolvedValue({
@@ -459,10 +473,10 @@ describe('AiAgentService.execAgent - device auto-activation', () => {
       });
 
       const createOpArgs = mockCreateOperation.mock.calls[0][0];
-      expect(createOpArgs.activeDeviceId).toBe('device-001');
+      expect(createOpArgs.activeDeviceId).toBeUndefined();
     });
 
-    it('should update topic metadata when a new deviceId is provided for existing topic', async () => {
+    it('should not update topic metadata when a new deviceId is provided for existing topic', async () => {
       mockDeviceProxy.isConfigured = true;
       mockDeviceProxy.queryDeviceList.mockResolvedValue([onlineDevice2]);
       topicMock.findById.mockResolvedValue({
@@ -477,9 +491,7 @@ describe('AiAgentService.execAgent - device auto-activation', () => {
         deviceId: 'device-002',
       });
 
-      expect(topicMock.updateMetadata).toHaveBeenCalledWith('topic-1', {
-        boundDeviceId: 'device-002',
-      });
+      expect(topicMock.updateMetadata).not.toHaveBeenCalled();
       const createOpArgs = mockCreateOperation.mock.calls[0][0];
       expect(createOpArgs.activeDeviceId).toBe('device-002');
     });

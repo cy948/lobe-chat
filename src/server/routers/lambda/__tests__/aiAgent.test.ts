@@ -187,7 +187,7 @@ describe('AI Agent Router Integration Tests', () => {
       );
     });
 
-    it('should update topic boundDeviceId when reusing a topic with deviceId', async () => {
+    it('should keep existing topic boundDeviceId when reusing a topic with deviceId', async () => {
       const caller = aiAgentRouter.createCaller(createTestContext());
 
       const [existingTopic] = await serverDB
@@ -217,7 +217,7 @@ describe('AI Agent Router Integration Tests', () => {
       });
 
       expect(updatedTopic?.metadata).toEqual(
-        expect.objectContaining({ boundDeviceId: 'device-new' }),
+        expect.objectContaining({ boundDeviceId: 'device-old' }),
       );
     });
 

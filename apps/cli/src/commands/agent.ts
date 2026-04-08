@@ -356,11 +356,11 @@ export function registerAgentCommand(program: Command) {
         }
 
         // 2. Connect to stream (WebSocket via Gateway, or fallback to SSE)
-        const { serverUrl, headers } = await getAgentStreamAuthInfo();
-        const agentGatewayUrl = options.sse ? undefined : resolveAgentGatewayUrl();
+        const { serverUrl, headers, token, tokenType } = await getAgentStreamAuthInfo();
+        const agentGatewayUrl =
+          options.sse || tokenType === 'apiKey' ? undefined : resolveAgentGatewayUrl();
 
         if (agentGatewayUrl) {
-          const token = headers['Oidc-Auth'] || headers['X-API-Key'] || '';
           await streamAgentEventsViaWebSocket({
             gatewayUrl: agentGatewayUrl,
             json: options.json,

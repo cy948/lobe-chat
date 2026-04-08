@@ -1,4 +1,5 @@
 import { getValidToken } from '../auth/refresh';
+import { resolveToken } from '../auth/resolveToken';
 import { CLI_API_KEY_ENV } from '../constants/auth';
 import { resolveServerUrl } from '../settings';
 import { log } from '../utils/logger';
@@ -8,6 +9,13 @@ export interface AuthInfo {
   /** Headers required for /webapi/* endpoints (Oidc-Auth for authentication) */
   headers: Record<string, string>;
   serverUrl: string;
+}
+
+export interface AgentStreamAuthInfo {
+  headers: Record<string, string>;
+  serverUrl: string;
+  token: string;
+  tokenType: 'apiKey' | 'jwt' | 'serviceToken';
 }
 
 export async function getAuthInfo(): Promise<AuthInfo> {
@@ -37,38 +45,16 @@ export async function getAuthInfo(): Promise<AuthInfo> {
   };
 }
 
-export async function getAgentStreamAuthInfo(): Promise<Pick<AuthInfo, 'headers' | 'serverUrl'>> {
-  const serverUrl = resolveServerUrl();
+export async function getAgentStreamAuthInfo(): Promise<AgentStreamAuthInfo> {
+  const auth = await resolveToken({});
 
-  const envJwt = process.env.LOBEHUB_JWT;
-  if (envJwt) {
-    return {
-      headers: { 'Oidc-Auth': envJwt },
-      serverUrl,
-    };
-  }
-
-  const envApiKey = process.env[CLI_API_KEY_ENV];
-  if (envApiKey) {
-    return {
-      headers: { 'X-API-Key': envApiKey },
-      serverUrl,
-    };
-  }
-
-  const result = await getValidToken();
-  if (!result) {
-    log.error(`No authentication found. Run 'lh login' first, or set ${CLI_API_KEY_ENV}.`);
-    process.exit(1);
-
-    return {
-      headers: {},
-      serverUrl,
-    };
-  }
+  const headers =
+    auth.tokenType === 'apiKey' ? { 'X-API-Key': auth.token } : { 'Oidc-Auth': auth.token };
 
   return {
-    headers: { 'Oidc-Auth': result.credentials.accessToken },
-    serverUrl,
+    headers,
+    serverUrl: auth.serverUrl,
+    token: auth.token,
+    tokenType: auth.tokenType,
   };
 }

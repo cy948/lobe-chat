@@ -86,6 +86,8 @@ describe('agent command', () => {
     mockGetAgentStreamAuthInfo.mockResolvedValue({
       headers: { 'Oidc-Auth': 'test-token' },
       serverUrl: 'https://example.com',
+      token: 'test-token',
+      tokenType: 'jwt',
     });
     mockResolveAgentGatewayUrl.mockReturnValue(undefined);
     mockReplayAgentEvents.mockReset();
@@ -652,6 +654,72 @@ describe('agent command', () => {
         expect.any(Object),
         expect.objectContaining({ json: true }),
       );
+    });
+
+    it('should use WebSocket gateway when JWT auth is available', async () => {
+      mockStreamAgentEvents.mockClear();
+      mockStreamAgentEventsViaWebSocket.mockClear();
+      mockResolveAgentGatewayUrl.mockReturnValue('https://gateway.example.com');
+      mockTrpcClient.aiAgent.execAgent.mutate.mockResolvedValue({
+        operationId: 'op-ws',
+        success: true,
+      });
+
+      const program = createProgram();
+      await program.parseAsync([
+        'node',
+        'test',
+        'agent',
+        'run',
+        '--agent-id',
+        'a1',
+        '--prompt',
+        'Hi',
+      ]);
+
+      expect(mockStreamAgentEventsViaWebSocket).toHaveBeenCalledWith(
+        expect.objectContaining({
+          gatewayUrl: 'https://gateway.example.com',
+          operationId: 'op-ws',
+          token: 'test-token',
+        }),
+      );
+      expect(mockStreamAgentEvents).not.toHaveBeenCalled();
+    });
+
+    it('should fallback to SSE when using API key auth', async () => {
+      mockStreamAgentEvents.mockClear();
+      mockStreamAgentEventsViaWebSocket.mockClear();
+      mockResolveAgentGatewayUrl.mockReturnValue('https://gateway.example.com');
+      mockGetAgentStreamAuthInfo.mockResolvedValue({
+        headers: { 'X-API-Key': 'sk-test' },
+        serverUrl: 'https://example.com',
+        token: 'sk-test',
+        tokenType: 'apiKey',
+      });
+      mockTrpcClient.aiAgent.execAgent.mutate.mockResolvedValue({
+        operationId: 'op-sse-api-key',
+        success: true,
+      });
+
+      const program = createProgram();
+      await program.parseAsync([
+        'node',
+        'test',
+        'agent',
+        'run',
+        '--agent-id',
+        'a1',
+        '--prompt',
+        'Hi',
+      ]);
+
+      expect(mockStreamAgentEvents).toHaveBeenCalledWith(
+        expect.stringContaining('/api/agent/stream?operationId=op-sse-api-key'),
+        { 'X-API-Key': 'sk-test' },
+        expect.objectContaining({ json: undefined, verbose: undefined }),
+      );
+      expect(mockStreamAgentEventsViaWebSocket).not.toHaveBeenCalled();
     });
   });
 

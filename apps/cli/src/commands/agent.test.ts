@@ -41,6 +41,14 @@ const { mockStreamAgentEvents } = vi.hoisted(() => ({
   mockStreamAgentEvents: vi.fn(),
 }));
 
+const { mockStreamAgentEventsViaWebSocket } = vi.hoisted(() => ({
+  mockStreamAgentEventsViaWebSocket: vi.fn(),
+}));
+
+const { mockReplayAgentEvents } = vi.hoisted(() => ({
+  mockReplayAgentEvents: vi.fn(),
+}));
+
 const { mockGetAgentStreamAuthInfo } = vi.hoisted(() => ({
   mockGetAgentStreamAuthInfo: vi.fn(),
 }));
@@ -49,9 +57,18 @@ const { mockResolveLocalDeviceId } = vi.hoisted(() => ({
   mockResolveLocalDeviceId: vi.fn(),
 }));
 
+const { mockResolveAgentGatewayUrl } = vi.hoisted(() => ({
+  mockResolveAgentGatewayUrl: vi.fn(),
+}));
+
 vi.mock('../api/client', () => ({ getTrpcClient: mockGetTrpcClient }));
 vi.mock('../api/http', () => ({ getAgentStreamAuthInfo: mockGetAgentStreamAuthInfo }));
-vi.mock('../utils/agentStream', () => ({ streamAgentEvents: mockStreamAgentEvents }));
+vi.mock('../settings', () => ({ resolveAgentGatewayUrl: mockResolveAgentGatewayUrl }));
+vi.mock('../utils/agentStream', () => ({
+  replayAgentEvents: mockReplayAgentEvents,
+  streamAgentEvents: mockStreamAgentEvents,
+  streamAgentEventsViaWebSocket: mockStreamAgentEventsViaWebSocket,
+}));
 vi.mock('../utils/device', () => ({ resolveLocalDeviceId: mockResolveLocalDeviceId }));
 vi.mock('../utils/logger', () => ({
   log: { debug: vi.fn(), error: vi.fn(), heartbeat: vi.fn(), info: vi.fn(), warn: vi.fn() },
@@ -70,7 +87,10 @@ describe('agent command', () => {
       headers: { 'Oidc-Auth': 'test-token' },
       serverUrl: 'https://example.com',
     });
+    mockResolveAgentGatewayUrl.mockReturnValue(undefined);
+    mockReplayAgentEvents.mockReset();
     mockStreamAgentEvents.mockResolvedValue(undefined);
+    mockStreamAgentEventsViaWebSocket.mockResolvedValue(undefined);
     mockResolveLocalDeviceId.mockReset();
     for (const method of Object.values(mockTrpcClient.agent)) {
       for (const fn of Object.values(method)) {
@@ -421,7 +441,39 @@ describe('agent command', () => {
       ]);
 
       expect(mockTrpcClient.aiAgent.execAgent.mutate).toHaveBeenCalledWith(
-        expect.objectContaining({ agentId: 'a1', deviceId: 'local-device-1', prompt: 'Hi' }),
+        expect.objectContaining({
+          agentId: 'a1',
+          deviceId: 'local-device-1',
+          prompt: 'Hi',
+          userInterventionConfig: { approvalMode: 'headless' },
+        }),
+      );
+    });
+
+    it('should pass headless userInterventionConfig for agent run', async () => {
+      mockTrpcClient.aiAgent.execAgent.mutate.mockResolvedValue({
+        operationId: 'op-headless',
+        success: true,
+      });
+
+      const program = createProgram();
+      await program.parseAsync([
+        'node',
+        'test',
+        'agent',
+        'run',
+        '--agent-id',
+        'a1',
+        '--prompt',
+        'Hi',
+      ]);
+
+      expect(mockTrpcClient.aiAgent.execAgent.mutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: 'a1',
+          prompt: 'Hi',
+          userInterventionConfig: { approvalMode: 'headless' },
+        }),
       );
     });
 

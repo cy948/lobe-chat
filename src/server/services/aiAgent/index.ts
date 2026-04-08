@@ -425,7 +425,7 @@ export class AiAgentService {
     // Agent-level memory config takes priority; fallback to user-level setting
     const agentMemoryEnabled = agentConfig.chatConfig?.memory?.enabled;
     let globalMemoryEnabled = agentMemoryEnabled ?? false;
-    let effectiveUserInterventionConfig = userInterventionConfig;
+    let defaultUserInterventionConfig: UserInterventionConfig | undefined;
     let userTimezone: string | undefined;
     try {
       const userModel = new UserModel(this.db, this.userId);
@@ -436,7 +436,7 @@ export class AiAgentService {
         | undefined;
 
       globalMemoryEnabled = agentMemoryEnabled ?? memorySettings?.enabled !== false;
-      effectiveUserInterventionConfig ??= toolSettings?.humanIntervention;
+      defaultUserInterventionConfig = toolSettings?.humanIntervention;
 
       const generalSettings = settings?.general as { timezone?: string } | undefined;
       userTimezone = generalSettings?.timezone;
@@ -1075,7 +1075,7 @@ export class AiAgentService {
         },
         operationSkillSet,
         userId: this.userId,
-        userInterventionConfig: effectiveUserInterventionConfig,
+        userInterventionConfig: userInterventionConfig ?? defaultUserInterventionConfig,
         userMemory,
       });
 

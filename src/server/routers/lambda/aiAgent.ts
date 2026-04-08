@@ -1,7 +1,12 @@
 import { type AgentRuntimeContext } from '@lobechat/agent-runtime';
 import { parse } from '@lobechat/conversation-flow';
-import { type TaskCurrentActivity, type TaskStatusResult } from '@lobechat/types';
-import { ThreadStatus, ThreadType } from '@lobechat/types';
+import {
+  type TaskCurrentActivity,
+  type TaskStatusResult,
+  ThreadStatus,
+  ThreadType,
+  UserInterventionConfigSchema,
+} from '@lobechat/types';
 import { TRPCError } from '@trpc/server';
 import debug from 'debug';
 import pMap from 'p-map';
@@ -99,6 +104,8 @@ const ExecAgentSchema = z
     prompt: z.string(),
     /** The agent slug to run (either agentId or slug is required) */
     slug: z.string().optional(),
+    /** Optional user intervention config override */
+    userInterventionConfig: UserInterventionConfigSchema.optional(),
   })
   .refine((data) => data.agentId || data.slug, {
     message: 'Either agentId or slug must be provided',
@@ -528,6 +535,7 @@ export const aiAgentRouter = router({
       autoStart = true,
       deviceId,
       existingMessageIds = [],
+      userInterventionConfig,
     } = input;
 
     log('execAgent: identifier=%s, prompt=%s', agentId || slug, prompt.slice(0, 50));
@@ -541,6 +549,7 @@ export const aiAgentRouter = router({
         existingMessageIds,
         prompt,
         slug,
+        userInterventionConfig,
       });
     } catch (error: any) {
       console.error('execAgent failed: %O', error);

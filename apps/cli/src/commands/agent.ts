@@ -340,6 +340,7 @@ export function registerAgentCommand(program: Command) {
         if (options.slug) input.slug = options.slug;
         if (options.topicId) input.appContext = { topicId: options.topicId };
         if (options.autoStart === false) input.autoStart = false;
+        input.userInterventionConfig = { approvalMode: 'headless' as const };
 
         const result = await client.aiAgent.execAgent.mutate(input as any);
         const r = result as any;

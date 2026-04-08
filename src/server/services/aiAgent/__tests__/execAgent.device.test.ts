@@ -14,10 +14,6 @@ const { mockCreateOperation, mockCreateServerAgentToolsEngine, mockMessageCreate
   }),
 );
 
-const { mockGetUserSettings } = vi.hoisted(() => ({
-  mockGetUserSettings: vi.fn(),
-}));
-
 const { mockDeviceProxy } = vi.hoisted(() => ({
   mockDeviceProxy: {
     isConfigured: false,
@@ -93,12 +89,6 @@ vi.mock('@/database/models/thread', () => ({
   })),
 }));
 
-vi.mock('@/database/models/user', () => ({
-  UserModel: vi.fn().mockImplementation(() => ({
-    getUserSettings: mockGetUserSettings,
-  })),
-}));
-
 vi.mock('@/server/services/agentRuntime', () => ({
   AgentRuntimeService: vi.fn().mockImplementation(() => ({
     createOperation: mockCreateOperation,
@@ -132,11 +122,6 @@ vi.mock('@/server/services/toolExecution/deviceProxy', () => ({
   deviceProxy: mockDeviceProxy,
 }));
 
-vi.mock('@lobechat/builtin-tools', () => ({
-  builtinTools: [],
-  manualModeExcludeToolIds: [],
-}));
-
 vi.mock('model-bank', async (importOriginal) => {
   const actual = await importOriginal<typeof ModelBankModule>();
   return {
@@ -161,7 +146,6 @@ describe('AiAgentService.execAgent - device auto-activation', () => {
     topicMock.create.mockResolvedValue({ id: 'topic-1', metadata: undefined });
     topicMock.findById.mockResolvedValue(undefined);
     topicMock.updateMetadata.mockResolvedValue(undefined);
-    mockGetUserSettings.mockResolvedValue(undefined);
     mockMessageCreate.mockResolvedValue({ id: 'msg-1' });
     mockCreateOperation.mockResolvedValue({
       autoStarted: true,
@@ -511,32 +495,6 @@ describe('AiAgentService.execAgent - device auto-activation', () => {
       expect(topicMock.updateMetadata).not.toHaveBeenCalled();
       const createOpArgs = mockCreateOperation.mock.calls[0][0];
       expect(createOpArgs.activeDeviceId).toBe('device-002');
-    });
-  });
-
-  describe('user approval mode forwarding', () => {
-    it('should forward auto-run tool approval mode into operation state', async () => {
-      mockDeviceProxy.isConfigured = true;
-      mockDeviceProxy.queryDeviceList.mockResolvedValue([onlineDevice]);
-      mockGetUserSettings.mockResolvedValue({
-        tool: {
-          humanIntervention: {
-            approvalMode: 'auto-run',
-          },
-        },
-      });
-
-      await service.execAgent({
-        agentId: 'agent-1',
-        deviceId: 'device-001',
-        prompt: 'Compile the files locally',
-      });
-
-      const createOpArgs = mockCreateOperation.mock.calls[0][0];
-
-      expect(createOpArgs.userInterventionConfig).toEqual({
-        approvalMode: 'auto-run',
-      });
     });
   });
 

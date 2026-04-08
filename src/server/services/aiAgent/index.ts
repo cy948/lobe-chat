@@ -421,17 +421,22 @@ export class AiAgentService {
     const model = agentConfig.model!;
     const provider = agentConfig.provider!;
 
-    // 4. Fetch user settings (memory config + timezone)
+    // 4. Fetch user settings (memory config + timezone + tool approval mode)
     // Agent-level memory config takes priority; fallback to user-level setting
     const agentMemoryEnabled = agentConfig.chatConfig?.memory?.enabled;
     let globalMemoryEnabled = agentMemoryEnabled ?? false;
+    let effectiveUserInterventionConfig = userInterventionConfig;
     let userTimezone: string | undefined;
     try {
       const userModel = new UserModel(this.db, this.userId);
       const settings = await userModel.getUserSettings();
       const memorySettings = settings?.memory as { enabled?: boolean } | undefined;
+      const toolSettings = settings?.tool as
+        | { humanIntervention?: UserInterventionConfig }
+        | undefined;
 
       globalMemoryEnabled = agentMemoryEnabled ?? memorySettings?.enabled !== false;
+      effectiveUserInterventionConfig ??= toolSettings?.humanIntervention;
 
       const generalSettings = settings?.general as { timezone?: string } | undefined;
       userTimezone = generalSettings?.timezone;
@@ -1070,7 +1075,7 @@ export class AiAgentService {
         },
         operationSkillSet,
         userId: this.userId,
-        userInterventionConfig,
+        userInterventionConfig: effectiveUserInterventionConfig,
         userMemory,
       });
 

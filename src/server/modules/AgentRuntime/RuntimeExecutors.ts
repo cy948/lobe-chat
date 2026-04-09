@@ -913,11 +913,17 @@ export const createRuntimeExecutors = (
           // ===== 2. Then accumulate to AgentState =====
           const newState = structuredClone(state);
 
-          newState.messages.push({
+          const assistantStateMessage: Record<string, unknown> = {
             content,
             role: 'assistant',
             tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
-          });
+          };
+
+          if (finalReasoning) {
+            assistantStateMessage.reasoning = finalReasoning;
+          }
+
+          newState.messages.push(assistantStateMessage as any);
 
           if (currentStepUsage) {
             // Use UsageCounter to uniformly accumulate usage and cost

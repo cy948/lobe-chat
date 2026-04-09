@@ -14,6 +14,7 @@ const log = debug('lobe-cost:convertOpenAIUsage');
 const shouldKeepUsageValue = (key: string, value: unknown) => {
   if (value === undefined || value === null) return false;
   if (typeof value !== 'number') return Boolean(value);
+  if (!Number.isFinite(value)) return false;
 
   if (value !== 0) return true;
 

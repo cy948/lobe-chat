@@ -280,6 +280,23 @@ describe('convertUsage', () => {
     expect(result).not.toHaveProperty('outputAudioTokens');
   });
 
+  it('should omit NaN usage fields from completion usage output', () => {
+    const embeddingLikeUsage = {
+      prompt_tokens: 100,
+      total_tokens: 100,
+    } as OpenAI.Completions.CompletionUsage;
+
+    const result = convertOpenAIUsage(embeddingLikeUsage);
+
+    expect(result).toEqual({
+      inputTextTokens: 100,
+      totalInputTokens: 100,
+      totalTokens: 100,
+    });
+    expect(result).not.toHaveProperty('outputTextTokens');
+    expect(result).not.toHaveProperty('totalOutputTokens');
+  });
+
   it('should handle XAI provider correctly where completion_tokens does not include reasoning_tokens', () => {
     // Arrange
     const xaiUsage: OpenAI.Completions.CompletionUsage = {

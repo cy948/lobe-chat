@@ -918,7 +918,7 @@ export const createRuntimeExecutors = (
             reasoning: finalReasoning,
             role: 'assistant',
             tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
-          } as any);
+          });
 
           if (currentStepUsage) {
             // Use UsageCounter to uniformly accumulate usage and cost

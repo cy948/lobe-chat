@@ -8,6 +8,9 @@ import { withUsageCost } from './utils/withUsageCost';
 
 const log = debug('lobe-cost:convertOpenAIUsage');
 
+// Keep the reference implementation's behavior of filtering out zero/falsy values,
+// except for inputCacheMissTokens where 0 is semantically meaningful for fully cached prompts.
+// `!!value` would filter out 0, which is often desired for token counts.
 const shouldKeepUsageValue = (key: string, value: unknown) => {
   if (value === undefined || value === null) return false;
   if (typeof value !== 'number') return Boolean(value);
@@ -122,7 +125,7 @@ export const convertOpenAIResponseUsage = (
     totalTokens: overallTotalTokens,
   } satisfies ModelTokensUsage; // This helps ensure all keys of ModelTokensUsage are considered
 
-  // 4. Filter out zero/falsy values, as done in the reference implementation
+  // 4. Filter out zero/falsy values using the shared retention rules above.
   const finalData: Partial<ModelUsage> = {}; // Use Partial for type safety during construction
   Object.entries(data).forEach(([key, value]) => {
     if (shouldKeepUsageValue(key, value)) {

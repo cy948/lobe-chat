@@ -8,6 +8,15 @@ import { withUsageCost } from './utils/withUsageCost';
 
 const log = debug('lobe-cost:convertOpenAIUsage');
 
+const shouldKeepUsageValue = (key: string, value: unknown) => {
+  if (value === undefined || value === null) return false;
+  if (typeof value !== 'number') return Boolean(value);
+
+  if (value !== 0) return true;
+
+  return key === 'inputCacheMissTokens';
+};
+
 export const convertOpenAIUsage = (
   usage: OpenAI.Completions.CompletionUsage,
   payload?: ChatPayloadForTransformStream,
@@ -21,7 +30,8 @@ export const convertOpenAIUsage = (
     (usage as any).prompt_cache_hit_tokens || usage.prompt_tokens_details?.cached_tokens;
 
   const inputCacheMissTokens =
-    (usage as any).prompt_cache_miss_tokens || totalInputTokens - cachedTokens;
+    (usage as any).prompt_cache_miss_tokens ??
+    (typeof cachedTokens === 'number' ? totalInputTokens - cachedTokens : undefined);
 
   const totalOutputTokens = usage.completion_tokens;
   const outputReasoning = usage.completion_tokens_details?.reasoning_tokens || 0;
@@ -58,7 +68,7 @@ export const convertOpenAIUsage = (
   const finalData = {};
 
   Object.entries(data).forEach(([key, value]) => {
-    if (!!value) {
+    if (shouldKeepUsageValue(key, value)) {
       // @ts-ignore
       finalData[key] = value;
     }
@@ -115,15 +125,7 @@ export const convertOpenAIResponseUsage = (
   // 4. Filter out zero/falsy values, as done in the reference implementation
   const finalData: Partial<ModelUsage> = {}; // Use Partial for type safety during construction
   Object.entries(data).forEach(([key, value]) => {
-    if (
-      value !== undefined &&
-      value !== null &&
-      (typeof value !== 'number' || value !== 0) && // A more explicit check than `!!value` if we want to be very specific about
-      // keeping non-numeric truthy values, but the reference uses `!!value`.
-      // `!!value` will filter out 0, which is often desired for token counts.
-      // Let's stick to the reference's behavior:
-      !!value
-    ) {
+    if (shouldKeepUsageValue(key, value)) {
       // @ts-ignore - We are building an object that will conform to ModelTokensUsage
       // by selectively adding properties.
       finalData[key as keyof ModelUsage] = value as number;

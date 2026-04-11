@@ -32,8 +32,9 @@ export function registerMessageCommand(program: Command) {
 
         const hasFilter = options.topicId || options.agentId;
         const pageSize = options.limit ? Number.parseInt(options.limit, 10) : undefined;
-        const page = options.page ? Number.parseInt(options.page, 10) : undefined;
-        const current = page !== undefined ? Math.max(page - 1, 0) : undefined;
+        const current = options.page
+          ? Math.max(Number.parseInt(options.page, 10) - 1, 0)
+          : undefined;
 
         let items: any[];
 

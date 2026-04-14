@@ -1,5 +1,4 @@
 import { getValidToken } from '../auth/refresh';
-import { resolveToken } from '../auth/resolveToken';
 import { CLI_API_KEY_ENV } from '../constants/auth';
 import { resolveServerUrl } from '../settings';
 import { log } from '../utils/logger';
@@ -16,15 +15,6 @@ export interface AgentStreamAuthInfo {
   serverUrl: string;
   token: string;
   tokenType: 'apiKey' | 'jwt' | 'serviceToken';
-}
-
-function parseJwtSub(token: string): string | undefined {
-  try {
-    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
-    return payload.sub;
-  } catch {
-    return undefined;
-  }
 }
 
 export async function getAuthInfo(): Promise<AuthInfo> {
@@ -55,29 +45,45 @@ export async function getAuthInfo(): Promise<AuthInfo> {
 }
 
 export async function getAgentStreamAuthInfo(): Promise<AgentStreamAuthInfo> {
-  const auth = await resolveToken({});
-  const headers =
-    auth.tokenType === 'apiKey' ? { 'X-API-Key': auth.token } : { 'Oidc-Auth': auth.token };
-  let streamToken = auth.token;
-  let streamTokenType = auth.tokenType;
+  const serverUrl = resolveServerUrl();
 
-  // Keep API key auth for HTTP requests, but prefer a matching stored JWT for WS auth.
-  // This preserves all-stream-over-WS behavior while avoiding API-key-specific gateway issues.
-  if (auth.tokenType === 'apiKey') {
-    const stored = await getValidToken();
-    const accessToken = stored?.credentials.accessToken;
-    const storedUserId = accessToken ? parseJwtSub(accessToken) : undefined;
+  const envJwt = process.env.LOBEHUB_JWT;
+  if (envJwt) {
+    return {
+      headers: { 'Oidc-Auth': envJwt },
+      serverUrl,
+      token: envJwt,
+      tokenType: 'jwt',
+    };
+  }
 
-    if (accessToken && storedUserId === auth.userId) {
-      streamToken = accessToken;
-      streamTokenType = 'jwt';
-    }
+  const envApiKey = process.env[CLI_API_KEY_ENV];
+  if (envApiKey) {
+    return {
+      headers: { 'X-API-Key': envApiKey },
+      serverUrl,
+      token: envApiKey,
+      tokenType: 'apiKey',
+    };
+  }
+
+  const result = await getValidToken();
+  if (!result) {
+    log.error(`No authentication found. Run 'lh login' first, or set ${CLI_API_KEY_ENV}.`);
+    process.exit(1);
+
+    return {
+      headers: {},
+      serverUrl,
+      token: '',
+      tokenType: 'jwt',
+    };
   }
 
   return {
-    headers,
-    serverUrl: auth.serverUrl,
-    token: streamToken,
-    tokenType: streamTokenType,
+    headers: { 'Oidc-Auth': result.credentials.accessToken },
+    serverUrl,
+    token: result.credentials.accessToken,
+    tokenType: 'jwt',
   };
 }

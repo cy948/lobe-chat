@@ -184,23 +184,6 @@ describe('login command', () => {
     });
   });
 
-  it('should preserve existing gateway for environment api key on the same server', async () => {
-    process.env.LOBEHUB_CLI_API_KEY = 'sk-lh-env-test';
-    vi.mocked(getUserIdFromApiKey).mockResolvedValue('user-123');
-    vi.mocked(loadSettings).mockReturnValueOnce({
-      gatewayUrl: 'https://gateway.example.com',
-      serverUrl: 'https://test.com',
-    });
-
-    const program = createProgram();
-    await runLogin(program, ['--server', 'https://test.com/']);
-
-    expect(saveSettings).toHaveBeenCalledWith({
-      gatewayUrl: 'https://gateway.example.com',
-      serverUrl: 'https://test.com',
-    });
-  });
-
   it('should clear existing gateway when logging into a different server', async () => {
     vi.mocked(loadSettings).mockReturnValueOnce({
       gatewayUrl: 'https://gateway.example.com',

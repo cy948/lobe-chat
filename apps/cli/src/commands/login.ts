@@ -71,6 +71,7 @@ export function registerLoginCommand(program: Command) {
           saveSettings(
             shouldPreserveGateway
               ? {
+                  agentGatewayUrl: existingSettings.agentGatewayUrl,
                   gatewayUrl: existingSettings.gatewayUrl,
                   serverUrl,
                 }
@@ -203,6 +204,7 @@ export function registerLoginCommand(program: Command) {
             saveSettings(
               shouldPreserveGateway
                 ? {
+                    agentGatewayUrl: existingSettings.agentGatewayUrl,
                     gatewayUrl: existingSettings.gatewayUrl,
                     serverUrl,
                   }

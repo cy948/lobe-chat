@@ -15,15 +15,22 @@ export async function getUserIdFromApiKey(apiKey: string, serverUrl?: string): P
 
   const response = await fetch(`${normalizedServerUrl}/api/v1/users/me`, {
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      'Accept-Encoding': 'identity',
+      'Authorization': `Bearer ${apiKey}`,
     },
   });
 
+  const rawBody = await response.text();
   let body: CurrentUserResponse | undefined;
-  try {
-    body = (await response.json()) as CurrentUserResponse;
-  } catch {
-    throw new Error(`Failed to parse response from ${normalizedServerUrl}/api/v1/users/me.`);
+
+  if (rawBody) {
+    try {
+      body = JSON.parse(rawBody) as CurrentUserResponse;
+    } catch {
+      throw new Error(
+        `Failed to parse response from ${normalizedServerUrl}/api/v1/users/me: ${rawBody.slice(0, 200)}`,
+      );
+    }
   }
 
   if (!response.ok || body?.success === false) {

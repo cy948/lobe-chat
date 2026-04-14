@@ -27,6 +27,9 @@ const { mockTrpcClient } = vi.hoisted(() => ({
       execAgent: { mutate: vi.fn() },
       getOperationStatus: { query: vi.fn() },
     },
+    config: {
+      getGlobalConfig: { query: vi.fn() },
+    },
     device: {
       listDevices: { query: vi.fn() },
     },
@@ -41,6 +44,10 @@ const { mockStreamAgentEvents } = vi.hoisted(() => ({
   mockStreamAgentEvents: vi.fn(),
 }));
 
+const { mockStreamAgentEventsViaWebSocket } = vi.hoisted(() => ({
+  mockStreamAgentEventsViaWebSocket: vi.fn(),
+}));
+
 const { mockGetAgentStreamAuthInfo } = vi.hoisted(() => ({
   mockGetAgentStreamAuthInfo: vi.fn(),
 }));
@@ -49,9 +56,24 @@ const { mockResolveLocalDeviceId } = vi.hoisted(() => ({
   mockResolveLocalDeviceId: vi.fn(),
 }));
 
+const { mockResolveAgentGatewayUrl } = vi.hoisted(() => ({
+  mockResolveAgentGatewayUrl: vi.fn(),
+}));
+
+const { mockNormalizeUrl } = vi.hoisted(() => ({
+  mockNormalizeUrl: vi.fn((url?: string) => (url ? url.replace(/\/$/, '') : undefined)),
+}));
+
 vi.mock('../api/client', () => ({ getTrpcClient: mockGetTrpcClient }));
 vi.mock('../api/http', () => ({ getAgentStreamAuthInfo: mockGetAgentStreamAuthInfo }));
-vi.mock('../utils/agentStream', () => ({ streamAgentEvents: mockStreamAgentEvents }));
+vi.mock('../settings', () => ({
+  normalizeUrl: mockNormalizeUrl,
+  resolveAgentGatewayUrl: mockResolveAgentGatewayUrl,
+}));
+vi.mock('../utils/agentStream', () => ({
+  streamAgentEvents: mockStreamAgentEvents,
+  streamAgentEventsViaWebSocket: mockStreamAgentEventsViaWebSocket,
+}));
 vi.mock('../utils/device', () => ({ resolveLocalDeviceId: mockResolveLocalDeviceId }));
 vi.mock('../utils/logger', () => ({
   log: { debug: vi.fn(), error: vi.fn(), heartbeat: vi.fn(), info: vi.fn(), warn: vi.fn() },
@@ -68,9 +90,20 @@ describe('agent command', () => {
     mockGetTrpcClient.mockResolvedValue(mockTrpcClient);
     mockGetAgentStreamAuthInfo.mockResolvedValue({
       headers: { 'Oidc-Auth': 'test-token' },
-      serverUrl: 'https://example.com',
+      token: 'test-token',
+      tokenType: 'jwt',
+      serverUrl: 'https://app.lobehub.com',
     });
+    mockTrpcClient.config.getGlobalConfig.query.mockResolvedValue({ serverConfig: {} });
+    mockResolveAgentGatewayUrl.mockReturnValue(undefined);
+    mockNormalizeUrl.mockImplementation((url?: string) =>
+      url ? url.replace(/\/$/, '') : undefined,
+    );
+    mockGetAgentStreamAuthInfo.mockClear();
     mockStreamAgentEvents.mockResolvedValue(undefined);
+    mockStreamAgentEvents.mockClear();
+    mockStreamAgentEventsViaWebSocket.mockResolvedValue(undefined);
+    mockStreamAgentEventsViaWebSocket.mockClear();
     mockResolveLocalDeviceId.mockReset();
     for (const method of Object.values(mockTrpcClient.agent)) {
       for (const fn of Object.values(method)) {
@@ -78,6 +111,11 @@ describe('agent command', () => {
       }
     }
     for (const method of Object.values(mockTrpcClient.aiAgent)) {
+      for (const fn of Object.values(method)) {
+        (fn as ReturnType<typeof vi.fn>).mockReset();
+      }
+    }
+    for (const method of Object.values(mockTrpcClient.config)) {
       for (const fn of Object.values(method)) {
         (fn as ReturnType<typeof vi.fn>).mockReset();
       }
@@ -282,10 +320,11 @@ describe('agent command', () => {
   });
 
   describe('run', () => {
-    it('should exec agent and connect to SSE stream', async () => {
+    it('should exec agent and connect to agent gateway WebSocket by default', async () => {
       mockTrpcClient.aiAgent.execAgent.mutate.mockResolvedValue({
         operationId: 'op-123',
         success: true,
+        token: 'gateway-jwt',
         topicId: 'topic-1',
       });
 
@@ -304,12 +343,199 @@ describe('agent command', () => {
       expect(mockTrpcClient.aiAgent.execAgent.mutate).toHaveBeenCalledWith(
         expect.objectContaining({ agentId: 'a1', prompt: 'Hello' }),
       );
-      expect(mockStreamAgentEvents).toHaveBeenCalledWith(
-        'https://example.com/api/agent/stream?operationId=op-123',
-        expect.objectContaining({ 'Oidc-Auth': 'test-token' }),
-        expect.objectContaining({ json: undefined, verbose: undefined }),
+      expect(mockStreamAgentEventsViaWebSocket).toHaveBeenCalledWith(
+        expect.objectContaining({
+          gatewayUrl: 'https://agent-gateway.lobehub.com',
+          json: undefined,
+          operationId: 'op-123',
+          serverUrl: 'https://app.lobehub.com',
+          token: 'gateway-jwt',
+          tokenType: 'jwt',
+          verbose: undefined,
+        }),
+      );
+      expect(mockStreamAgentEvents).not.toHaveBeenCalled();
+    });
+
+    it('should connect to agent gateway WebSocket when using JWT auth', async () => {
+      mockTrpcClient.aiAgent.execAgent.mutate.mockResolvedValue({
+        operationId: 'op-ws',
+        success: true,
+      });
+      mockGetAgentStreamAuthInfo.mockResolvedValue({
+        headers: { 'Oidc-Auth': 'test-token' },
+        token: 'test-token',
+        tokenType: 'jwt',
+        serverUrl: 'https://app.lobehub.com',
+      });
+
+      const program = createProgram();
+      await program.parseAsync([
+        'node',
+        'test',
+        'agent',
+        'run',
+        '--agent-id',
+        'a1',
+        '--prompt',
+        'Hello',
+      ]);
+
+      expect(mockStreamAgentEventsViaWebSocket).toHaveBeenCalledWith(
+        expect.objectContaining({
+          gatewayUrl: 'https://agent-gateway.lobehub.com',
+          operationId: 'op-ws',
+          serverUrl: 'https://app.lobehub.com',
+          token: 'test-token',
+          tokenType: 'jwt',
+        }),
+      );
+      expect(mockStreamAgentEvents).not.toHaveBeenCalled();
+    });
+
+    it('should prefer execAgent gateway token over API key for WebSocket auth', async () => {
+      mockTrpcClient.aiAgent.execAgent.mutate.mockResolvedValue({
+        operationId: 'op-ws-token',
+        success: true,
+        token: 'gateway-jwt',
+      });
+      mockGetAgentStreamAuthInfo.mockResolvedValue({
+        headers: { 'X-API-Key': 'sk-lh-test' },
+        token: 'sk-lh-test',
+        tokenType: 'apiKey',
+        serverUrl: 'https://app.lobehub.com',
+      });
+
+      const program = createProgram();
+      await program.parseAsync([
+        'node',
+        'test',
+        'agent',
+        'run',
+        '--agent-id',
+        'a1',
+        '--prompt',
+        'Hello',
+      ]);
+
+      expect(mockStreamAgentEventsViaWebSocket).toHaveBeenCalledWith(
+        expect.objectContaining({
+          gatewayUrl: 'https://agent-gateway.lobehub.com',
+          operationId: 'op-ws-token',
+          serverUrl: 'https://app.lobehub.com',
+          token: 'gateway-jwt',
+          tokenType: 'jwt',
+        }),
       );
     });
+
+    it('should connect to agent gateway WebSocket when using API key auth', async () => {
+      mockTrpcClient.aiAgent.execAgent.mutate.mockResolvedValue({
+        operationId: 'op-api-key',
+        success: true,
+      });
+      mockGetAgentStreamAuthInfo.mockResolvedValue({
+        headers: { 'X-API-Key': 'sk-lh-test' },
+        token: 'sk-lh-test',
+        tokenType: 'apiKey',
+        serverUrl: 'https://app.lobehub.com',
+      });
+
+      const program = createProgram();
+      await program.parseAsync([
+        'node',
+        'test',
+        'agent',
+        'run',
+        '--agent-id',
+        'a1',
+        '--prompt',
+        'Hello',
+      ]);
+
+      expect(mockStreamAgentEventsViaWebSocket).toHaveBeenCalledWith(
+        expect.objectContaining({
+          gatewayUrl: 'https://agent-gateway.lobehub.com',
+          operationId: 'op-api-key',
+          serverUrl: 'https://app.lobehub.com',
+          token: 'sk-lh-test',
+          tokenType: 'apiKey',
+        }),
+      );
+      expect(mockStreamAgentEvents).not.toHaveBeenCalled();
+    });
+
+    it('should prefer agent gateway URL from server global config for custom servers', async () => {
+      mockTrpcClient.aiAgent.execAgent.mutate.mockResolvedValue({
+        operationId: 'op-custom-gateway',
+        success: true,
+        token: 'gateway-jwt',
+      });
+      mockGetAgentStreamAuthInfo.mockResolvedValue({
+        headers: { 'X-API-Key': 'sk-lh-test' },
+        token: 'sk-lh-test',
+        tokenType: 'apiKey',
+        serverUrl: 'http://localhost:3010',
+      });
+      mockTrpcClient.config.getGlobalConfig.query.mockResolvedValue({
+        serverConfig: { agentGatewayUrl: 'http://localhost:8788/' },
+      });
+
+      const program = createProgram();
+      await program.parseAsync([
+        'node',
+        'test',
+        'agent',
+        'run',
+        '--agent-id',
+        'a1',
+        '--prompt',
+        'Hello',
+      ]);
+
+      expect(mockStreamAgentEventsViaWebSocket).toHaveBeenCalledWith(
+        expect.objectContaining({
+          gatewayUrl: 'http://localhost:8788',
+          operationId: 'op-custom-gateway',
+          serverUrl: 'http://localhost:3010',
+          token: 'gateway-jwt',
+          tokenType: 'jwt',
+        }),
+      );
+    });
+
+    it('should fail instead of falling back to the official gateway for custom servers', async () => {
+      mockTrpcClient.aiAgent.execAgent.mutate.mockResolvedValue({
+        operationId: 'op-no-gateway',
+        success: true,
+      });
+      mockGetAgentStreamAuthInfo.mockResolvedValue({
+        headers: { 'X-API-Key': 'sk-lh-test' },
+        token: 'sk-lh-test',
+        tokenType: 'apiKey',
+        serverUrl: 'http://localhost:3010',
+      });
+
+      const program = createProgram();
+      await program.parseAsync([
+        'node',
+        'test',
+        'agent',
+        'run',
+        '--agent-id',
+        'a1',
+        '--prompt',
+        'Hello',
+      ]);
+
+      expect(log.error).toHaveBeenCalledWith(
+        expect.stringContaining('No Agent Gateway URL is configured for http://localhost:3010'),
+      );
+      expect(mockStreamAgentEventsViaWebSocket).not.toHaveBeenCalled();
+      expect(mockStreamAgentEvents).not.toHaveBeenCalled();
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
     it('should support --slug option', async () => {
       mockTrpcClient.aiAgent.execAgent.mutate.mockResolvedValue({
         operationId: 'op-456',
@@ -595,9 +821,7 @@ describe('agent command', () => {
         '--json',
       ]);
 
-      expect(mockStreamAgentEvents).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.any(Object),
+      expect(mockStreamAgentEventsViaWebSocket).toHaveBeenCalledWith(
         expect.objectContaining({ json: true }),
       );
     });

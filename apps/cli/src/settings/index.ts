@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { OFFICIAL_AGENT_GATEWAY_URL, OFFICIAL_SERVER_URL } from '../constants/urls';
+import { OFFICIAL_SERVER_URL } from '../constants/urls';
 import { log } from '../utils/logger';
 
 export interface StoredSettings {
@@ -30,7 +30,7 @@ export function resolveAgentGatewayUrl(): string | undefined {
   const envUrl = normalizeUrl(process.env.AGENT_GATEWAY_URL);
   const settingsUrl = normalizeUrl(loadSettings()?.agentGatewayUrl);
 
-  return envUrl || settingsUrl || OFFICIAL_AGENT_GATEWAY_URL;
+  return envUrl || settingsUrl;
 }
 
 export function saveSettings(settings: StoredSettings): void {
@@ -38,7 +38,7 @@ export function saveSettings(settings: StoredSettings): void {
   const gatewayUrl = normalizeUrl(settings.gatewayUrl);
   const serverUrl = normalizeUrl(settings.serverUrl);
   const normalized: StoredSettings = {
-    agentGatewayUrl: agentGatewayUrl === OFFICIAL_AGENT_GATEWAY_URL ? undefined : agentGatewayUrl,
+    agentGatewayUrl,
     gatewayUrl,
     serverUrl: serverUrl === OFFICIAL_SERVER_URL ? undefined : serverUrl,
   };
@@ -46,7 +46,9 @@ export function saveSettings(settings: StoredSettings): void {
   if (!normalized.serverUrl && !normalized.gatewayUrl && !normalized.agentGatewayUrl) {
     try {
       fs.unlinkSync(SETTINGS_FILE);
-    } catch {}
+    } catch {
+      // Ignore missing settings files during cleanup.
+    }
     return;
   }
 
@@ -64,7 +66,7 @@ export function loadSettings(): StoredSettings | null {
     const gatewayUrl = normalizeUrl(parsed.gatewayUrl);
     const serverUrl = normalizeUrl(parsed.serverUrl);
     const normalized: StoredSettings = {
-      agentGatewayUrl: agentGatewayUrl === OFFICIAL_AGENT_GATEWAY_URL ? undefined : agentGatewayUrl,
+      agentGatewayUrl,
       gatewayUrl,
       serverUrl: serverUrl === OFFICIAL_SERVER_URL ? undefined : serverUrl,
     };

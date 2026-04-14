@@ -92,7 +92,9 @@ export interface ToolExecuteData {
 
 // Client → Server
 export interface AuthMessage {
+  serverUrl?: string;
   token: string;
+  tokenType?: 'apiKey' | 'jwt' | 'serviceToken';
   type: 'auth';
 }
 
@@ -200,6 +202,10 @@ export interface AgentStreamClientOptions {
    * Only set this for reconnection scenarios, not for new operations.
    */
   resumeOnConnect?: boolean;
+  /** Server URL used to verify API keys on the gateway side */
+  serverUrl?: string;
   /** Auth token */
   token: string;
+  /** Auth token type used by the gateway side to select verification flow */
+  tokenType?: 'apiKey' | 'jwt' | 'serviceToken';
 }

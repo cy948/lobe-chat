@@ -20,7 +20,9 @@ interface StreamOptions {
 interface WebSocketStreamOptions extends StreamOptions {
   gatewayUrl: string;
   operationId: string;
+  serverUrl?: string;
   token: string;
+  tokenType?: 'apiKey' | 'jwt' | 'serviceToken';
 }
 
 /**
@@ -168,7 +170,7 @@ const HEARTBEAT_INTERVAL = 30_000;
 export async function streamAgentEventsViaWebSocket(
   options: WebSocketStreamOptions,
 ): Promise<void> {
-  const { gatewayUrl, operationId, token, ...streamOpts } = options;
+  const { gatewayUrl, operationId, serverUrl, token, tokenType, ...streamOpts } = options;
   const wsUrl = urlJoin(
     gatewayUrl.replace(/^http/, 'ws'),
     `/ws?operationId=${encodeURIComponent(operationId)}`,
@@ -180,7 +182,6 @@ export async function streamAgentEventsViaWebSocket(
     const ws = new WebSocket(wsUrl);
     const jsonEvents: AgentStreamEvent[] = [];
     const ctx = createRenderContext();
-    let lastEventId = '';
     let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
     let jsonPrinted = false;
 
@@ -192,7 +193,7 @@ export async function streamAgentEventsViaWebSocket(
     };
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ token, type: 'auth' }));
+      ws.send(JSON.stringify({ serverUrl, token, tokenType, type: 'auth' }));
     };
 
     ws.onmessage = (event) => {

@@ -126,7 +126,29 @@ describe('AgentStreamClient', () => {
 
       const ws = getLatestWs();
       expect(ws.sent).toHaveLength(1);
-      expect(JSON.parse(ws.sent[0])).toEqual({ token: 'test-token', type: 'auth' });
+      expect(JSON.parse(ws.sent[0])).toEqual({
+        serverUrl: undefined,
+        token: 'test-token',
+        tokenType: undefined,
+        type: 'auth',
+      });
+    });
+
+    it('should send tokenType and serverUrl when provided', async () => {
+      const client = createClient({
+        serverUrl: 'https://app.test.com',
+        tokenType: 'apiKey',
+      });
+      client.connect();
+      await vi.advanceTimersByTimeAsync(1);
+
+      const ws = getLatestWs();
+      expect(JSON.parse(ws.sent[0])).toEqual({
+        serverUrl: 'https://app.test.com',
+        token: 'test-token',
+        tokenType: 'apiKey',
+        type: 'auth',
+      });
     });
 
     it('should transition through connection states', async () => {

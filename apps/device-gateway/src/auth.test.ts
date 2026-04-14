@@ -1,6 +1,50 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { resolveSocketAuth } from './auth';
+import { resolveSocketAuth, verifyApiKeyToken } from './auth';
+
+describe('verifyApiKeyToken', () => {
+  it('requests plain JSON and parses the user id', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          data: {
+            id: 'user-123',
+          },
+          success: true,
+        }),
+      ),
+    } as any);
+
+    await expect(verifyApiKeyToken('http://localhost:3010', 'sk-lh-test')).resolves.toEqual({
+      userId: 'user-123',
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith('http://localhost:3010/api/v1/users/me', {
+      headers: {
+        'Accept-Encoding': 'identity',
+        'Authorization': 'Bearer sk-lh-test',
+      },
+    });
+
+    fetchSpy.mockRestore();
+  });
+
+  it('includes the raw body when JSON parsing fails', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue('<html>bad gateway</html>'),
+    } as any);
+
+    await expect(verifyApiKeyToken('http://localhost:3010', 'sk-lh-test')).rejects.toThrow(
+      'Failed to parse response from http://localhost:3010/api/v1/users/me: <html>bad gateway</html>',
+    );
+
+    fetchSpy.mockRestore();
+  });
+});
 
 describe('resolveSocketAuth', () => {
   it('rejects missing token', async () => {

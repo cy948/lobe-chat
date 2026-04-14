@@ -280,7 +280,7 @@ describe('streamAgentEventsViaWebSocket', () => {
 
     const ws = capturedWs!;
     expect(ws.sent.map((s) => JSON.parse(s))).toEqual([
-      { token: 'test-token', type: 'auth' },
+      { serverUrl: undefined, token: 'test-token', tokenType: undefined, type: 'auth' },
       { lastEventId: '', type: 'resume' },
     ]);
 
@@ -368,6 +368,28 @@ describe('streamAgentEventsViaWebSocket', () => {
 
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('"agent_runtime_init"'));
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('"agent_runtime_end"'));
+  });
+
+  it('should include tokenType and serverUrl in auth payload when provided', async () => {
+    const promise = streamAgentEventsViaWebSocket({
+      gatewayUrl: 'https://gw.test.com',
+      operationId: 'op-1',
+      serverUrl: 'https://app.test.com',
+      token: 'sk-lh-test',
+      tokenType: 'apiKey',
+    });
+
+    await flush();
+
+    expect(capturedWs!.sent.map((s) => JSON.parse(s))[0]).toEqual({
+      serverUrl: 'https://app.test.com',
+      token: 'sk-lh-test',
+      tokenType: 'apiKey',
+      type: 'auth',
+    });
+
+    capturedWs!.simulateMessage({ id: '1', type: 'session_complete' });
+    await promise;
   });
 
   it('should reject on auth failure', async () => {

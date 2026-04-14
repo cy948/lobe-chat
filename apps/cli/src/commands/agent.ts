@@ -5,7 +5,8 @@ import pc from 'picocolors';
 
 import { getTrpcClient } from '../api/client';
 import { getAgentStreamAuthInfo } from '../api/http';
-import { resolveAgentGatewayUrl } from '../settings';
+import { OFFICIAL_AGENT_GATEWAY_URL, OFFICIAL_SERVER_URL } from '../constants/urls';
+import { normalizeUrl, resolveAgentGatewayUrl } from '../settings';
 import {
   replayAgentEvents,
   streamAgentEvents,
@@ -37,6 +38,27 @@ async function resolveAgentId(
   log.error('Either <agentId> or --slug is required.');
   process.exit(1);
   return ''; // unreachable
+}
+
+async function resolveRunAgentGatewayUrl(
+  client: any,
+  serverUrl: string,
+): Promise<string | undefined> {
+  const configuredGatewayUrl = resolveAgentGatewayUrl();
+  if (configuredGatewayUrl) return configuredGatewayUrl;
+
+  try {
+    const configResult = await client.config.getGlobalConfig.query();
+    const serverGatewayUrl = normalizeUrl(configResult?.serverConfig?.agentGatewayUrl);
+
+    if (serverGatewayUrl) return serverGatewayUrl;
+  } catch (error) {
+    log.debug(
+      `Failed to resolve agent gateway from server config: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  return normalizeUrl(serverUrl) === OFFICIAL_SERVER_URL ? OFFICIAL_AGENT_GATEWAY_URL : undefined;
 }
 
 export function registerAgentCommand(program: Command) {
@@ -355,19 +377,32 @@ export function registerAgentCommand(program: Command) {
         }
 
         // 2. Connect to stream (WebSocket via Gateway, or fallback to SSE)
-        const { serverUrl, headers } = await getAgentStreamAuthInfo();
-        const agentGatewayUrl = options.sse ? undefined : resolveAgentGatewayUrl();
+        const { headers, serverUrl, token, tokenType } = await getAgentStreamAuthInfo();
+        const agentGatewayUrl = options.sse
+          ? undefined
+          : await resolveRunAgentGatewayUrl(client, serverUrl);
+        const streamToken = r.token || token;
+        const streamTokenType = r.token ? 'jwt' : tokenType;
 
         if (agentGatewayUrl) {
-          const token = headers['Oidc-Auth'] || headers['X-API-Key'] || '';
           await streamAgentEventsViaWebSocket({
             gatewayUrl: agentGatewayUrl,
             json: options.json,
             operationId,
-            token,
+            serverUrl,
+            token: streamToken,
+            tokenType: streamTokenType,
             verbose: options.verbose,
           });
         } else {
+          if (!options.sse) {
+            log.error(
+              `No Agent Gateway URL is configured for ${serverUrl}. Configure agentGatewayUrl in CLI settings or set AGENT_GATEWAY_URL on the server.`,
+            );
+            process.exit(1);
+            return;
+          }
+
           const streamUrl = `${serverUrl}/api/agent/stream?operationId=${encodeURIComponent(operationId)}`;
           await streamAgentEvents(streamUrl, headers, {
             json: options.json,

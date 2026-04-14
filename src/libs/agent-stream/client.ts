@@ -82,13 +82,17 @@ export class AgentStreamClient extends TypedEmitter {
   private readonly operationId: string;
   private readonly autoReconnect: boolean;
   private readonly resumeOnConnect: boolean;
+  private serverUrl?: string;
   private token: string;
+  private tokenType?: 'apiKey' | 'jwt' | 'serviceToken';
 
   constructor(options: AgentStreamClientOptions) {
     super();
     this.gatewayUrl = options.gatewayUrl;
     this.operationId = options.operationId;
+    this.serverUrl = options.serverUrl;
     this.token = options.token;
+    this.tokenType = options.tokenType;
     this.autoReconnect = options.autoReconnect ?? true;
     this.resumeOnConnect = options.resumeOnConnect ?? false;
   }
@@ -153,6 +157,16 @@ export class AgentStreamClient extends TypedEmitter {
     this.token = token;
   }
 
+  updateAuth(options: {
+    serverUrl?: string;
+    token: string;
+    tokenType?: 'apiKey' | 'jwt' | 'serviceToken';
+  }): void {
+    this.serverUrl = options.serverUrl;
+    this.token = options.token;
+    this.tokenType = options.tokenType;
+  }
+
   // ─── Connection Logic ───
 
   private doConnect(): void {
@@ -195,7 +209,12 @@ export class AgentStreamClient extends TypedEmitter {
   private handleOpen = (): void => {
     this.reconnectDelay = INITIAL_RECONNECT_DELAY;
     this.setStatus('authenticating');
-    this.sendMessage({ token: this.token, type: 'auth' });
+    this.sendMessage({
+      serverUrl: this.serverUrl,
+      token: this.token,
+      tokenType: this.tokenType,
+      type: 'auth',
+    });
   };
 
   private handleMessage = (event: MessageEvent): void => {

@@ -10,6 +10,8 @@ import type { IStreamEventManager } from './types';
 
 const log = debug('lobe-server:agent-runtime:dispatch-client-tool');
 
+const TOOL_RESULT_TTL_SECONDS = 120;
+
 /**
  * Default per-tool execution budget when the payload doesn't carry one.
  */
@@ -50,6 +52,29 @@ const buildErrorResult = (
   executionTime,
   success: false,
 });
+
+const persistSyntheticToolResult = async (
+  redis: NonNullable<ReturnType<typeof getAgentRuntimeRedisClient>>,
+  toolCallId: string,
+  result: ToolExecutionResultResponse,
+) => {
+  const payload: ToolResultPayload = {
+    content: result.content,
+    error: result.error,
+    success: result.success,
+    toolCallId,
+  };
+
+  try {
+    await redis
+      .pipeline()
+      .lpush(`tool_result:${toolCallId}`, JSON.stringify(payload))
+      .expire(`tool_result:${toolCallId}`, TOOL_RESULT_TTL_SECONDS)
+      .exec();
+  } catch (error) {
+    console.error('[dispatchClientTool] Failed to persist synthetic tool result:', error);
+  }
+};
 
 /**
  * Dispatch a tool execution to the client via Agent Gateway WebSocket and
@@ -118,14 +143,18 @@ export async function dispatchClientTool(
         chatToolPayload.id,
         executionTime,
       );
-      return buildTimeoutResult(executionTime);
+      const timeoutResult = buildTimeoutResult(executionTime);
+      await persistSyntheticToolResult(redis, chatToolPayload.id, timeoutResult);
+      return timeoutResult;
     }
 
     return projectToExecutionResult(result, executionTime);
   } catch (error) {
     const executionTime = Date.now() - startedAt;
     log('[%s] client tool dispatch failed: %O', operationId, error);
-    return buildErrorResult(executionTime, error);
+    const dispatchFailedResult = buildErrorResult(executionTime, error);
+    await persistSyntheticToolResult(redis, chatToolPayload.id, dispatchFailedResult);
+    return dispatchFailedResult;
   } finally {
     blockingClient.disconnect();
   }

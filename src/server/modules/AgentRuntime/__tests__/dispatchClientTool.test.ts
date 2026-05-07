@@ -8,6 +8,10 @@ import type { IStreamEventManager } from '../types';
 const mockBlpop = vi.fn();
 const mockDisconnect = vi.fn();
 const mockDuplicate = vi.fn();
+const mockPipelineExec = vi.fn().mockResolvedValue([]);
+const mockExpire = vi.fn();
+const mockLpush = vi.fn();
+const mockPipeline = vi.fn();
 let currentRedis: any;
 
 vi.mock('../redis', () => ({
@@ -48,6 +52,15 @@ describe('dispatchClientTool', () => {
     mockBlpop.mockReset();
     mockDisconnect.mockReset();
     mockDuplicate.mockReset();
+    mockPipelineExec.mockReset();
+    mockPipelineExec.mockResolvedValue([]);
+    mockExpire.mockReset();
+    mockLpush.mockReset();
+    mockPipeline.mockReset();
+
+    mockExpire.mockReturnValue({ exec: mockPipelineExec });
+    mockLpush.mockReturnValue({ expire: mockExpire });
+    mockPipeline.mockReturnValue({ lpush: mockLpush });
 
     const blockingClient = {
       blpop: mockBlpop,
@@ -57,11 +70,7 @@ describe('dispatchClientTool', () => {
 
     currentRedis = {
       duplicate: mockDuplicate,
-      pipeline: vi.fn(() => ({
-        exec: vi.fn().mockResolvedValue([]),
-        expire: vi.fn().mockReturnThis(),
-        lpush: vi.fn().mockReturnThis(),
-      })),
+      pipeline: mockPipeline,
     };
   });
 
@@ -125,6 +134,7 @@ describe('dispatchClientTool', () => {
     expect(result.success).toBe(true);
     expect(result.content).toBe('file contents');
     expect(result.error).toBeUndefined();
+    expect(mockPipeline).not.toHaveBeenCalled();
     expect(mockDisconnect).toHaveBeenCalled();
   });
 
@@ -141,6 +151,12 @@ describe('dispatchClientTool', () => {
 
     expect(result.success).toBe(false);
     expect(result.error?.type).toBe('timeout');
+    expect(mockLpush).toHaveBeenCalledWith(
+      'tool_result:call-1',
+      expect.stringContaining('"toolCallId":"call-1"'),
+    );
+    expect(mockExpire).toHaveBeenCalledWith('tool_result:call-1', 120);
+    expect(mockPipelineExec).toHaveBeenCalled();
     expect(mockDisconnect).toHaveBeenCalled();
   });
 
@@ -156,6 +172,58 @@ describe('dispatchClientTool', () => {
     expect(result.success).toBe(false);
     expect(result.error?.type).toBe('dispatch_failed');
     expect(result.error?.message).toBe('gateway down');
+    expect(mockLpush).toHaveBeenCalledWith(
+      'tool_result:call-1',
+      expect.stringContaining('"type":"dispatch_failed"'),
+    );
+    expect(mockExpire).toHaveBeenCalledWith('tool_result:call-1', 120);
     expect(mockDisconnect).toHaveBeenCalled();
+  });
+
+  it('does not persist synthetic result when streamManager.sendToolExecute is missing', async () => {
+    const streamManager = makeStreamManager(undefined);
+
+    const result = await dispatchClientTool(makePayload(), {
+      operationId: 'op-1',
+      streamManager,
+    });
+
+    expect(result.error?.type).toBe('gateway_unsupported');
+    expect(mockPipeline).not.toHaveBeenCalled();
+  });
+
+  it('does not persist synthetic result when Redis is unavailable', async () => {
+    currentRedis = null;
+    const streamManager = makeStreamManager(vi.fn());
+
+    const result = await dispatchClientTool(makePayload(), {
+      operationId: 'op-1',
+      streamManager,
+    });
+
+    expect(result.error?.type).toBe('redis_unavailable');
+    expect(mockPipeline).not.toHaveBeenCalled();
+  });
+
+  it('returns the original failure result when persisting synthetic result fails', async () => {
+    const sendToolExecute = vi.fn().mockRejectedValue(new Error('gateway down'));
+    const streamManager = makeStreamManager(sendToolExecute);
+
+    mockPipelineExec.mockRejectedValueOnce(new Error('redis down'));
+
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await dispatchClientTool(makePayload(), {
+      operationId: 'op-1',
+      streamManager,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.type).toBe('dispatch_failed');
+    expect(result.error?.message).toBe('gateway down');
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    expect(mockDisconnect).toHaveBeenCalled();
+
+    consoleErrorSpy.mockRestore();
   });
 });

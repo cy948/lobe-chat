@@ -14,71 +14,48 @@
 // ============================================================
 
 include "types.dfy"
+include "obs.dfy"
 include "callTool.dfy"
 
 // ============================================================
-// Local projection: runtime.step 的输入/中间值
+// Local projection: runtime.step 的输入
 // ============================================================
 datatype RuntimeStepInput = RuntimeStepInput(state: AgentState, context: RuntimeContext)
 
-datatype RuntimeStepStage =
-  | Prepared
-  | ContextReady
-  | ApprovedToolShortcut
-  | RunnerPlanned
-  | ExecuteFailed
-  | Blocked
-  | Finished
-  | Continued
-  | CaughtError
-
-datatype InstructionKind =
-  | InstrCallLlm
-  | InstrCallTool
-  | InstrCallToolsBatch
-  | InstrFinish
-  | InstrRequestHumanApprove
-  | InstrRequestHumanPrompt
-  | InstrRequestHumanSelect
-  | InstrUnknown
-
-datatype PlannedInstructions = PlannedInstructions(
-  kinds: seq<InstructionKind>,
-  hasFinish: bool
-)
-
 // ============================================================
 // L3 cut points
+//
+// 关键原则:
+//   obs 决定黑盒结果。
+//
+// RuntimeStep 自身仍然保留源码中的顺序控制流；
+// obs 的作用不是直接替代 if/else 判断，而是作为参数传给黑盒函数，
+// 由黑盒函数根据 obs 决定返回什么结果；RuntimeStep 再像源码一样，
+// 只根据这些黑盒返回值继续做 if/else / loop。
 // ============================================================
-
-// Trust Base: createInitialContext
-// 假设: 当调用方未传 context 时，runtime 能根据 state 生成一个合法初始 context
-method CreateInitialContext(state: AgentState) returns (context: RuntimeContext)
+method CreateInitialContext(deps: RuntimeStepDeps, state: AgentState) returns (context: RuntimeContext)
+  ensures context == deps.initialContext
 {
-  assume {:axiom} false;
+  context := deps.initialContext;
 }
 
-// Trust Base: agent.runner(...)
-// 假设: 对给定 context/state 返回一组待执行 instruction 的最小投影
-method RunnerPlan(context: RuntimeContext, state: AgentState) returns (result: FResult<PlannedInstructions>)
+method RunnerPlan(deps: RuntimeStepDeps, context: RuntimeContext, state: AgentState) returns (result: FResult<PlannedInstructions>)
+  ensures result == deps.planResult
 {
-  assume {:axiom} false;
+  result := deps.planResult;
 }
 
-// Trust Base: single instruction execution
-// 假设:
-//   - 已完成 instruction.type 到具体 executor 的分发
-//   - call_tools_batch 的 custom-executor / built-in fallback 已在该边界内处理
-//   - 返回该 instruction 执行后的 newState / nextContext
 method ExecuteInstruction(
+  deps: RuntimeStepDeps,
   kind: InstructionKind,
+  index: int,
   state: AgentState,
   context: RuntimeContext
 ) returns (result: FResult<RuntimeStepResult>)
-  ensures result.Ok? ==> result.value.newState.stepCount == state.stepCount
+  requires 0 <= index < |deps.instructionResults|
 {
   if kind == InstrCallTool {
-    var toolResult, _ := CallTool(CallToolInput(
+    result := CallTool(deps.callTool, CallToolInput(
       state,
       false,
       false,
@@ -97,11 +74,10 @@ method ExecuteInstruction(
         LocalSystemInput(true, true, true, true, true)
       )
     ));
-    result := toolResult;
     return;
   }
 
-  assume {:axiom} false;
+  result := deps.instructionResults[index];
 }
 
 // ============================================================
@@ -140,6 +116,21 @@ function ClearContextWhenBlocked(state: AgentState, nextContext: RuntimeContext)
     nextContext
 }
 
+function IsBlockingStatus(status: AgentStatus): bool
+{
+  status == StatusWaitingForHuman || status == StatusInterrupted
+}
+
+function ShouldContinueExecution(state: AgentState, nextContext: RuntimeContext): bool
+{
+  if state.status == StatusDone then false
+  else if state.status == StatusInterrupted then false
+  else if state.status == StatusError then false
+  else if state.status == StatusWaitingForHuman then false
+  else if state.hasCostLimit && state.totalCostExceeded && state.costLimitPolicy == CostLimitStop then false
+  else nextContext.present
+}
+
 // ============================================================
 // L2: execute all normalized instructions sequentially
 //
@@ -151,11 +142,11 @@ function ClearContextWhenBlocked(state: AgentState, nextContext: RuntimeContext)
 //   - waiting_for_human / interrupted 会 break
 // ============================================================
 method ExecuteInstructions(
+  deps: RuntimeStepDeps,
   plan: PlannedInstructions,
   state: AgentState,
   context: RuntimeContext
 ) returns (result: FResult<RuntimeStepResult>)
-  ensures result.Ok? ==> result.value.newState.stepCount == state.stepCount
 {
   var currentState := state;
   var finalContext := RuntimeContext(false, PhaseNone);
@@ -163,9 +154,13 @@ method ExecuteInstructions(
 
   while i < |plan.kinds|
     invariant 0 <= i <= |plan.kinds|
-    invariant currentState.stepCount == state.stepCount
   {
-    var exec := ExecuteInstruction(plan.kinds[i], currentState, context);
+    if i >= |deps.instructionResults| {
+      result := Err("instruction observation missing");
+      return;
+    }
+
+    var exec := ExecuteInstruction(deps, plan.kinds[i], i, currentState, context);
     var instructionResult: RuntimeStepResult;
     match exec {
       case Err(_) => {
@@ -180,7 +175,7 @@ method ExecuteInstructions(
       finalContext := instructionResult.nextContext;
     }
 
-    if currentState.status == StatusWaitingForHuman || currentState.status == StatusInterrupted {
+    if IsBlockingStatus(currentState.status) {
       break;
     }
 
@@ -190,69 +185,49 @@ method ExecuteInstructions(
   result := Ok(RuntimeStepResult(currentState, finalContext));
 }
 
-function ShouldContinueExecution(state: AgentState, nextContext: RuntimeContext): bool
-{
-  if state.status == StatusDone then false
-  else if state.status == StatusInterrupted then false
-  else if state.status == StatusError then false
-  else if state.status == StatusWaitingForHuman then false
-  else if state.hasCostLimit && state.totalCostExceeded && state.costLimitPolicy == CostLimitStop then false
-  else nextContext.present
-}
-
 // ============================================================
 // L2: runtime.step 骨架
 // ============================================================
-method RuntimeStep(input: RuntimeStepInput)
-  returns (result: FResult<RuntimeStepResult>, ghost stage: RuntimeStepStage)
-  ensures stage.Prepared? ==> input.state.stepCount + 1 > input.state.stepCount
-  ensures stage.ContextReady? ==> result.Ok?
-  ensures stage.ApprovedToolShortcut? ==> result.Ok?
-  ensures stage.RunnerPlanned? ==> result.Ok?
-  ensures stage.ExecuteFailed? ==> result.Err?
-  ensures stage.CaughtError? ==> result.Ok? && result.value.newState.status == StatusError
-  ensures stage.Blocked? ==> result.Ok? && !result.value.nextContext.present
-  ensures stage.Finished? ==> result.Ok? && result.value.newState.stepCount == input.state.stepCount
-  ensures stage.Continued? ==> result.Ok?
+method RuntimeStep(deps: RuntimeStepDeps, input: RuntimeStepInput)
+  returns (result: FResult<RuntimeStepResult>)
 {
   var preparedState := PreparedState(input.state);
-  stage := Prepared;
 
   var runtimeContext: RuntimeContext;
   if input.context.present {
     runtimeContext := input.context;
   } else {
-    runtimeContext := CreateInitialContext(preparedState);
+    runtimeContext := CreateInitialContext(deps, preparedState);
   }
-  stage := ContextReady;
 
   var planResult: FResult<PlannedInstructions>;
   if runtimeContext.phase == PhaseHumanApprovedTool {
-    stage := ApprovedToolShortcut;
     planResult := Ok(PlannedInstructions([InstrCallTool], false));
   } else {
-    planResult := RunnerPlan(runtimeContext, preparedState);
+    planResult := RunnerPlan(deps, runtimeContext, preparedState);
     match planResult {
       case Err(_) => {
-        stage := CaughtError;
         result := Ok(RuntimeStepResult(
-          AgentState(StatusError, input.state.stepCount + 1, preparedState.hasCostLimit, preparedState.totalCostExceeded, preparedState.costLimitPolicy),
+          AgentState(
+            StatusError,
+            input.state.stepCount + 1,
+            preparedState.hasCostLimit,
+            preparedState.totalCostExceeded,
+            preparedState.costLimitPolicy
+          ),
           RuntimeContext(false, PhaseNone)
         ));
         return;
       }
-      case Ok(_) => {
-        stage := RunnerPlanned;
-      }
+      case Ok(_) => {}
     }
   }
 
   var plan := planResult.value;
-  var executed := ExecuteInstructions(plan, preparedState, runtimeContext);
+  var executed := ExecuteInstructions(deps, plan, preparedState, runtimeContext);
   var stepResult: RuntimeStepResult;
   match executed {
     case Err(_) => {
-      stage := ExecuteFailed;
       result := Err("instruction execution failed");
       return;
     }
@@ -262,12 +237,16 @@ method RuntimeStep(input: RuntimeStepInput)
   var finalState := FinalizeStepState(stepResult.newState, preparedState, plan.hasFinish);
   var finalContext := ClearContextWhenBlocked(finalState, stepResult.nextContext);
   result := Ok(RuntimeStepResult(finalState, finalContext));
-
-  if finalState.status == StatusWaitingForHuman || finalState.status == StatusInterrupted {
-    stage := Blocked;
-  } else if plan.hasFinish {
-    stage := Finished;
-  } else {
-    stage := Continued;
-  }
 }
+
+// ============================================================
+// Lemmas
+//
+// 原则:
+//   - Modeling 定义在前
+//   - Lemma 放在文件后部
+//   - 先覆盖单条分支性质，再逐步扩展到更多路径
+// ============================================================
+// TODO: 等 callTool / toolExecution 也迁移为同样的 obs-driven 风格后，
+// 再补真正连接 RuntimeStep 与下层 black-box 的 lemma，
+// 以及顺序推进所需的小步关系 / 归纳不变量。

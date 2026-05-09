@@ -12,6 +12,7 @@
 // ============================================================
 
 include "types.dfy"
+include "obs.dfy"
 include "toolExecution.dfy"
 
 datatype CallToolInput = CallToolInput(
@@ -24,62 +25,56 @@ datatype CallToolInput = CallToolInput(
   builtinInput: BuiltinExecutionInput
 )
 
-datatype CallToolStage =
-  | ClientToolPaused
-  | GatewayDispatched
-  | ServerExecuted
-  | PersistFailed
-
-// Trust Base: dispatchClientTool(...)
-// 假设: gateway 路径返回一次工具执行结果
-method DispatchClientTool() returns (result: FResult<bool>)
+// ============================================================
+// L3 cut points
+//
+// obs 决定黑盒结果。
+// ============================================================
+method DispatchClientTool(deps: CallToolDeps) returns (result: FResult<bool>)
+  ensures result == deps.dispatched
 {
-  assume {:axiom} false;
+  result := deps.dispatched;
 }
 
-// Trust Base: tool message persistence
-// 假设: 持久化成功返回 Ok；失败返回 Err
-method PersistToolMessage(skipCreateToolMessage: bool) returns (result: FResult<bool>)
+method PersistToolMessage(deps: CallToolDeps, skipCreateToolMessage: bool) returns (result: FResult<bool>)
+  ensures result == deps.persisted
 {
-  assume {:axiom} false;
+  result := deps.persisted;
 }
 
-method CallTool(input: CallToolInput)
-  returns (result: FResult<RuntimeStepResult>, ghost stage: CallToolStage)
-  ensures result.Ok? ==> result.value.newState.stepCount == input.state.stepCount
-  ensures stage.ClientToolPaused? ==> result.Ok? && result.value.newState.status == StatusInterrupted
-  ensures stage.ClientToolPaused? ==> !result.value.nextContext.present
-  ensures stage.GatewayDispatched? ==> result.Ok? && result.value.newState.status == input.state.status
-  ensures stage.GatewayDispatched? ==> result.value.nextContext.present && result.value.nextContext.phase == PhaseToolResult
-  ensures stage.ServerExecuted? ==> result.Ok? && result.value.newState.status == input.state.status
-  ensures stage.ServerExecuted? ==> result.value.nextContext.present && result.value.nextContext.phase == PhaseToolResult
-  ensures stage.PersistFailed? ==> result.Err?
+// ============================================================
+// L2: call_tool skeleton
+// ============================================================
+method CallTool(deps: CallToolDeps, input: CallToolInput)
+  returns (result: FResult<RuntimeStepResult>)
 {
   if input.toolSourceClient {
-    stage := ClientToolPaused;
     result := Ok(RuntimeStepResult(
-      AgentState(StatusInterrupted, input.state.stepCount, input.state.hasCostLimit, input.state.totalCostExceeded, input.state.costLimitPolicy),
+      AgentState(
+        StatusInterrupted,
+        input.state.stepCount,
+        input.state.hasCostLimit,
+        input.state.totalCostExceeded,
+        input.state.costLimitPolicy
+      ),
       RuntimeContext(false, PhaseNone)
     ));
     return;
   }
 
   if input.executorClient && input.gatewayAvailable {
-    var dispatched := DispatchClientTool();
+    var dispatched := DispatchClientTool(deps);
     if dispatched.Err? {
-      stage := PersistFailed;
       result := Err("gateway dispatch failed");
       return;
     }
 
-    var persistedGateway := PersistToolMessage(input.skipCreateToolMessage);
+    var persistedGateway := PersistToolMessage(deps, input.skipCreateToolMessage);
     if persistedGateway.Err? {
-      stage := PersistFailed;
       result := Err("tool message persist failed");
       return;
     }
 
-    stage := GatewayDispatched;
     result := Ok(RuntimeStepResult(
       input.state,
       RuntimeContext(true, PhaseToolResult)
@@ -87,23 +82,31 @@ method CallTool(input: CallToolInput)
     return;
   }
 
-  var executed, _ := ExecuteTool(ToolExecutionInput(input.serverToolKind), input.builtinInput);
+  var executed := ExecuteTool(deps.toolExecution, ToolExecutionInput(input.serverToolKind), input.builtinInput);
   if !executed.success {
-    stage := PersistFailed;
     result := Err("server tool execution failed");
     return;
   }
 
-  var persisted := PersistToolMessage(input.skipCreateToolMessage);
+  var persisted := PersistToolMessage(deps, input.skipCreateToolMessage);
   if persisted.Err? {
-    stage := PersistFailed;
     result := Err("tool message persist failed");
     return;
   }
 
-  stage := ServerExecuted;
   result := Ok(RuntimeStepResult(
     input.state,
     RuntimeContext(true, PhaseToolResult)
   ));
 }
+
+// ============================================================
+// Lemmas
+//
+// 原则:
+//   - Modeling 定义在前
+//   - Lemma 放在文件后部
+//   - 先覆盖单条分支性质，再逐步扩展到更多路径
+// ============================================================
+// TODO: 等 dispatchClientTool / persist / toolExecution 的规范进一步收紧后，
+// 再补真正有业务含义的 lemma。

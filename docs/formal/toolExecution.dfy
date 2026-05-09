@@ -11,6 +11,7 @@
 // ============================================================
 
 include "types.dfy"
+include "obs.dfy"
 include "localSystemTool.dfy"
 
 datatype ToolKind =
@@ -19,13 +20,6 @@ datatype ToolKind =
   | ToolOther
 
 datatype ToolExecutionInput = ToolExecutionInput(kind: ToolKind)
-
-datatype ToolExecutionStage =
-  | McpExecuted
-  | BuiltinExecuted
-  | BuiltinArgsRejected
-  | BuiltinRuntimeMissing
-  | ThrownNormalized
 
 datatype BuiltinSource =
   | SourceNone
@@ -44,81 +38,86 @@ datatype BuiltinExecutionInput = BuiltinExecutionInput(
   localSystemInput: LocalSystemInput
 )
 
-// Trust Base: executeMCPTool(...)
-// 假设: MCP 分支要么正常返回 success 标记，要么抛出异常
-method ExecuteMcpTool() returns (result: FResult<ToolExecutionOutcome>)
+// ============================================================
+// L3 cut points
+//
+// obs 决定黑盒结果。
+// ============================================================
+method ExecuteMcpTool(deps: ToolExecutionDeps) returns (result: FResult<ToolExecutionOutcome>)
+  ensures result == deps.mcpResult
 {
-  assume {:axiom} false;
+  result := deps.mcpResult;
 }
 
-// Trust Base: special routes
-// 假设: lobehubSkill / klavis 特殊路由要么成功，要么失败
-method ExecuteBuiltinSpecialRoute(source: BuiltinSource) returns (result: ToolExecutionOutcome)
+method ExecuteBuiltinSpecialRoute(deps: ToolExecutionDeps, source: BuiltinSource) returns (result: ToolExecutionOutcome)
+  ensures result == deps.builtinSpecialResult
 {
-  assume {:axiom} false;
+  result := deps.builtinSpecialResult;
 }
 
-// Trust Base: runtime[apiName](args, context)
-// 假设: runtime 方法调用成功返回 success=true；异常则由 builtin executor catch 成 success=false
-method ExecuteBuiltinRuntimeCall(runtimeCallSucceeds: bool) returns (result: ToolExecutionOutcome)
+method ExecuteBuiltinRuntimeCall(deps: ToolExecutionDeps, runtimeCallSucceeds: bool) returns (result: ToolExecutionOutcome)
+  ensures result == deps.builtinRuntimeCallResult
 {
-  if runtimeCallSucceeds {
-    result := ToolExecutionOutcome(true);
-  } else {
-    result := ToolExecutionOutcome(false);
-  }
+  result := deps.builtinRuntimeCallResult;
 }
 
-method ExecuteBuiltinTool(input: BuiltinExecutionInput)
-  returns (result: ToolExecutionOutcome, ghost stage: ToolExecutionStage)
+method ExecuteBuiltinTool(deps: ToolExecutionDeps, input: BuiltinExecutionInput)
+  returns (result: ToolExecutionOutcome)
 {
   if input.hasArguments && !input.argumentsParseOk {
-    stage := BuiltinArgsRejected;
     result := ToolExecutionOutcome(false);
     return;
   }
 
   if input.source == SourceLobehubSkill || input.source == SourceKlavis {
-    stage := BuiltinExecuted;
-    result := ExecuteBuiltinSpecialRoute(input.source);
+    result := ExecuteBuiltinSpecialRoute(deps, input.source);
     return;
   }
 
   if !input.hasServerRuntime || !input.hasApiMethod {
-    stage := BuiltinRuntimeMissing;
     result := ToolExecutionOutcome(false);
     return;
   }
 
   if input.isLocalSystem {
     var localResult, _ := ExecuteLocalSystemTool(input.localSystemInput);
-    stage := BuiltinExecuted;
     result := localResult;
     return;
   }
 
-  stage := BuiltinExecuted;
-  result := ExecuteBuiltinRuntimeCall(input.runtimeCallSucceeds);
+  result := ExecuteBuiltinRuntimeCall(deps, input.runtimeCallSucceeds);
 }
 
-method ExecuteTool(input: ToolExecutionInput, builtinInput: BuiltinExecutionInput)
-  returns (result: ToolExecutionOutcome, ghost stage: ToolExecutionStage)
+// ============================================================
+// L2: executeTool skeleton
+// ============================================================
+method ExecuteTool(deps: ToolExecutionDeps, input: ToolExecutionInput, builtinInput: BuiltinExecutionInput)
+  returns (result: ToolExecutionOutcome)
 {
   if input.kind == ToolMcp {
-    var mcpResult := ExecuteMcpTool();
+    var mcpResult := ExecuteMcpTool(deps);
     match mcpResult {
       case Ok(outcome) => {
-        stage := McpExecuted;
         result := outcome;
         return;
       }
       case Err(_) => {
-        stage := ThrownNormalized;
         result := ToolExecutionOutcome(false);
         return;
       }
     }
   }
 
-  result, stage := ExecuteBuiltinTool(builtinInput);
+  result := ExecuteBuiltinTool(deps, builtinInput);
 }
+
+// ============================================================
+// Lemmas
+//
+// 原则:
+//   - Modeling 定义在前
+//   - Lemma 放在文件后部
+//   - 先覆盖单条分支性质，再逐步扩展到更多路径
+// ============================================================
+// TODO: 等 localSystem / dispatch / builtin-runtime 规范进一步收紧后，
+// 再补真正有业务含义的 lemma。

@@ -10,170 +10,139 @@
 // ============================================================
 
 include "types.dfy"
+include "obs.dfy"
 include "runtimeStep.dfy"
 
 // ============================================================
-// ExecuteStep input projection
+// L3 Cut Point: Redis step lock
 //
-// TS: AgentExecutionParams
-// 这是 ExecuteStep 私有的入参投影，因此放在当前文件内。
-//
-// V1 只保留当前控制流骨架需要的字段:
-//   operationId → lock/state lookup
-//   stepIndex   → lock key / stale retry guard
-// 其余字段（context / humanInput / approvedToolCall / ...）
-// 先留待后续展开 human-intervention / runtime.step 语义时补入。
+// obs 决定黑盒结果:
+//   - TryClaimStep 直接返回 obs.claimed
 // ============================================================
-datatype ExecuteStepParams = ExecuteStepParams(operationId: string, stepIndex: int)
-
-// ============================================================
-// Ghost datatype: 追踪 ExecuteStep 停在哪一步
-//
-// 用于 ensures 子句将"停在哪"映射到"返回什么结果"。
-// 每个 constructor 对应 executeStep TS 实现中的一条关键 early-exit
-// 或收尾路径。
-// ============================================================
-datatype ExecuteStepStage =
-  | ClaimFailed          // AgentRuntimeService.ts:442-443/外部失败
-  | LockConflict         // AgentRuntimeService.ts:443-455
-  | LoadStateFailed      // AgentRuntimeService.ts:474-478
-  | StaleRetrySkipped    // AgentRuntimeService.ts:486-499
-  | TerminalStateSkipped // AgentRuntimeService.ts:503-528
-  | RuntimeStepFailed    // AgentRuntimeService.ts:616-617/外部失败
-  | StepContinues        // AgentRuntimeService.ts:636-640, shouldContinue=true
-  | StepCompletes        // AgentRuntimeService.ts:636-640, shouldContinue=false
-
-// ============================================================
-// L3 Cut Points: ExecuteStep 依赖的外部调用
-//
-// 第一阶段只切出控制流真正依赖的几个外部点：
-//   lock acquire / state load / runtime step / continue decision
-// 其他 hook、trace、stream、device-context 等先不建模。
-// ============================================================
-
-// Trust Base: Redis step lock
-// 假设: true 表示本实例获得该 step 的执行权；false 表示别人已持有
-// 失败模式: Redis / 网络异常 → Err
-method TryClaimStep(operationId: string, stepIndex: int) returns (result: FResult<bool>)
+method TryClaimStep(deps: ExecuteStepDeps, operationId: string, stepIndex: int) returns (result: FResult<bool>)
+  ensures result == deps.claimed
 {
-  assume {:axiom} false;
-}
-
-// Trust Base: AgentRuntimeCoordinator.loadAgentState
-// 假设: operation 存在时返回 AgentState；不存在或底层异常时返回 Err
-method LoadAgentState(operationId: string) returns (result: FResult<AgentState>)
-{
-  assume {:axiom} false;
+  result := deps.claimed;
 }
 
 // ============================================================
-// L2 helper: 统一 cut point 失败时的返回形状
+// L3 Cut Point: coordinator.loadAgentState
 //
-// 作用:
-//   - 保留 "失败停在哪个 stage" 的可追踪性
-//   - 收紧方法体里的重复 Err 分支样板
+// obs 决定黑盒结果:
+//   - LoadAgentState 直接返回 obs.stateResult
 // ============================================================
-method FailAt(stageValue: ExecuteStepStage) returns (result: FResult<ExecuteStepResult>, ghost stage: ExecuteStepStage)
-  requires stageValue.ClaimFailed? || stageValue.LoadStateFailed? || stageValue.RuntimeStepFailed?
-  ensures result.Err?
-  ensures stage == stageValue
+method LoadAgentState(deps: ExecuteStepDeps, operationId: string) returns (result: FResult<AgentState>)
+  ensures result == deps.stateResult
 {
-  stage := stageValue;
-  result := Err("cut point failed");
+  result := deps.stateResult;
 }
 
 // ============================================================
 // L2: ExecuteStep 最小状态机骨架
 //
-// 完整路径（V1）:
-//   TryClaimStep → LoadAgentState → stale-retry guard
-//                → terminal-state guard → RuntimeStep → ShouldContinue
+// 对应 TS 主干:
+//   tryClaimStep
+//   -> loadAgentState
+//   -> stale retry guard
+//   -> terminal-state guard
+//   -> runtime.step
+//   -> shouldContinueExecution
 //
-// 每个 ghost stage 对应 TS 中的一段关键 return / early-exit 路径。
-//
-// 对应 TS 主干：
-//   src/server/services/agentRuntime/AgentRuntimeService.ts:441
-//   src/server/services/agentRuntime/AgentRuntimeService.ts:474
-//   src/server/services/agentRuntime/AgentRuntimeService.ts:485
-//   src/server/services/agentRuntime/AgentRuntimeService.ts:501
-//   src/server/services/agentRuntime/AgentRuntimeService.ts:615
-//   src/server/services/agentRuntime/AgentRuntimeService.ts:635
+// 当前版本选择弱规格:
+//   - method 本身只定义控制流过程
+//   - 具体可证明分支性质留给后续 lemma 单独表达
 // ============================================================
-method ExecuteStep(params: ExecuteStepParams)
-  returns (result: FResult<ExecuteStepResult>, ghost stage: ExecuteStepStage)
-  requires params.operationId != ""
-  ensures stage.ClaimFailed? ==> result.Err?
-  ensures stage.LockConflict? ==> result.Ok? && result.value.locked && !result.value.success
-  ensures stage.LockConflict? ==> !result.value.nextStepScheduled && !result.value.hasStepResult
-  ensures stage.LoadStateFailed? ==> result.Err?
-  ensures stage.StaleRetrySkipped? ==> result.Ok? && !result.value.locked && result.value.success
-  ensures stage.StaleRetrySkipped? ==> !result.value.nextStepScheduled && !result.value.hasStepResult
-  ensures stage.TerminalStateSkipped? ==> result.Ok? && !result.value.locked && result.value.success
-  ensures stage.TerminalStateSkipped? ==> !result.value.nextStepScheduled && !result.value.hasStepResult
-  ensures stage.RuntimeStepFailed? ==> result.Err?
-  ensures stage.StepContinues? ==> result.Ok? && !result.value.locked && result.value.success
-  ensures stage.StepContinues? ==> result.value.nextStepScheduled && result.value.hasStepResult
-  ensures stage.StepCompletes? ==> result.Ok? && !result.value.locked && result.value.success
-  ensures stage.StepCompletes? ==> !result.value.nextStepScheduled && result.value.hasStepResult
+method ExecuteStep(deps: ExecuteStepDeps, req: RunStepRequest)
+  returns (result: FResult<ExecuteStepResult>)
+  requires req.operationId != ""
 {
-  // Stage 1: claim step lock — AgentRuntimeService.ts:442-455
-  var claimed := TryClaimStep(params.operationId, params.stepIndex);
+  var claimed := TryClaimStep(deps, req.operationId, req.stepIndex);
   match claimed {
     case Err(_) => {
-      result, stage := FailAt(ClaimFailed);
+      result := Err("claim step failed");
       return;
     }
     case Ok(false) => {
-      stage := LockConflict;
-      result := Ok(ExecuteStepResult(true, false, AgentState(StatusRunning, 0, false, false, CostLimitContinue), false, false));
+      result := Ok(ExecuteStepResult(
+        true,
+        false,
+        AgentState(StatusRunning, 0, false, false, CostLimitContinue),
+        false,
+        false
+      ));
       return;
     }
     case Ok(true) => {}
   }
 
-  // Stage 2: load state — AgentRuntimeService.ts:474-478
-  var stateResult := LoadAgentState(params.operationId);
+  var stateResult := LoadAgentState(deps, req.operationId);
   var state: AgentState;
   match stateResult {
     case Err(_) => {
-      result, stage := FailAt(LoadStateFailed);
+      result := Err("load state failed");
       return;
     }
     case Ok(s) => state := s;
   }
 
-  // Stage 3: stale retry guard — AgentRuntimeService.ts:486-499
-  if state.stepCount > params.stepIndex {
-    stage := StaleRetrySkipped;
-    result := Ok(ExecuteStepResult(false, false, state, false, true));
+  if state.stepCount > req.stepIndex {
+    result := Ok(ExecuteStepResult(
+      false,
+      false,
+      state,
+      false,
+      true
+    ));
     return;
   }
 
-  // Stage 4: terminal state guard — AgentRuntimeService.ts:503-528
   if state.status == StatusInterrupted || state.status == StatusDone || state.status == StatusError {
-    stage := TerminalStateSkipped;
-    result := Ok(ExecuteStepResult(false, false, state, false, true));
+    result := Ok(ExecuteStepResult(
+      false,
+      false,
+      state,
+      false,
+      true
+    ));
     return;
   }
 
-  // Stage 5: runtime.step — AgentRuntimeService.ts:616-617
-  var stepped, _ := RuntimeStep(RuntimeStepInput(state, RuntimeContext(false, PhaseNone)));
-  var stepResult: RuntimeStepResult;
+  var stepped := RuntimeStep(deps.runtimeStep, RuntimeStepInput(state, RuntimeContext(false, PhaseNone)));
   match stepped {
     case Err(_) => {
-      result, stage := FailAt(RuntimeStepFailed);
+      result := Err("runtime step failed");
       return;
     }
-    case Ok(s) => stepResult := s;
-  }
-
-  // Stage 6: continue vs complete — AgentRuntimeService.ts:636-640
-  var shouldContinue := ShouldContinueExecution(stepResult.newState, stepResult.nextContext);
-  if shouldContinue {
-    stage := StepContinues;
-    result := Ok(ExecuteStepResult(false, true, stepResult.newState, true, true));
-  } else {
-    stage := StepCompletes;
-    result := Ok(ExecuteStepResult(false, false, stepResult.newState, true, true));
+    case Ok(stepResult) => {
+      if ShouldContinueExecution(stepResult.newState, stepResult.nextContext) {
+        result := Ok(ExecuteStepResult(
+          false,
+          true,
+          stepResult.newState,
+          true,
+          true
+        ));
+      } else {
+        result := Ok(ExecuteStepResult(
+          false,
+          false,
+          stepResult.newState,
+          true,
+          true
+        ));
+      }
+      return;
+    }
   }
 }
+
+// ============================================================
+// Lemmas
+//
+// 原则:
+//   - Modeling 定义在前
+//   - Lemma 放在文件后部
+//   - 先覆盖单条分支性质，再逐步扩展到更多路径
+// ============================================================
+// TODO: 等 runtimeStep 也迁移为同样的 obs-driven 风格后，
+// 再补真正连接 ExecuteStep 与下层 black-box 的 lemma。

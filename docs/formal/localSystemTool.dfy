@@ -35,6 +35,8 @@ datatype LocalSystemStage =
 //   - HTTP 非 2xx 时返回 success=false
 //   - HTTP 2xx 时以响应体中的 success 字段为准
 method GatewayExecuteToolCall(httpOk: bool, gatewaySuccess: bool) returns (result: bool)
+  ensures !httpOk ==> result == false
+  ensures httpOk ==> result == gatewaySuccess
 {
   if httpOk {
     result := gatewaySuccess;
@@ -45,6 +47,11 @@ method GatewayExecuteToolCall(httpOk: bool, gatewaySuccess: bool) returns (resul
 
 method ExecuteLocalSystemTool(input: LocalSystemInput)
   returns (result: ToolExecutionOutcome, ghost stage: LocalSystemStage)
+  ensures stage.MissingUserId? ==> !result.success
+  ensures stage.MissingDeviceId? ==> !result.success
+  ensures stage.GatewayUnavailable? ==> !result.success
+  ensures stage.GatewayHttpFailed? ==> !result.success
+  ensures stage.GatewayCallCompleted? ==> result.success == input.gatewaySuccess
 {
   if !input.hasUserId {
     stage := MissingUserId;

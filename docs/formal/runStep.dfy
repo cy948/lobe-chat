@@ -11,21 +11,8 @@
 // ============================================================
 
 include "types.dfy"
+include "obs.dfy"
 include "executeStep.dfy"
-
-// ============================================================
-// Ghost datatype: 追踪 runStep 执行停在哪一步
-//
-// 每个 constructor 对应 runStep.ts 中的一条 return 路径。
-// ensures 将 stage 映射到正确的 HTTP status。
-// ============================================================
-datatype RunStepStage =
-  | ParseFailed          // runStep.ts:22-23 — outer catch → 400
-  | MissingOperationId   // runStep.ts:41    — handler check → 400
-  | UserLookupFailed     // runStep.ts:51-52 — handler check → 401
-  | StepErrored          // runStep.ts:105-117 — inner catch → 500
-  | StepLocked           // runStep.ts:72-77 — handler check → 429
-  | StepCompleted        // runStep.ts:104   — normal → 200
 
 // ============================================================
 // L1 Trust: JSON body 解析 (runStep.ts:20-24, outer try-catch)
@@ -33,24 +20,32 @@ datatype RunStepStage =
 // Trust Base: TS c.req.json() + Zod schema validation
 // 假设: 合法 JSON 返回 Ok；语法错误返回 Err
 // 不假设: 解析出的字段内容（operationId 是否非空由 handler 检查）
-// 失败模式: JSON 语法错误 → Err → outer catch → ParseFailed → 400
+// 失败模式: JSON 语法错误 → Err → outer catch → 400
 // ============================================================
-method ParseBody(raw: string) returns (result: FResult<RunStepRequest>)
+method ParseBody(deps: RunStepDeps, raw: string) returns (result: FResult<RunStepRequest>)
+  ensures result == deps.parsed
 {
-  assume {:axiom} false;
+  result := deps.parsed;
 }
 
+datatype HttpResponse = HttpResponse(status: HttpStatus, body: string)
+
 // ============================================================
-// L3 Cut Point: Redis 查询 operation metadata (runStep.ts:47-48)
+// L3 Cut Point: AgentRuntimeCoordinator / metadata lookup
 //
-// Trust Base: AgentRuntimeCoordinator.getOperationMetadata
-// 假设: 返回原始 metadata.userId（空串表示不存在/无 userId）
-// 不假设: userId 非空 —— 由 handler 自行检查 (runStep.ts:50-53)
-// 失败模式: Redis / 网络异常 → Err → inner catch → StepErrored → 500
+// obs 决定黑盒结果：
+//   - coordinator 不可用时，统一表现为 Err
+//   - coordinator 可用时，返回 obs.meta
 // ============================================================
-method GetOperationMetadata(operationId: string) returns (result: FResult<string>)
+method GetOperationMetadata(deps: RunStepDeps, operationId: string) returns (result: FResult<string>)
+  ensures !deps.coordinatorReady ==> result.Err?
+  ensures deps.coordinatorReady ==> result == deps.meta
 {
-  assume {:axiom} false;
+  if !deps.coordinatorReady {
+    result := Err("coordinator unavailable");
+  } else {
+    result := deps.meta;
+  }
 }
 
 // ============================================================
@@ -63,74 +58,66 @@ method GetOperationMetadata(operationId: string) returns (result: FResult<string
 //   inner (runStep.ts:28-118): 所有 stub 异常      → 500
 //   非异常的 handler check (41, 51-52, 72-77):   → 400 / 401 / 429
 //
-// Dafny 对应: stub 调用返回 Err 统一映射到 StepErrored → 500，
+// Dafny 对应: stub 调用返回 Err 统一映射到 500，
 // 对应 inner catch 的职责。
+//
+// 当前版本选择弱规格：
+//   - method 本身只定义控制流过程
+//   - 具体 response 性质留给后续 lemma 单独表达
 // ============================================================
-method RunStep(rawBody: string) returns (body: string, status: HttpStatus, ghost stage: RunStepStage)
-  ensures stage.ParseFailed?        ==> status == Status400
-  ensures stage.MissingOperationId? ==> status == Status400
-  ensures stage.UserLookupFailed?   ==> status == Status401
-  ensures stage.StepErrored?        ==> status == Status500
-  ensures stage.StepLocked?         ==> status == Status429
-  ensures stage.StepCompleted?      ==> status == Status200
+method RunStep(deps: GlobalDeps, rawBody: string) returns (body: string, status: HttpStatus)
 {
+  var response: HttpResponse;
   // ===== Outer try: JSON parse (runStep.ts:20-24) → 400 =====
-  var parsed := ParseBody(rawBody);
+  var parsed := ParseBody(deps.runStep, rawBody);
   if parsed.Err? {
-    stage := ParseFailed;
-    body := "{ \"error\": \"Invalid JSON body\" }";
-    status := Status400;
+    response := HttpResponse(Status400, "{ \"error\": \"Invalid JSON body\" }");
+    body := response.body;
+    status := response.status;
     return;
   }
   var req := parsed.value;
-
-  // ===== Handler check: operationId (runStep.ts:40-41) → 400 =====
   if req.operationId == "" {
-    stage := MissingOperationId;
-    body := "{ \"error\": \"operationId is required\" }";
-    status := Status400;
+    response := HttpResponse(Status400, "{ \"error\": \"operationId is required\" }");
+    body := response.body;
+    status := response.status;
     return;
   }
-
-  // ===== Inner try (runStep.ts:28-118) =====
-  // All Err from stubs below → inner catch → StepErrored → 500
-
-  // runStep.ts:47-48 — get operation metadata
-  var meta := GetOperationMetadata(req.operationId);
+  var meta := GetOperationMetadata(deps.runStep, req.operationId);
+  var stepResult := ExecuteStep(deps.executeStep, req);
   if meta.Err? {
-    stage := StepErrored;
-    body := "{ \"error\": \"Internal server error\" }";
-    status := Status500;
-    return;
-  }
-  var userId := meta.value;
-
-  // runStep.ts:50-53 — handler check: !metadata?.userId → 401
-  if userId == "" {
-    stage := UserLookupFailed;
-    body := "{ \"error\": \"Invalid operation or unauthorized\" }";
-    status := Status401;
-    return;
-  }
-
-  // runStep.ts:58 — execute step
-          var result, _ := ExecuteStep(ExecuteStepParams(req.operationId, req.stepIndex));
-  if result.Err? {
-    stage := StepErrored;
-    body := "{ \"error\": \"Internal server error\" }";
-    status := Status500;
-    return;
-  }
-  var r := result.value;
-
-  // runStep.ts:72-77 — locked → 429; otherwise → 200
-  if r.locked {
-    stage := StepLocked;
-    body := "{ \"error\": \"Step locked, retry later\" }";
-    status := Status429;
+    response := HttpResponse(Status500, "{ \"error\": \"Internal server error\" }");
+  } else if meta.value == "" {
+    response := HttpResponse(Status401, "{ \"error\": \"Invalid operation or unauthorized\" }");
+  } else if stepResult.Err? {
+    response := HttpResponse(Status500, "{ \"error\": \"Internal server error\" }");
+  } else if stepResult.value.locked {
+    response := HttpResponse(Status429, "{ \"error\": \"Step locked, retry later\" }");
   } else {
-    stage := StepCompleted;
-    body := "{ \"ok\": true }";
-    status := Status200;
+    response := HttpResponse(Status200, "{ \"ok\": true }");
   }
+  body := response.body;
+  status := response.status;
 }
+
+// ============================================================
+// Lemmas
+//
+// 原则：
+//   - Modeling 定义在前
+//   - Lemma 放在文件后部
+//   - 先覆盖单条分支性质，再逐步扩展到更多路径
+// ============================================================
+// TODO: 完成下层定义后再证明
+// lemma RunStepCompletesIf(deps: GlobalDeps)
+//   requires deps.runStep.parsed.Ok?
+//   requires deps.runStep.coordinatorReady
+//   requires deps.runStep.meta.Ok?
+//   requires deps.runStep.meta.value != ""
+//   requires deps.executeStep.claimed == Ok(true)
+//   requires deps.executeStep.stateResult.Ok?
+//   requires deps.executeStep.runtimeStep.planResult.Ok?
+//   requires !ExecuteStep(deps.executeStep, deps.runStep.parsed.value).value.locked
+//   ensures true
+// {
+// }

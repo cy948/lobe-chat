@@ -108,16 +108,5 @@ method RunStep(deps: GlobalDeps, rawBody: string) returns (body: string, status:
 //   - Lemma 放在文件后部
 //   - 先覆盖单条分支性质，再逐步扩展到更多路径
 // ============================================================
-// TODO: 完成下层定义后再证明
-// lemma RunStepCompletesIf(deps: GlobalDeps)
-//   requires deps.runStep.parsed.Ok?
-//   requires deps.runStep.coordinatorReady
-//   requires deps.runStep.meta.Ok?
-//   requires deps.runStep.meta.value != ""
-//   requires deps.executeStep.claimed == Ok(true)
-//   requires deps.executeStep.stateResult.Ok?
-//   requires deps.executeStep.runtimeStep.planResult.Ok?
-//   requires !ExecuteStep(deps.executeStep, deps.runStep.parsed.value).value.locked
-//   ensures true
-// {
-// }
+// TODO: 等 executeStep / runtimeStep / toolExecution 的可证性质逐层补齐后，
+// 再回到 RunStep 写真正连接整条调用链的 theorem / proof method。

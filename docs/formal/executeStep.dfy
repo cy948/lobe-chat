@@ -144,5 +144,5 @@ method ExecuteStep(deps: ExecuteStepDeps, req: RunStepRequest)
 //   - Lemma 放在文件后部
 //   - 先覆盖单条分支性质，再逐步扩展到更多路径
 // ============================================================
-// TODO: 等 runtimeStep 也迁移为同样的 obs-driven 风格后，
-// 再补真正连接 ExecuteStep 与下层 black-box 的 lemma。
+// TODO: 等 runtimeStep 也迁移为同样的依赖输入风格后，
+// 再补真正连接 ExecuteStep 与下层 black-box 的 theorem / proof method。

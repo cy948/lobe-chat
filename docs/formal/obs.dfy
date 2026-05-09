@@ -10,6 +10,13 @@
 include "types.dfy"
 
 // ============================================================
+// localSystemTool black-box observations
+// ============================================================
+datatype LocalSystemDeps = LocalSystemDeps(
+  gatewayResult: bool
+)
+
+// ============================================================
 // runtimeStep local projections shared with obs
 // ============================================================
 datatype InstructionKind =
@@ -43,7 +50,8 @@ datatype RuntimeStepDeps = RuntimeStepDeps(
 datatype ToolExecutionDeps = ToolExecutionDeps(
   mcpResult: FResult<ToolExecutionOutcome>,
   builtinSpecialResult: ToolExecutionOutcome,
-  builtinRuntimeCallResult: ToolExecutionOutcome
+  builtinRuntimeCallResult: ToolExecutionOutcome,
+  localSystem: LocalSystemDeps
 )
 
 // ============================================================

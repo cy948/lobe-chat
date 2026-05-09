@@ -47,6 +47,39 @@ method PersistToolMessage(deps: CallToolDeps, skipCreateToolMessage: bool) retur
 // ============================================================
 method CallTool(deps: CallToolDeps, input: CallToolInput)
   returns (result: FResult<RuntimeStepResult>)
+  ensures input.toolSourceClient ==>
+          result == Ok(RuntimeStepResult(
+            AgentState(
+              StatusInterrupted,
+              input.state.stepCount,
+              input.state.hasCostLimit,
+              input.state.totalCostExceeded,
+              input.state.costLimitPolicy
+            ),
+            RuntimeContext(false, PhaseNone)
+          ))
+  ensures (!input.toolSourceClient &&
+          input.executorClient &&
+          input.gatewayAvailable &&
+          deps.dispatched.Err?) ==> result.Err?
+  ensures (!input.toolSourceClient &&
+          input.executorClient &&
+          input.gatewayAvailable &&
+          deps.dispatched.Ok? &&
+          deps.persisted.Err?) ==> result.Err?
+  ensures (!input.toolSourceClient &&
+          input.executorClient &&
+          input.gatewayAvailable &&
+          deps.dispatched.Ok? &&
+          deps.persisted.Ok?) ==>
+          result == Ok(RuntimeStepResult(
+            input.state,
+            RuntimeContext(true, PhaseToolResult)
+          ))
+  ensures (!input.toolSourceClient &&
+          !(input.executorClient && input.gatewayAvailable) &&
+          input.serverToolKind == ToolMcp &&
+          deps.toolExecution.mcpResult.Err?) ==> result.Err?
 {
   if input.toolSourceClient {
     result := Ok(RuntimeStepResult(

@@ -63,6 +63,25 @@ method ExecuteBuiltinRuntimeCall(deps: ToolExecutionDeps, runtimeCallSucceeds: b
 
 method ExecuteBuiltinTool(deps: ToolExecutionDeps, input: BuiltinExecutionInput)
   returns (result: ToolExecutionOutcome)
+  ensures input.hasArguments && !input.argumentsParseOk ==> !result.success
+  ensures !(input.hasArguments && !input.argumentsParseOk) &&
+          (input.source == SourceLobehubSkill || input.source == SourceKlavis) ==>
+          result == deps.builtinSpecialResult
+  ensures !(input.hasArguments && !input.argumentsParseOk) &&
+          input.source != SourceLobehubSkill &&
+          input.source != SourceKlavis &&
+          (!input.hasServerRuntime || !input.hasApiMethod) ==>
+          !result.success
+  ensures !(input.hasArguments && !input.argumentsParseOk) &&
+          input.source != SourceLobehubSkill &&
+          input.source != SourceKlavis &&
+          input.hasServerRuntime &&
+          input.hasApiMethod &&
+          input.isLocalSystem &&
+          input.localSystemInput.hasUserId &&
+          input.localSystemInput.hasActiveDeviceId &&
+          input.localSystemInput.gatewayConfigured ==>
+          result.success == deps.localSystem.gatewayResult
 {
   if input.hasArguments && !input.argumentsParseOk {
     result := ToolExecutionOutcome(false);
@@ -80,7 +99,7 @@ method ExecuteBuiltinTool(deps: ToolExecutionDeps, input: BuiltinExecutionInput)
   }
 
   if input.isLocalSystem {
-    var localResult, _ := ExecuteLocalSystemTool(input.localSystemInput);
+    var localResult := ExecuteLocalSystemTool(deps.localSystem, input.localSystemInput);
     result := localResult;
     return;
   }
@@ -93,6 +112,13 @@ method ExecuteBuiltinTool(deps: ToolExecutionDeps, input: BuiltinExecutionInput)
 // ============================================================
 method ExecuteTool(deps: ToolExecutionDeps, input: ToolExecutionInput, builtinInput: BuiltinExecutionInput)
   returns (result: ToolExecutionOutcome)
+  ensures input.kind == ToolMcp && deps.mcpResult.Err? ==> !result.success
+  ensures input.kind == ToolMcp && deps.mcpResult.Ok? ==> result == deps.mcpResult.value
+  ensures input.kind != ToolMcp && builtinInput.hasArguments && !builtinInput.argumentsParseOk ==> !result.success
+  ensures input.kind != ToolMcp &&
+          !(builtinInput.hasArguments && !builtinInput.argumentsParseOk) &&
+          (builtinInput.source == SourceLobehubSkill || builtinInput.source == SourceKlavis) ==>
+          result == deps.builtinSpecialResult
 {
   if input.kind == ToolMcp {
     var mcpResult := ExecuteMcpTool(deps);
@@ -112,12 +138,10 @@ method ExecuteTool(deps: ToolExecutionDeps, input: ToolExecutionInput, builtinIn
 }
 
 // ============================================================
-// Lemmas
+// Proof direction
 //
-// 原则:
-//   - Modeling 定义在前
-//   - Lemma 放在文件后部
-//   - 先覆盖单条分支性质，再逐步扩展到更多路径
+// 当前层先不写直接调用 method 的 theorem。
+// 在 Dafny 中，lemma / ghost method 不能直接调用普通 method；
+// 因此这一层先把 branch outcome 写进 ensures，
+// 后续上层 proof 再直接消费这些 postcondition。
 // ============================================================
-// TODO: 等 localSystem / dispatch / builtin-runtime 规范进一步收紧后，
-// 再补真正有业务含义的 lemma。

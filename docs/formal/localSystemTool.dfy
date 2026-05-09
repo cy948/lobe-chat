@@ -14,70 +14,51 @@
 // ============================================================
 
 include "types.dfy"
+include "obs.dfy"
 
 datatype LocalSystemInput = LocalSystemInput(
   hasUserId: bool,
   hasActiveDeviceId: bool,
-  gatewayConfigured: bool,
-  httpOk: bool,
-  gatewaySuccess: bool
+  gatewayConfigured: bool
 )
 
-datatype LocalSystemStage =
-  | MissingUserId
-  | MissingDeviceId
-  | GatewayUnavailable
-  | GatewayHttpFailed
-  | GatewayCallCompleted
-
 // Trust Base: GatewayHttpClient.executeToolCall(...)
-// 假设:
-//   - HTTP 非 2xx 时返回 success=false
-//   - HTTP 2xx 时以响应体中的 success 字段为准
-method GatewayExecuteToolCall(httpOk: bool, gatewaySuccess: bool) returns (result: bool)
-  ensures !httpOk ==> result == false
-  ensures httpOk ==> result == gatewaySuccess
+// 依赖输入决定黑盒结果:
+//   - gateway/http/client 细节不在本层展开
+//   - 统一由 deps.gatewayResult 给出
+method GatewayExecuteToolCall(deps: LocalSystemDeps) returns (result: bool)
+  ensures result == deps.gatewayResult
 {
-  if httpOk {
-    result := gatewaySuccess;
-  } else {
-    result := false;
-  }
+  result := deps.gatewayResult;
 }
 
-method ExecuteLocalSystemTool(input: LocalSystemInput)
-  returns (result: ToolExecutionOutcome, ghost stage: LocalSystemStage)
-  ensures stage.MissingUserId? ==> !result.success
-  ensures stage.MissingDeviceId? ==> !result.success
-  ensures stage.GatewayUnavailable? ==> !result.success
-  ensures stage.GatewayHttpFailed? ==> !result.success
-  ensures stage.GatewayCallCompleted? ==> result.success == input.gatewaySuccess
+method ExecuteLocalSystemTool(deps: LocalSystemDeps, input: LocalSystemInput)
+  returns (result: ToolExecutionOutcome)
+  ensures !input.hasUserId ==> !result.success
+  ensures input.hasUserId && !input.hasActiveDeviceId ==> !result.success
+  ensures (input.hasUserId &&
+          input.hasActiveDeviceId &&
+          !input.gatewayConfigured) ==> !result.success
+  ensures (input.hasUserId &&
+          input.hasActiveDeviceId &&
+          input.gatewayConfigured) ==>
+          result.success == deps.gatewayResult
 {
   if !input.hasUserId {
-    stage := MissingUserId;
     result := ToolExecutionOutcome(false);
     return;
   }
 
   if !input.hasActiveDeviceId {
-    stage := MissingDeviceId;
     result := ToolExecutionOutcome(false);
     return;
   }
 
   if !input.gatewayConfigured {
-    stage := GatewayUnavailable;
     result := ToolExecutionOutcome(false);
     return;
   }
 
-  if !input.httpOk {
-    stage := GatewayHttpFailed;
-    result := ToolExecutionOutcome(false);
-    return;
-  }
-
-  var gatewaySuccess := GatewayExecuteToolCall(input.httpOk, input.gatewaySuccess);
-  stage := GatewayCallCompleted;
+  var gatewaySuccess := GatewayExecuteToolCall(deps);
   result := ToolExecutionOutcome(gatewaySuccess);
 }

@@ -71,7 +71,7 @@ method ExecuteInstruction(
         true,
         true,
         false,
-        LocalSystemInput(true, true, true, true, true)
+        LocalSystemInput(true, true, true)
       )
     ));
     return;
@@ -106,14 +106,6 @@ function FinalizeStepState(stateAfterExecution: AgentState, preparedState: Agent
     stateAfterExecution.totalCostExceeded,
     stateAfterExecution.costLimitPolicy
   )
-}
-
-function ClearContextWhenBlocked(state: AgentState, nextContext: RuntimeContext): RuntimeContext
-{
-  if state.status == StatusWaitingForHuman || state.status == StatusInterrupted then
-    RuntimeContext(false, PhaseNone)
-  else
-    nextContext
 }
 
 function IsBlockingStatus(status: AgentStatus): bool
@@ -235,7 +227,11 @@ method RuntimeStep(deps: RuntimeStepDeps, input: RuntimeStepInput)
   }
 
   var finalState := FinalizeStepState(stepResult.newState, preparedState, plan.hasFinish);
-  var finalContext := ClearContextWhenBlocked(finalState, stepResult.nextContext);
+  var finalContext :=
+    if finalState.status == StatusWaitingForHuman || finalState.status == StatusInterrupted then
+      RuntimeContext(false, PhaseNone)
+    else
+      stepResult.nextContext;
   result := Ok(RuntimeStepResult(finalState, finalContext));
 }
 

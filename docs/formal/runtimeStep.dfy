@@ -45,6 +45,28 @@ method RunnerPlan(deps: RuntimeStepDeps, context: RuntimeContext, state: AgentSt
   result := deps.planResult;
 }
 
+method ExecuteCallLlmInstruction(
+  deps: RuntimeStepDeps,
+  index: int,
+  state: AgentState,
+  context: RuntimeContext
+) returns (result: FResult<RuntimeStepResult>)
+  requires 0 <= index < |deps.llmResults|
+  ensures result == deps.llmResults[index]
+{
+  result := deps.llmResults[index];
+}
+
+method ExecuteFinishInstruction(
+  deps: RuntimeStepDeps,
+  state: AgentState,
+  context: RuntimeContext
+) returns (result: FResult<RuntimeStepResult>)
+  ensures result == Ok(deps.finishResult)
+{
+  result := Ok(deps.finishResult);
+}
+
 method ExecuteInstruction(
   deps: RuntimeStepDeps,
   kind: InstructionKind,
@@ -54,11 +76,25 @@ method ExecuteInstruction(
 ) returns (result: FResult<RuntimeStepResult>)
   requires 0 <= index < |deps.instructionResults|
 {
+  if kind == InstrCallLlm {
+    if index >= |deps.llmResults| {
+      result := Err("llm observation missing");
+      return;
+    }
+    result := ExecuteCallLlmInstruction(deps, index, state, context);
+    return;
+  }
+
   if kind == InstrCallTool {
     result := CallTool(
       deps.callTool,
       CallToolInput(deps.callToolInput.ctx, deps.callToolInput.instruction, state)
     );
+    return;
+  }
+
+  if kind == InstrFinish {
+    result := ExecuteFinishInstruction(deps, state, context);
     return;
   }
 

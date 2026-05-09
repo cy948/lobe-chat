@@ -40,8 +40,10 @@ datatype PlannedInstructions = PlannedInstructions(
 datatype RuntimeStepDeps = RuntimeStepDeps(
   initialContext: RuntimeContext,
   planResult: FResult<PlannedInstructions>,
+  llmResults: seq<FResult<RuntimeStepResult>>,
   callTool: CallToolDeps,
   callToolInput: CallToolInput,
+  finishResult: RuntimeStepResult,
   instructionResults: seq<FResult<RuntimeStepResult>>
 )
 

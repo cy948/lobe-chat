@@ -38,6 +38,19 @@ method LoadAgentState(deps: ExecuteStepDeps, operationId: string) returns (resul
 }
 
 // ============================================================
+// L3 Cut Point: runtime.handleHumanIntervention
+//
+// obs 决定黑盒结果:
+//   - HandleHumanIntervention 直接返回 obs.interventionResult
+// ============================================================
+method HandleHumanIntervention(deps: ExecuteStepDeps, state: AgentState, input: ExecuteStepInput)
+  returns (result: FResult<RuntimeStepResult>)
+  ensures result == deps.interventionResult
+{
+  result := deps.interventionResult;
+}
+
+// ============================================================
 // L2: ExecuteStep 最小状态机骨架
 //
 // 对应 TS 主干:
@@ -52,11 +65,11 @@ method LoadAgentState(deps: ExecuteStepDeps, operationId: string) returns (resul
 //   - method 本身只定义控制流过程
 //   - 具体可证明分支性质留给后续 lemma 单独表达
 // ============================================================
-method ExecuteStep(deps: ExecuteStepDeps, req: RunStepRequest)
+method ExecuteStep(deps: ExecuteStepDeps, input: ExecuteStepInput)
   returns (result: FResult<ExecuteStepResult>)
-  requires req.operationId != ""
+  requires input.operationId != ""
 {
-  var claimed := TryClaimStep(deps, req.operationId, req.stepIndex);
+  var claimed := TryClaimStep(deps, input.operationId, input.stepIndex);
   match claimed {
     case Err(_) => {
       result := Err("claim step failed");
@@ -75,7 +88,7 @@ method ExecuteStep(deps: ExecuteStepDeps, req: RunStepRequest)
     case Ok(true) => {}
   }
 
-  var stateResult := LoadAgentState(deps, req.operationId);
+  var stateResult := LoadAgentState(deps, input.operationId);
   var state: AgentState;
   match stateResult {
     case Err(_) => {
@@ -85,7 +98,7 @@ method ExecuteStep(deps: ExecuteStepDeps, req: RunStepRequest)
     case Ok(s) => state := s;
   }
 
-  if state.stepCount > req.stepIndex {
+  if state.stepCount > input.stepIndex {
     result := Ok(ExecuteStepResult(
       false,
       false,
@@ -107,7 +120,23 @@ method ExecuteStep(deps: ExecuteStepDeps, req: RunStepRequest)
     return;
   }
 
-  var stepped := RuntimeStep(deps.runtimeStep, RuntimeStepInput(state, RuntimeContext(false, PhaseNone)));
+  var currentState := state;
+  var currentContext := input.context;
+  if input.hasHumanInput || input.hasApprovedToolCall || input.hasRejectionReason {
+    var intervention := HandleHumanIntervention(deps, state, input);
+    match intervention {
+      case Err(_) => {
+        result := Err("human intervention failed");
+        return;
+      }
+      case Ok(interventionResult) => {
+        currentState := interventionResult.newState;
+        currentContext := interventionResult.nextContext;
+      }
+    }
+  }
+
+  var stepped := RuntimeStep(deps.runtimeStep, RuntimeStepInput(currentState, currentContext));
   match stepped {
     case Err(_) => {
       result := Err("runtime step failed");

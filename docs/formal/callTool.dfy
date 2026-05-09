@@ -1,5 +1,5 @@
 // ============================================================
-// callTool — formal module for RuntimeExecutors.call_tool
+// callTool — formal module for createRuntimeExecutors(ctx).call_tool(...)
 //
 // 对应 TS: src/server/modules/AgentRuntime/RuntimeExecutors.ts:1392 call_tool
 //
@@ -14,16 +14,6 @@
 include "types.dfy"
 include "obs.dfy"
 include "toolExecution.dfy"
-
-datatype CallToolInput = CallToolInput(
-  state: AgentState,
-  toolSourceClient: bool,
-  executorClient: bool,
-  gatewayAvailable: bool,
-  skipCreateToolMessage: bool,
-  serverToolKind: ToolKind,
-  builtinInput: BuiltinExecutionInput
-)
 
 // ============================================================
 // L3 cut points
@@ -45,43 +35,51 @@ method PersistToolMessage(deps: CallToolDeps, skipCreateToolMessage: bool) retur
 // ============================================================
 // L2: call_tool skeleton
 // ============================================================
+function CallToolSpec(deps: CallToolDeps, input: CallToolInput): FResult<RuntimeStepResult>
+{
+  if input.instruction.toolSource == ToolSourceClient then
+    Ok(RuntimeStepResult(
+      AgentState(
+        StatusInterrupted,
+        input.state.stepCount,
+        input.state.hasCostLimit,
+        input.state.totalCostExceeded,
+        input.state.costLimitPolicy
+      ),
+      RuntimeContext(false, PhaseNone)
+    ))
+  else if input.instruction.toolExecutor == ToolExecutorClient &&
+          input.ctx.streamManagerCanSendToolExecute then
+    if deps.dispatched.Err? then
+      Err("gateway dispatch failed")
+    else if deps.persisted.Err? then
+      Err("tool message persist failed")
+    else
+      Ok(RuntimeStepResult(
+        input.state,
+        RuntimeContext(true, PhaseToolResult)
+      ))
+  else
+    if !ExecuteToolSpec(
+      deps.toolExecution,
+      ToolExecutionInput(input.instruction.serverToolKind),
+      input.instruction.builtinInput
+    ).success then
+      Err("server tool execution failed")
+    else if deps.persisted.Err? then
+      Err("tool message persist failed")
+    else
+      Ok(RuntimeStepResult(
+        input.state,
+        RuntimeContext(true, PhaseToolResult)
+      ))
+}
+
 method CallTool(deps: CallToolDeps, input: CallToolInput)
   returns (result: FResult<RuntimeStepResult>)
-  ensures input.toolSourceClient ==>
-          result == Ok(RuntimeStepResult(
-            AgentState(
-              StatusInterrupted,
-              input.state.stepCount,
-              input.state.hasCostLimit,
-              input.state.totalCostExceeded,
-              input.state.costLimitPolicy
-            ),
-            RuntimeContext(false, PhaseNone)
-          ))
-  ensures (!input.toolSourceClient &&
-          input.executorClient &&
-          input.gatewayAvailable &&
-          deps.dispatched.Err?) ==> result.Err?
-  ensures (!input.toolSourceClient &&
-          input.executorClient &&
-          input.gatewayAvailable &&
-          deps.dispatched.Ok? &&
-          deps.persisted.Err?) ==> result.Err?
-  ensures (!input.toolSourceClient &&
-          input.executorClient &&
-          input.gatewayAvailable &&
-          deps.dispatched.Ok? &&
-          deps.persisted.Ok?) ==>
-          result == Ok(RuntimeStepResult(
-            input.state,
-            RuntimeContext(true, PhaseToolResult)
-          ))
-  ensures (!input.toolSourceClient &&
-          !(input.executorClient && input.gatewayAvailable) &&
-          input.serverToolKind == ToolMcp &&
-          deps.toolExecution.mcpResult.Err?) ==> result.Err?
+  ensures result == CallToolSpec(deps, input)
 {
-  if input.toolSourceClient {
+  if input.instruction.toolSource == ToolSourceClient {
     result := Ok(RuntimeStepResult(
       AgentState(
         StatusInterrupted,
@@ -95,14 +93,15 @@ method CallTool(deps: CallToolDeps, input: CallToolInput)
     return;
   }
 
-  if input.executorClient && input.gatewayAvailable {
+  if input.instruction.toolExecutor == ToolExecutorClient &&
+      input.ctx.streamManagerCanSendToolExecute {
     var dispatched := DispatchClientTool(deps);
     if dispatched.Err? {
       result := Err("gateway dispatch failed");
       return;
     }
 
-    var persistedGateway := PersistToolMessage(deps, input.skipCreateToolMessage);
+    var persistedGateway := PersistToolMessage(deps, input.instruction.skipCreateToolMessage);
     if persistedGateway.Err? {
       result := Err("tool message persist failed");
       return;
@@ -115,13 +114,17 @@ method CallTool(deps: CallToolDeps, input: CallToolInput)
     return;
   }
 
-  var executed := ExecuteTool(deps.toolExecution, ToolExecutionInput(input.serverToolKind), input.builtinInput);
+  var executed := ExecuteTool(
+    deps.toolExecution,
+    ToolExecutionInput(input.instruction.serverToolKind),
+    input.instruction.builtinInput
+  );
   if !executed.success {
     result := Err("server tool execution failed");
     return;
   }
 
-  var persisted := PersistToolMessage(deps, input.skipCreateToolMessage);
+  var persisted := PersistToolMessage(deps, input.instruction.skipCreateToolMessage);
   if persisted.Err? {
     result := Err("tool message persist failed");
     return;
@@ -132,14 +135,3 @@ method CallTool(deps: CallToolDeps, input: CallToolInput)
     RuntimeContext(true, PhaseToolResult)
   ));
 }
-
-// ============================================================
-// Lemmas
-//
-// 原则:
-//   - Modeling 定义在前
-//   - Lemma 放在文件后部
-//   - 先覆盖单条分支性质，再逐步扩展到更多路径
-// ============================================================
-// TODO: 等 dispatchClientTool / persist / toolExecution 的规范进一步收紧后，
-// 再补真正有业务含义的 lemma。

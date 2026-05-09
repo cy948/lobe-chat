@@ -55,25 +55,10 @@ method ExecuteInstruction(
   requires 0 <= index < |deps.instructionResults|
 {
   if kind == InstrCallTool {
-    result := CallTool(deps.callTool, CallToolInput(
-      state,
-      false,
-      false,
-      false,
-      false,
-      ToolBuiltin,
-      BuiltinExecutionInput(
-        false,
-        true,
-        false,
-        SourceNone,
-        true,
-        true,
-        true,
-        false,
-        LocalSystemInput(true, true, true)
-      )
-    ));
+    result := CallTool(
+      deps.callTool,
+      CallToolInput(deps.callToolInput.ctx, deps.callToolInput.instruction, state)
+    );
     return;
   }
 

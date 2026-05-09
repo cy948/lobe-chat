@@ -65,6 +65,76 @@ datatype RuntimeStepResult = RuntimeStepResult(newState: AgentState, nextContext
 
 datatype ToolExecutionOutcome = ToolExecutionOutcome(success: bool)
 
+datatype LocalSystemInput = LocalSystemInput(
+  hasUserId: bool,
+  hasActiveDeviceId: bool,
+  gatewayConfigured: bool
+)
+
+datatype ToolKind =
+  | ToolBuiltin
+  | ToolMcp
+  | ToolOther
+
+datatype ToolExecutionInput = ToolExecutionInput(kind: ToolKind)
+
+datatype BuiltinSource =
+  | SourceNone
+  | SourceLobehubSkill
+  | SourceKlavis
+
+datatype BuiltinExecutionInput = BuiltinExecutionInput(
+  hasArguments: bool,
+  argumentsParseOk: bool,
+  argumentsTruncated: bool,
+  source: BuiltinSource,
+  hasServerRuntime: bool,
+  hasApiMethod: bool,
+  runtimeCallSucceeds: bool,
+  isLocalSystem: bool,
+  localSystemInput: LocalSystemInput
+)
+
+datatype CallToolCtx = CallToolCtx(
+  streamManagerCanSendToolExecute: bool
+)
+
+datatype ToolSource =
+  | ToolSourceNone
+  | ToolSourceClient
+  | ToolSourceOther
+
+datatype ToolExecutorMode =
+  | ToolExecutorDefault
+  | ToolExecutorClient
+  | ToolExecutorOther
+
+datatype CallToolInstruction = CallToolInstruction(
+  toolSource: ToolSource,
+  toolExecutor: ToolExecutorMode,
+  skipCreateToolMessage: bool,
+  serverToolKind: ToolKind,
+  builtinInput: BuiltinExecutionInput
+)
+
+datatype CallToolInput = CallToolInput(
+  ctx: CallToolCtx,
+  instruction: CallToolInstruction,
+  state: AgentState
+)
+
+datatype ExecuteStepInput = ExecuteStepInput(
+  operationId: string,
+  stepIndex: int,
+  context: RuntimeContext,
+  hasHumanInput: bool,
+  hasApprovedToolCall: bool,
+  hasRejectionReason: bool,
+  rejectAndContinue: bool,
+  hasToolMessageId: bool,
+  externalRetryCount: int
+)
+
 // --- ExecuteStep Return ---
 // TS: AgentExecutionResult (types.ts:135)
 // 这是 ExecuteStep 自身语义需要的最小完备投影:

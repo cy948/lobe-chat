@@ -14,30 +14,6 @@ include "types.dfy"
 include "obs.dfy"
 include "localSystemTool.dfy"
 
-datatype ToolKind =
-  | ToolBuiltin
-  | ToolMcp
-  | ToolOther
-
-datatype ToolExecutionInput = ToolExecutionInput(kind: ToolKind)
-
-datatype BuiltinSource =
-  | SourceNone
-  | SourceLobehubSkill
-  | SourceKlavis
-
-datatype BuiltinExecutionInput = BuiltinExecutionInput(
-  hasArguments: bool,
-  argumentsParseOk: bool,
-  argumentsTruncated: bool,
-  source: BuiltinSource,
-  hasServerRuntime: bool,
-  hasApiMethod: bool,
-  runtimeCallSucceeds: bool,
-  isLocalSystem: bool,
-  localSystemInput: LocalSystemInput
-)
-
 // ============================================================
 // L3 cut points
 //
@@ -61,8 +37,23 @@ method ExecuteBuiltinRuntimeCall(deps: ToolExecutionDeps, runtimeCallSucceeds: b
   result := deps.builtinRuntimeCallResult;
 }
 
+function ExecuteBuiltinToolSpec(deps: ToolExecutionDeps, input: BuiltinExecutionInput): ToolExecutionOutcome
+{
+  if input.hasArguments && !input.argumentsParseOk then
+    ToolExecutionOutcome(false)
+  else if input.source == SourceLobehubSkill || input.source == SourceKlavis then
+    deps.builtinSpecialResult
+  else if !input.hasServerRuntime || !input.hasApiMethod then
+    ToolExecutionOutcome(false)
+  else if input.isLocalSystem then
+    ExecuteLocalSystemToolSpec(deps.localSystem, input.localSystemInput)
+  else
+    deps.builtinRuntimeCallResult
+}
+
 method ExecuteBuiltinTool(deps: ToolExecutionDeps, input: BuiltinExecutionInput)
   returns (result: ToolExecutionOutcome)
+  ensures result == ExecuteBuiltinToolSpec(deps, input)
   ensures input.hasArguments && !input.argumentsParseOk ==> !result.success
   ensures !(input.hasArguments && !input.argumentsParseOk) &&
           (input.source == SourceLobehubSkill || input.source == SourceKlavis) ==>
@@ -110,8 +101,23 @@ method ExecuteBuiltinTool(deps: ToolExecutionDeps, input: BuiltinExecutionInput)
 // ============================================================
 // L2: executeTool skeleton
 // ============================================================
+function ExecuteToolSpec(
+  deps: ToolExecutionDeps,
+  input: ToolExecutionInput,
+  builtinInput: BuiltinExecutionInput
+): ToolExecutionOutcome
+{
+  if input.kind == ToolMcp then
+    match deps.mcpResult
+    case Ok(outcome) => outcome
+    case Err(_) => ToolExecutionOutcome(false)
+  else
+    ExecuteBuiltinToolSpec(deps, builtinInput)
+}
+
 method ExecuteTool(deps: ToolExecutionDeps, input: ToolExecutionInput, builtinInput: BuiltinExecutionInput)
   returns (result: ToolExecutionOutcome)
+  ensures result == ExecuteToolSpec(deps, input, builtinInput)
   ensures input.kind == ToolMcp && deps.mcpResult.Err? ==> !result.success
   ensures input.kind == ToolMcp && deps.mcpResult.Ok? ==> result == deps.mcpResult.value
   ensures input.kind != ToolMcp && builtinInput.hasArguments && !builtinInput.argumentsParseOk ==> !result.success
@@ -119,6 +125,17 @@ method ExecuteTool(deps: ToolExecutionDeps, input: ToolExecutionInput, builtinIn
           !(builtinInput.hasArguments && !builtinInput.argumentsParseOk) &&
           (builtinInput.source == SourceLobehubSkill || builtinInput.source == SourceKlavis) ==>
           result == deps.builtinSpecialResult
+  ensures input.kind != ToolMcp &&
+          !(builtinInput.hasArguments && !builtinInput.argumentsParseOk) &&
+          builtinInput.source != SourceLobehubSkill &&
+          builtinInput.source != SourceKlavis &&
+          builtinInput.hasServerRuntime &&
+          builtinInput.hasApiMethod &&
+          builtinInput.isLocalSystem &&
+          builtinInput.localSystemInput.hasUserId &&
+          builtinInput.localSystemInput.hasActiveDeviceId &&
+          builtinInput.localSystemInput.gatewayConfigured ==>
+          result.success == deps.localSystem.gatewayResult
 {
   if input.kind == ToolMcp {
     var mcpResult := ExecuteMcpTool(deps);
@@ -140,8 +157,43 @@ method ExecuteTool(deps: ToolExecutionDeps, input: ToolExecutionInput, builtinIn
 // ============================================================
 // Proof direction
 //
-// 当前层先不写直接调用 method 的 theorem。
+// 当前层先不写纯 lemma theorem。
 // 在 Dafny 中，lemma / ghost method 不能直接调用普通 method；
-// 因此这一层先把 branch outcome 写进 ensures，
+// 因此这一层先以 proof method 形式承载“调用 + ensures”，
 // 后续上层 proof 再直接消费这些 postcondition。
 // ============================================================
+method ProveExecuteBuiltinToolReturnsLocalSystemGatewayResult(
+  deps: ToolExecutionDeps,
+  input: BuiltinExecutionInput
+) returns (result: ToolExecutionOutcome)
+  requires !(input.hasArguments && !input.argumentsParseOk)
+  requires input.source != SourceLobehubSkill
+  requires input.source != SourceKlavis
+  requires input.hasServerRuntime
+  requires input.hasApiMethod
+  requires input.isLocalSystem
+  requires input.localSystemInput.hasUserId
+  requires input.localSystemInput.hasActiveDeviceId
+  requires input.localSystemInput.gatewayConfigured
+  ensures result.success == deps.localSystem.gatewayResult
+{
+  result := ExecuteBuiltinTool(deps, input);
+}
+
+method ProveExecuteToolReturnsLocalSystemGatewayResult(
+  deps: ToolExecutionDeps,
+  input: BuiltinExecutionInput
+) returns (result: ToolExecutionOutcome)
+  requires !(input.hasArguments && !input.argumentsParseOk)
+  requires input.source != SourceLobehubSkill
+  requires input.source != SourceKlavis
+  requires input.hasServerRuntime
+  requires input.hasApiMethod
+  requires input.isLocalSystem
+  requires input.localSystemInput.hasUserId
+  requires input.localSystemInput.hasActiveDeviceId
+  requires input.localSystemInput.gatewayConfigured
+  ensures result.success == deps.localSystem.gatewayResult
+{
+  result := ExecuteTool(deps, ToolExecutionInput(ToolBuiltin), input);
+}

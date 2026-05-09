@@ -41,6 +41,7 @@ datatype RuntimeStepDeps = RuntimeStepDeps(
   initialContext: RuntimeContext,
   planResult: FResult<PlannedInstructions>,
   callTool: CallToolDeps,
+  callToolInput: CallToolInput,
   instructionResults: seq<FResult<RuntimeStepResult>>
 )
 
@@ -69,6 +70,7 @@ datatype CallToolDeps = CallToolDeps(
 datatype ExecuteStepDeps = ExecuteStepDeps(
   claimed: FResult<bool>,
   stateResult: FResult<AgentState>,
+  interventionResult: FResult<RuntimeStepResult>,
   runtimeStep: RuntimeStepDeps
 )
 

@@ -84,7 +84,17 @@ method RunStep(deps: GlobalDeps, rawBody: string) returns (body: string, status:
     return;
   }
   var meta := GetOperationMetadata(deps.runStep, req.operationId);
-  var stepResult := ExecuteStep(deps.executeStep, req);
+  var stepResult := ExecuteStep(deps.executeStep, ExecuteStepInput(
+    req.operationId,
+    req.stepIndex,
+    RuntimeContext(false, PhaseNone),
+    false,
+    false,
+    false,
+    false,
+    false,
+    0
+  ));
   if meta.Err? {
     response := HttpResponse(Status500, "{ \"error\": \"Internal server error\" }");
   } else if meta.value == "" {

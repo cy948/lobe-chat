@@ -91,9 +91,9 @@ method ExecuteStep(obs: ExecuteStepObs, input: ExecuteStepInput)
     ))
   ensures obs.claimed == Ok(true) && obs.stateResult.Err? ==>
     result == Err("load state failed")
-  ensures obs.claimed == Ok(true) &&
+  ensures (obs.claimed == Ok(true) &&
     obs.stateResult.Ok? &&
-    obs.stateResult.value.stepCount > input.stepIndex ==>
+    obs.stateResult.value.stepCount > input.stepIndex) ==>
     result == Ok(ExecuteStepResult(
       false,
       false,
@@ -109,12 +109,12 @@ method ExecuteStep(obs: ExecuteStepObs, input: ExecuteStepInput)
       false,
       true
     ))
-  ensures obs.claimed == Ok(true) &&
+  ensures (obs.claimed == Ok(true) &&
     obs.stateResult.Ok? &&
     obs.stateResult.value.stepCount <= input.stepIndex &&
     (obs.stateResult.value.status == StatusInterrupted ||
       obs.stateResult.value.status == StatusDone ||
-      obs.stateResult.value.status == StatusError) ==>
+      obs.stateResult.value.status == StatusError)) ==>
     result == Ok(ExecuteStepResult(
       false,
       false,
@@ -130,16 +130,16 @@ method ExecuteStep(obs: ExecuteStepObs, input: ExecuteStepInput)
       false,
       true
     ))
-  ensures obs.claimed == Ok(true) &&
+  ensures (obs.claimed == Ok(true) &&
     obs.stateResult.Ok? &&
     obs.stateResult.value.stepCount <= input.stepIndex &&
     obs.stateResult.value.status != StatusInterrupted &&
     obs.stateResult.value.status != StatusDone &&
     obs.stateResult.value.status != StatusError &&
     (input.hasHumanInput || input.hasApprovedToolCall || input.hasRejectionReason) &&
-    obs.interventionResult.Err? ==>
+    obs.interventionResult.Err?) ==>
     result == Err("human intervention failed")
-  ensures obs.claimed == Ok(true) &&
+  ensures (obs.claimed == Ok(true) &&
     obs.stateResult.Ok? &&
     obs.stateResult.value.stepCount <= input.stepIndex &&
     obs.stateResult.value.status != StatusInterrupted &&
@@ -148,7 +148,7 @@ method ExecuteStep(obs: ExecuteStepObs, input: ExecuteStepInput)
     (input.hasHumanInput || input.hasApprovedToolCall || input.hasRejectionReason) &&
     obs.interventionResult.Ok? &&
     obs.interventionResult.value.nextContext.present &&
-    obs.interventionResult.value.nextContext.phase == PhaseHumanApprovedTool ==>
+    obs.interventionResult.value.nextContext.phase == PhaseHumanApprovedTool) ==>
     result == Err("human approved tool context is not modeled")
 {
   var claimed := TryClaimStep(obs, input.operationId, input.stepIndex);
@@ -292,15 +292,3 @@ method ExecuteStep(obs: ExecuteStepObs, input: ExecuteStepInput)
     }
   }
 }
-
-
-// ============================================================
-// Lemmas
-//
-// 原则:
-//   - Modeling 定义在前
-//   - Lemma 放在文件后部
-//   - 先覆盖单条分支性质，再逐步扩展到更多路径
-// ============================================================
-// TODO: 等 runtimeStep 也迁移为同样的依赖输入风格后，
-// 再补真正连接 ExecuteStep 与下层 black-box 的 theorem / proof method。

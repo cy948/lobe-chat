@@ -78,7 +78,6 @@ datatype ToolExecutionObs = ToolExecutionObs(
 // callTool black-box observations
 // ============================================================
 datatype CallToolObs = CallToolObs(
-  dispatchCalled: bool,
   dispatched: FResult<bool>,
   persisted: FResult<string>,
   toolExecution: ToolExecutionObs

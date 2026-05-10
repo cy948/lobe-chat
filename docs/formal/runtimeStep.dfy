@@ -79,14 +79,14 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
   requires obs.runnerResult.Err? || HumanInstructionFree(obs.runnerResult.value)
   ensures obs.runnerResult.Err? ==>
     result.Ok? && result.value.newState.status == StatusError
-  ensures obs.runnerResult.Ok? &&
+  ensures (obs.runnerResult.Ok? &&
     !obs.runnerResult.value.isArray &&
     obs.runnerResult.value.single.kind == InstrCallTool &&
     ((if input.state.operationToolSource != "" then input.state.operationToolSource else input.state.fallbackToolSource) != "client") &&
     obs.callToolInstruction.toolCalling.executor == "client" &&
     obs.callToolCtx.streamManagerCanSendToolExecute &&
     obs.callTool.dispatched.Ok? &&
-    obs.callTool.persisted.Ok? ==>
+    obs.callTool.persisted.Ok?) ==>
     result.Ok?
 {
   var preparedState :=
@@ -293,28 +293,3 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
       finalContext
   ));
 }
-
-function RuntimeStepCallsToolAtIndex(obs: RuntimeStepObs, k: int): bool
-{
-  obs.runnerResult.Ok? &&
-  (
-    (!obs.runnerResult.value.isArray &&
-      k == 0 &&
-      obs.runnerResult.value.single.kind == InstrCallTool) ||
-    (obs.runnerResult.value.isArray &&
-      0 <= k < |obs.runnerResult.value.items| &&
-      obs.runnerResult.value.items[k].kind == InstrCallTool)
-  )
-}
-
-// ============================================================
-// Lemmas
-//
-// 原则:
-//   - Modeling 定义在前
-//   - Lemma 放在文件后部
-//   - 先覆盖单条分支性质，再逐步扩展到更多路径
-// ============================================================
-// TODO: 等 callTool / toolExecution 也迁移为同样的 obs-driven 风格后，
-// 再补真正连接 RuntimeStep 与下层 black-box 的 lemma，
-// 以及顺序推进所需的小步关系 / 归纳不变量。

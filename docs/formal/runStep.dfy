@@ -113,24 +113,3 @@ method RunStep(obs: GlobalObs, rawBody: string) returns (body: string, status: H
   body := response.body;
   status := response.status;
 }
-
-// ============================================================
-// Once-run observation witness
-//
-// 作用：
-//   不把“第 k 次运行 / 本次正常运行”的见证塞进 req，
-//   而是单独用一个 predicate 描述：
-//   若这次端点调用沿主路径正常推进到一次 call_tool gateway dispatch，
-//   我们需要观测到哪些 obs / 外部现象。
-// ============================================================
-
-// ============================================================
-// Lemmas
-//
-// 原则：
-//   - Modeling 定义在前
-//   - Lemma 放在文件后部
-//   - 先覆盖单条分支性质，再逐步扩展到更多路径
-// ============================================================
-// TODO: 等 executeStep / runtimeStep / toolExecution 的可证性质逐层补齐后，
-// 再回到 RunStep 写真正连接整条调用链的 theorem / proof method。

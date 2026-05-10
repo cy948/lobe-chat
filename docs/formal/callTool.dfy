@@ -83,11 +83,11 @@ method ExecuteCallTool(
   returns (result: FResult<RuntimeStepResult>)
   ensures (if state.operationToolSource != "" then state.operationToolSource else state.fallbackToolSource) == "client" ==>
     result.Ok? && result.value.newState.status == StatusInterrupted
-  ensures (if state.operationToolSource != "" then state.operationToolSource else state.fallbackToolSource) != "client" &&
+  ensures ((if state.operationToolSource != "" then state.operationToolSource else state.fallbackToolSource) != "client" &&
     instruction.toolCalling.executor == "client" &&
     ctx.streamManagerCanSendToolExecute &&
     obs.dispatched.Ok? &&
-    obs.persisted.Ok? ==>
+    obs.persisted.Ok?) ==>
     result.Ok?
 {
   var toolCalling := instruction.toolCalling;

@@ -136,6 +136,7 @@ predicate PRunStepCanReachExecuteCallTool(obs: GlobalObs)
   HumanInstructionFree(obs.executeStep.runtimeStep.runnerResult.value) &&
   !obs.executeStep.runtimeStep.runnerResult.value.isArray &&
   obs.executeStep.runtimeStep.runnerResult.value.single.kind == InstrCallTool &&
+  |obs.executeStep.runtimeStep.instructionResults| > 0 &&
   obs.executeStep.runtimeStep.callToolInstruction.toolCalling.executor == "client" &&
   obs.executeStep.runtimeStep.callToolCtx.streamManagerCanSendToolExecute &&
   obs.executeStep.runtimeStep.callTool.dispatched.Ok? &&
@@ -147,22 +148,23 @@ predicate PRunStepCanReachExecuteCallTool(obs: GlobalObs)
 }
 
 method RunStepPImpliesQ(obs: GlobalObs)
-  returns (callToolResult: FResult<RuntimeStepResult>)
+  returns (callToolResult: FResult<RuntimeStepResult>, ghost executeCallToolSucceeded: bool)
   requires PRunStepCanReachExecuteCallTool(obs)
+  ensures executeCallToolSucceeded
   ensures callToolResult.Ok?
 {
-  callToolResult := ExecuteCallTool(
-    obs.executeStep.runtimeStep.callTool,
-    obs.executeStep.runtimeStep.callToolCtx,
-    obs.executeStep.runtimeStep.callToolInstruction,
-    AgentState(
-      obs.executeStep.stateResult.value.status,
-      obs.executeStep.stateResult.value.stepCount + 1,
-      obs.executeStep.stateResult.value.hasCostLimit,
-      obs.executeStep.stateResult.value.totalCostExceeded,
-      obs.executeStep.stateResult.value.costLimitPolicy,
-      obs.executeStep.stateResult.value.operationToolSource,
-      obs.executeStep.stateResult.value.fallbackToolSource
+  callToolResult, executeCallToolSucceeded := ExecuteStepSingleCallToolSuccessProof(
+    obs.executeStep,
+    ExecuteStepInput(
+      obs.runStep.parsed.value.operationId,
+      obs.runStep.parsed.value.stepIndex,
+      obs.runStep.parsed.value.context,
+      obs.runStep.parsed.value.hasHumanInput,
+      obs.runStep.parsed.value.hasApprovedToolCall,
+      obs.runStep.parsed.value.hasRejectionReason,
+      obs.runStep.parsed.value.rejectAndContinue,
+      obs.runStep.parsed.value.hasToolMessageId,
+      obs.runStep.parsed.value.externalRetryCount
     )
   );
   var body, status := RunStep(obs, "raw");

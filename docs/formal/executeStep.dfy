@@ -294,3 +294,60 @@ method ExecuteStep(obs: ExecuteStepObs, input: ExecuteStepInput)
     }
   }
 }
+
+predicate PExecuteStepCanReachRuntimeStepSingleCallTool(obs: ExecuteStepObs, input: ExecuteStepInput)
+{
+  (!input.context.present || input.context.phase != PhaseHumanApprovedTool) &&
+  obs.claimed == Ok(true) &&
+  obs.stateResult.Ok? &&
+  obs.stateResult.value.stepCount <= input.stepIndex &&
+  obs.stateResult.value.status != StatusInterrupted &&
+  obs.stateResult.value.status != StatusDone &&
+  obs.stateResult.value.status != StatusError &&
+  !(input.hasHumanInput || input.hasApprovedToolCall || input.hasRejectionReason) &&
+  PRuntimeStepSingleCallToolSuccess(
+    obs.runtimeStep,
+    RuntimeStepInput(
+      RuntimeStepState(
+        obs.stateResult.value.status,
+        obs.stateResult.value.stepCount,
+        obs.stateResult.value.hasMaxSteps,
+        obs.stateResult.value.maxSteps,
+        obs.stateResult.value.forceFinish,
+        obs.stateResult.value.hasCostLimit,
+        obs.stateResult.value.totalCostExceeded,
+        obs.stateResult.value.costLimitPolicy,
+        obs.stateResult.value.operationToolSource,
+        obs.stateResult.value.fallbackToolSource
+      ),
+      input.context
+    )
+  )
+}
+
+method ExecuteStepSingleCallToolSuccessProof(obs: ExecuteStepObs, input: ExecuteStepInput)
+  returns (callToolResult: FResult<RuntimeStepResult>, ghost executeCallToolSucceeded: bool)
+  requires PExecuteStepCanReachRuntimeStepSingleCallTool(obs, input)
+  ensures executeCallToolSucceeded
+  ensures callToolResult.Ok?
+{
+  callToolResult, executeCallToolSucceeded := RuntimeStepSingleCallToolSuccessProof(
+    obs.runtimeStep,
+    RuntimeStepInput(
+      RuntimeStepState(
+        obs.stateResult.value.status,
+        obs.stateResult.value.stepCount,
+        obs.stateResult.value.hasMaxSteps,
+        obs.stateResult.value.maxSteps,
+        obs.stateResult.value.forceFinish,
+        obs.stateResult.value.hasCostLimit,
+        obs.stateResult.value.totalCostExceeded,
+        obs.stateResult.value.costLimitPolicy,
+        obs.stateResult.value.operationToolSource,
+        obs.stateResult.value.fallbackToolSource
+      ),
+      input.context
+    )
+  );
+  var executeStepResult := ExecuteStep(obs, input);
+}

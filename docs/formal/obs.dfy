@@ -29,9 +29,15 @@ datatype InstructionKind =
   | InstrRequestHumanSelect
   | InstrUnknown
 
-datatype PlannedInstructions = PlannedInstructions(
-  kinds: seq<InstructionKind>,
-  hasFinish: bool
+datatype ObservedInstruction = ObservedInstruction(
+  kind: InstructionKind,
+  payloadIsOldToolsArray: bool
+)
+
+datatype RawInstructionsObs = RawInstructionsObs(
+  isArray: bool,
+  single: ObservedInstruction,
+  items: seq<ObservedInstruction>
 )
 
 // ============================================================
@@ -39,12 +45,15 @@ datatype PlannedInstructions = PlannedInstructions(
 // ============================================================
 datatype RuntimeStepObs = RuntimeStepObs(
   initialContext: RuntimeContext,
-  planResult: FResult<PlannedInstructions>,
+  runnerResult: FResult<RawInstructionsObs>,
   llmResults: seq<FResult<RuntimeStepResult>>,
   callTool: CallToolDeps,
   callToolCtx: CallToolCtx,
   callToolInstruction: CallToolInstruction,
   finishResult: RuntimeStepResult,
+  batchCustomExecutorPresent: seq<bool>,
+  batchCustomResults: seq<FResult<RuntimeStepResult>>,
+  batchBuiltinResults: seq<FResult<RuntimeStepResult>>,
   instructionResults: seq<FResult<RuntimeStepResult>>
 )
 
@@ -79,7 +88,7 @@ datatype CallToolDeps = CallToolDeps(
 // ============================================================
 datatype ExecuteStepDeps = ExecuteStepDeps(
   claimed: FResult<bool>,
-  stateResult: FResult<AgentState>,
+  stateResult: FResult<ExecuteStepState>,
   interventionResult: FResult<RuntimeStepResult>,
   runtimeStep: RuntimeStepObs
 )

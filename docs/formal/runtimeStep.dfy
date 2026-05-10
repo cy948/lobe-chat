@@ -19,20 +19,51 @@ include "callTool.dfy"
 // ============================================================
 // Local projection: runtime.step 的输入
 // ============================================================
-datatype RuntimeStepInput = RuntimeStepInput(
-  state: AgentState,
-  context: RuntimeContext,
+datatype RuntimeStepState = RuntimeStepState(
+  status: AgentStatus,
+  stepCount: int,
   hasMaxSteps: bool,
   maxSteps: int,
-  forceFinish: bool
+  forceFinish: bool,
+  hasCostLimit: bool,
+  totalCostExceeded: bool,
+  costLimitPolicy: CostLimitPolicy,
+  operationToolSource: string,
+  fallbackToolSource: string
 )
 
-function HumanInstructionFree(plan: PlannedInstructions): bool
+datatype RuntimeStepInput = RuntimeStepInput(
+  state: RuntimeStepState,
+  context: RuntimeContext
+)
+
+function HumanInstructionFree(raw: RawInstructionsObs): bool
 {
-  forall i :: 0 <= i < |plan.kinds| ==>
-    (plan.kinds[i] == InstrCallLlm ||
-     plan.kinds[i] == InstrCallTool ||
-     plan.kinds[i] == InstrFinish)
+  (raw.single.kind == InstrCallLlm ||
+   raw.single.kind == InstrCallTool ||
+   raw.single.kind == InstrFinish ||
+   raw.single.kind == InstrCallToolsBatch) &&
+  (forall i :: 0 <= i < |raw.items| ==>
+    (raw.items[i].kind == InstrCallLlm ||
+     raw.items[i].kind == InstrCallTool ||
+     raw.items[i].kind == InstrFinish ||
+     raw.items[i].kind == InstrCallToolsBatch))
+}
+
+method CreateErrorResult(state: RuntimeStepState) returns (result: FResult<RuntimeStepResult>)
+{
+  result := Ok(RuntimeStepResult(
+    AgentState(
+      StatusError,
+      state.stepCount,
+      state.hasCostLimit,
+      state.totalCostExceeded,
+      state.costLimitPolicy,
+      state.operationToolSource,
+      state.fallbackToolSource
+    ),
+    EmptyRuntimeContext()
+  ));
 }
 
 // ============================================================
@@ -42,12 +73,15 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
   returns (result: FResult<RuntimeStepResult>)
   requires !input.context.present || input.context.phase != PhaseHumanApprovedTool
   requires obs.initialContext.phase != PhaseHumanApprovedTool
-  requires obs.planResult.Err? || HumanInstructionFree(obs.planResult.value)
+  requires obs.runnerResult.Err? || HumanInstructionFree(obs.runnerResult.value)
 {
   var preparedState :=
-    AgentState(
+    RuntimeStepState(
       input.state.status,
       input.state.stepCount + 1,
+      input.state.hasMaxSteps,
+      input.state.maxSteps,
+      input.state.forceFinish,
       input.state.hasCostLimit,
       input.state.totalCostExceeded,
       input.state.costLimitPolicy,
@@ -55,8 +89,8 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
       input.state.fallbackToolSource
     );
 
-  var forceFinish := input.forceFinish;
-  if input.hasMaxSteps && preparedState.stepCount > input.maxSteps {
+  var forceFinish := preparedState.forceFinish;
+  if preparedState.hasMaxSteps && preparedState.stepCount > preparedState.maxSteps {
     if forceFinish {
       // Already in forceFinish flow, skip maxSteps check and continue execution
     } else {
@@ -65,12 +99,18 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
     }
   }
 
-  if forceFinish {
-    // RuntimeState projection note:
-    // forceFinish is part of the runtime state in TS, but AgentState in types.dfy
-    // intentionally stays minimal. We therefore keep the flag as a local runtime-step
-    // projection rather than widening the shared type file.
-  }
+  preparedState := RuntimeStepState(
+    preparedState.status,
+    preparedState.stepCount,
+    preparedState.hasMaxSteps,
+    preparedState.maxSteps,
+    forceFinish,
+    preparedState.hasCostLimit,
+    preparedState.totalCostExceeded,
+    preparedState.costLimitPolicy,
+    preparedState.operationToolSource,
+    preparedState.fallbackToolSource
+  );
 
   var runtimeContext: RuntimeContext;
   if input.context.present {
@@ -80,21 +120,10 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
   }
   assert runtimeContext.phase != PhaseHumanApprovedTool;
 
-  var planResult := obs.planResult;
-  match planResult {
+  var rawInstructionsResult := obs.runnerResult;
+  match rawInstructionsResult {
     case Err(_) => {
-      result := Ok(RuntimeStepResult(
-        AgentState(
-          StatusError,
-          preparedState.stepCount,
-          preparedState.hasCostLimit,
-          preparedState.totalCostExceeded,
-          preparedState.costLimitPolicy,
-          preparedState.operationToolSource,
-          preparedState.fallbackToolSource
-        ),
-        EmptyRuntimeContext()
-      ));
+      result := CreateErrorResult(preparedState);
       return;
     }
     case Ok(plan) => {
@@ -102,61 +131,98 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
     }
   }
 
-  var plan := planResult.value;
-  var currentState := preparedState;
+  var rawInstructions := rawInstructionsResult.value;
+  var normalizedKinds: seq<InstructionKind>;
+  if rawInstructions.isArray {
+    normalizedKinds := [];
+    var normalizeIndex := 0;
+    while normalizeIndex < |rawInstructions.items|
+      invariant 0 <= normalizeIndex <= |rawInstructions.items|
+      invariant |normalizedKinds| == normalizeIndex
+    {
+      var instruction := rawInstructions.items[normalizeIndex];
+      if instruction.kind == InstrCallToolsBatch {
+        if instruction.payloadIsOldToolsArray {
+          normalizedKinds := normalizedKinds + [InstrCallToolsBatch];
+        } else {
+          normalizedKinds := normalizedKinds + [InstrCallToolsBatch];
+        }
+      } else {
+        normalizedKinds := normalizedKinds + [instruction.kind];
+      }
+      normalizeIndex := normalizeIndex + 1;
+    }
+  } else {
+    if rawInstructions.single.kind == InstrCallToolsBatch {
+      if rawInstructions.single.payloadIsOldToolsArray {
+        normalizedKinds := [InstrCallToolsBatch];
+      } else {
+        normalizedKinds := [InstrCallToolsBatch];
+      }
+    } else {
+      normalizedKinds := [rawInstructions.single.kind];
+    }
+  }
+
+  var currentState := AgentState(
+    preparedState.status,
+    preparedState.stepCount,
+    preparedState.hasCostLimit,
+    preparedState.totalCostExceeded,
+    preparedState.costLimitPolicy,
+    preparedState.operationToolSource,
+    preparedState.fallbackToolSource
+  );
   var finalContext := EmptyRuntimeContext();
   var hasFinishInstruction := false;
   var i := 0;
 
-  while i < |plan.kinds|
-    invariant 0 <= i <= |plan.kinds|
+  while i < |normalizedKinds|
+    invariant 0 <= i <= |normalizedKinds|
   {
     if i >= |obs.instructionResults| {
-      result := Ok(RuntimeStepResult(
-        AgentState(
-          StatusError,
-          preparedState.stepCount,
-          preparedState.hasCostLimit,
-          preparedState.totalCostExceeded,
-          preparedState.costLimitPolicy,
-          preparedState.operationToolSource,
-          preparedState.fallbackToolSource
-        ),
-        EmptyRuntimeContext()
-      ));
+      result := CreateErrorResult(preparedState);
       return;
     }
 
-    if plan.kinds[i] == InstrFinish {
+    if normalizedKinds[i] == InstrFinish {
       hasFinishInstruction := true;
     }
 
     var exec: FResult<RuntimeStepResult>;
-    if plan.kinds[i] == InstrCallLlm {
+    if normalizedKinds[i] == InstrCallLlm {
       if i >= |obs.llmResults| {
-        result := Ok(RuntimeStepResult(
-          AgentState(
-            StatusError,
-            preparedState.stepCount,
-            preparedState.hasCostLimit,
-            preparedState.totalCostExceeded,
-            preparedState.costLimitPolicy,
-            preparedState.operationToolSource,
-            preparedState.fallbackToolSource
-          ),
-          EmptyRuntimeContext()
-        ));
+        result := CreateErrorResult(preparedState);
         return;
       }
       exec := obs.llmResults[i];
-    } else if plan.kinds[i] == InstrCallTool {
+    } else if normalizedKinds[i] == InstrCallTool {
       exec := ExecuteCallTool(
         obs.callTool,
         obs.callToolCtx,
         obs.callToolInstruction,
         currentState
       );
-    } else if plan.kinds[i] == InstrFinish {
+    } else if normalizedKinds[i] == InstrCallToolsBatch {
+      if i >= |obs.batchCustomExecutorPresent| {
+        result := CreateErrorResult(preparedState);
+        return;
+      }
+
+      if obs.batchCustomExecutorPresent[i] {
+        if i >= |obs.batchCustomResults| {
+          result := CreateErrorResult(preparedState);
+          return;
+        }
+        exec := obs.batchCustomResults[i];
+      } else {
+        if i >= |obs.batchBuiltinResults| {
+          result := CreateErrorResult(preparedState);
+          return;
+        }
+        exec := obs.batchBuiltinResults[i];
+      }
+    } else if normalizedKinds[i] == InstrFinish {
       exec := Ok(obs.finishResult);
     } else {
       exec := obs.instructionResults[i];
@@ -165,18 +231,7 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
     var instructionResult: RuntimeStepResult;
     match exec {
       case Err(_) => {
-        result := Ok(RuntimeStepResult(
-          AgentState(
-            StatusError,
-            preparedState.stepCount,
-            preparedState.hasCostLimit,
-            preparedState.totalCostExceeded,
-            preparedState.costLimitPolicy,
-            preparedState.operationToolSource,
-            preparedState.fallbackToolSource
-          ),
-          EmptyRuntimeContext()
-        ));
+        result := CreateErrorResult(preparedState);
         return;
       }
       case Ok(r) => instructionResult := r;

@@ -13,6 +13,19 @@ include "types.dfy"
 include "obs.dfy"
 include "runtimeStep.dfy"
 
+datatype ExecuteStepState = ExecuteStepState(
+  status: AgentStatus,
+  stepCount: int,
+  hasMaxSteps: bool,
+  maxSteps: int,
+  forceFinish: bool,
+  hasCostLimit: bool,
+  totalCostExceeded: bool,
+  costLimitPolicy: CostLimitPolicy,
+  operationToolSource: string,
+  fallbackToolSource: string
+)
+
 // ============================================================
 // L3 Cut Point: Redis step lock
 //
@@ -31,7 +44,7 @@ method TryClaimStep(deps: ExecuteStepDeps, operationId: string, stepIndex: int) 
 // obs 决定黑盒结果:
 //   - LoadAgentState 直接返回 obs.stateResult
 // ============================================================
-method LoadAgentState(deps: ExecuteStepDeps, operationId: string) returns (result: FResult<AgentState>)
+method LoadAgentState(deps: ExecuteStepDeps, operationId: string) returns (result: FResult<ExecuteStepState>)
   ensures result == deps.stateResult
 {
   result := deps.stateResult;
@@ -98,7 +111,7 @@ method ExecuteStep(deps: ExecuteStepDeps, input: ExecuteStepInput)
   }
 
   var stateResult := LoadAgentState(deps, input.operationId);
-  var state: AgentState;
+  var state: ExecuteStepState;
   match stateResult {
     case Err(_) => {
       result := Err("load state failed");
@@ -111,7 +124,15 @@ method ExecuteStep(deps: ExecuteStepDeps, input: ExecuteStepInput)
     result := Ok(ExecuteStepResult(
       false,
       false,
-      state,
+      AgentState(
+        state.status,
+        state.stepCount,
+        state.hasCostLimit,
+        state.totalCostExceeded,
+        state.costLimitPolicy,
+        state.operationToolSource,
+        state.fallbackToolSource
+      ),
       false,
       true
     ));
@@ -122,14 +143,30 @@ method ExecuteStep(deps: ExecuteStepDeps, input: ExecuteStepInput)
     result := Ok(ExecuteStepResult(
       false,
       false,
-      state,
+      AgentState(
+        state.status,
+        state.stepCount,
+        state.hasCostLimit,
+        state.totalCostExceeded,
+        state.costLimitPolicy,
+        state.operationToolSource,
+        state.fallbackToolSource
+      ),
       false,
       true
     ));
     return;
   }
 
-  var currentState := state;
+  var currentState := AgentState(
+    state.status,
+    state.stepCount,
+    state.hasCostLimit,
+    state.totalCostExceeded,
+    state.costLimitPolicy,
+    state.operationToolSource,
+    state.fallbackToolSource
+  );
   var currentContext := input.context;
   if input.hasHumanInput || input.hasApprovedToolCall || input.hasRejectionReason {
     var intervention := HandleHumanIntervention(deps, state, input);
@@ -148,11 +185,19 @@ method ExecuteStep(deps: ExecuteStepDeps, input: ExecuteStepInput)
   var stepped := RuntimeStep(
     deps.runtimeStep,
     RuntimeStepInput(
-      currentState,
-      currentContext,
-      false,
-      0,
-      false
+      RuntimeStepState(
+        state.status,
+        state.stepCount,
+        state.hasMaxSteps,
+        state.maxSteps,
+        state.forceFinish,
+        currentState.hasCostLimit,
+        currentState.totalCostExceeded,
+        currentState.costLimitPolicy,
+        currentState.operationToolSource,
+        currentState.fallbackToolSource
+      ),
+      currentContext
     )
   );
   match stepped {

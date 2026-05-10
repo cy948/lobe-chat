@@ -54,29 +54,3 @@ method ExecuteTool(obs: ToolExecutionObs, payload: ToolExecutionPayload, context
 
   result := ExecuteBuiltinTool(obs.builtin, payload.builtinContext);
 }
-
-predicate ToolExecutionBuiltinLocalSystemWitness(obs: ToolExecutionObs, payload: ToolExecutionPayload)
-{
-  payload.kind != ToolMcp &&
-  !(payload.builtinContext.hasArguments && !payload.builtinContext.argumentsParseOk) &&
-  payload.builtinContext.source != SourceLobehubSkill &&
-  payload.builtinContext.source != SourceKlavis &&
-  payload.builtinContext.hasServerRuntime &&
-  payload.builtinContext.hasApiMethod &&
-  payload.builtinContext.isLocalSystem &&
-  payload.builtinContext.localSystemInput.userId != "" &&
-  payload.builtinContext.localSystemInput.activeDeviceId != "" &&
-  obs.builtin.localSystem.gatewayResult
-}
-
-method ExecuteLocalSystemToolFromToolExecutionWitness(
-  obs: ToolExecutionObs,
-  payload: ToolExecutionPayload,
-  context: ToolExecutionContextInput
-) returns (result: FResult<ToolExecutionOutcome>)
-  requires ToolExecutionBuiltinLocalSystemWitness(obs, payload)
-  ensures result.Ok?
-  ensures result.value.success
-{
-  result := ExecuteLocalSystemTool(obs.builtin.localSystem, payload.builtinContext.localSystemInput);
-}

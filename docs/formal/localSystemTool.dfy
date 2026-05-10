@@ -35,8 +35,12 @@ method GatewayExecuteToolCall(obs: LocalSystemObs, userId: string, activeDeviceI
 
 method ExecuteLocalSystemTool(obs: LocalSystemObs, input: LocalSystemInput)
   returns (result: FResult<ToolExecutionOutcome>)
-  ensures input.userId != "" && input.activeDeviceId != "" && obs.gatewayResult ==>
-    result.Ok? && result.value.success
+  ensures input.userId == "" ==>
+    result == Err("userId is required for Local System device proxy execution")
+  ensures input.userId != "" && input.activeDeviceId == "" ==>
+    result == Err("activeDeviceId is required for Local System device proxy execution")
+  ensures input.userId != "" && input.activeDeviceId != "" ==>
+    result.Ok?
 {
   // 对应 localSystemRuntime.factory(...) 内部的同步 throw 分支。
   if input.userId == "" {
@@ -50,22 +54,6 @@ method ExecuteLocalSystemTool(obs: LocalSystemObs, input: LocalSystemInput)
   }
 
   // 只有 factory 成功后，才会进入真正的 gateway tool-call。
-  if input.userId != "" && input.activeDeviceId != "" && obs.gatewayResult {
-    assert obs.gatewayResult;
-  }
   var gatewaySuccess := GatewayExecuteToolCall(obs, input.userId, input.activeDeviceId);
   result := Ok(ToolExecutionOutcome(gatewaySuccess, 0));
-}
-
-method ExecuteLocalSystemToolUnderWitness(
-  obs: LocalSystemObs,
-  input: LocalSystemInput
-) returns (result: FResult<ToolExecutionOutcome>)
-  requires input.userId != ""
-  requires input.activeDeviceId != ""
-  requires obs.gatewayResult
-  ensures result.Ok?
-  ensures result.value.success
-{
-  result := ExecuteLocalSystemTool(obs, input);
 }

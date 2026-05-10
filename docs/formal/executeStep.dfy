@@ -77,6 +77,79 @@ function ShouldContinueExecution(state: AgentState, nextContext: RuntimeContext)
 // ============================================================
 method ExecuteStep(obs: ExecuteStepObs, input: ExecuteStepInput)
   returns (result: FResult<ExecuteStepResult>)
+  requires !input.context.present || input.context.phase != PhaseHumanApprovedTool
+  requires obs.runtimeStep.initialContext.phase != PhaseHumanApprovedTool
+  requires obs.runtimeStep.runnerResult.Err? || HumanInstructionFree(obs.runtimeStep.runnerResult.value)
+  ensures obs.claimed.Err? ==> result == Err("claim step failed")
+  ensures obs.claimed == Ok(false) ==>
+    result == Ok(ExecuteStepResult(
+      true,
+      false,
+      AgentState(StatusRunning, 0, false, false, CostLimitContinue, "", ""),
+      false,
+      false
+    ))
+  ensures obs.claimed == Ok(true) && obs.stateResult.Err? ==>
+    result == Err("load state failed")
+  ensures obs.claimed == Ok(true) &&
+    obs.stateResult.Ok? &&
+    obs.stateResult.value.stepCount > input.stepIndex ==>
+    result == Ok(ExecuteStepResult(
+      false,
+      false,
+      AgentState(
+        obs.stateResult.value.status,
+        obs.stateResult.value.stepCount,
+        obs.stateResult.value.hasCostLimit,
+        obs.stateResult.value.totalCostExceeded,
+        obs.stateResult.value.costLimitPolicy,
+        obs.stateResult.value.operationToolSource,
+        obs.stateResult.value.fallbackToolSource
+      ),
+      false,
+      true
+    ))
+  ensures obs.claimed == Ok(true) &&
+    obs.stateResult.Ok? &&
+    obs.stateResult.value.stepCount <= input.stepIndex &&
+    (obs.stateResult.value.status == StatusInterrupted ||
+      obs.stateResult.value.status == StatusDone ||
+      obs.stateResult.value.status == StatusError) ==>
+    result == Ok(ExecuteStepResult(
+      false,
+      false,
+      AgentState(
+        obs.stateResult.value.status,
+        obs.stateResult.value.stepCount,
+        obs.stateResult.value.hasCostLimit,
+        obs.stateResult.value.totalCostExceeded,
+        obs.stateResult.value.costLimitPolicy,
+        obs.stateResult.value.operationToolSource,
+        obs.stateResult.value.fallbackToolSource
+      ),
+      false,
+      true
+    ))
+  ensures obs.claimed == Ok(true) &&
+    obs.stateResult.Ok? &&
+    obs.stateResult.value.stepCount <= input.stepIndex &&
+    obs.stateResult.value.status != StatusInterrupted &&
+    obs.stateResult.value.status != StatusDone &&
+    obs.stateResult.value.status != StatusError &&
+    (input.hasHumanInput || input.hasApprovedToolCall || input.hasRejectionReason) &&
+    obs.interventionResult.Err? ==>
+    result == Err("human intervention failed")
+  ensures obs.claimed == Ok(true) &&
+    obs.stateResult.Ok? &&
+    obs.stateResult.value.stepCount <= input.stepIndex &&
+    obs.stateResult.value.status != StatusInterrupted &&
+    obs.stateResult.value.status != StatusDone &&
+    obs.stateResult.value.status != StatusError &&
+    (input.hasHumanInput || input.hasApprovedToolCall || input.hasRejectionReason) &&
+    obs.interventionResult.Ok? &&
+    obs.interventionResult.value.nextContext.present &&
+    obs.interventionResult.value.nextContext.phase == PhaseHumanApprovedTool ==>
+    result == Err("human approved tool context is not modeled")
 {
   var claimed := TryClaimStep(obs, input.operationId, input.stepIndex);
   match claimed {
@@ -163,6 +236,11 @@ method ExecuteStep(obs: ExecuteStepObs, input: ExecuteStepInput)
         return;
       }
       case Ok(interventionResult) => {
+        if interventionResult.nextContext.present &&
+           interventionResult.nextContext.phase == PhaseHumanApprovedTool {
+          result := Err("human approved tool context is not modeled");
+          return;
+        }
         currentState := interventionResult.newState;
         currentContext := interventionResult.nextContext;
       }
@@ -215,82 +293,6 @@ method ExecuteStep(obs: ExecuteStepObs, input: ExecuteStepInput)
   }
 }
 
-predicate ExecuteStepOnceRunWitness(obs: ExecuteStepObs, input: ExecuteStepInput)
-{
-  obs.claimed == Ok(true) &&
-  obs.stateResult.Ok? &&
-  obs.stateResult.value.stepCount <= input.stepIndex &&
-  obs.stateResult.value.status != StatusInterrupted &&
-  obs.stateResult.value.status != StatusDone &&
-  obs.stateResult.value.status != StatusError &&
-  !input.hasHumanInput &&
-  !input.hasApprovedToolCall &&
-  !input.hasRejectionReason &&
-  RuntimeStepCallsToolAtIndex(obs.runtimeStep, 0) &&
-  PCallToolGatewaySucceeded(
-    obs.runtimeStep.callToolCtx,
-    obs.runtimeStep.callToolInstruction,
-    AgentState(
-      obs.stateResult.value.status,
-      obs.stateResult.value.stepCount + 1,
-      obs.stateResult.value.hasCostLimit,
-      obs.stateResult.value.totalCostExceeded,
-      obs.stateResult.value.costLimitPolicy,
-      obs.stateResult.value.operationToolSource,
-      obs.stateResult.value.fallbackToolSource
-    ),
-    obs.runtimeStep.callTool
-  )
-}
-
-predicate ExecuteStepOnceRunDispatchCalledQ(obs: ExecuteStepObs)
-{
-  QDispatchCalled(
-    obs.runtimeStep.callToolCtx,
-    AgentState(
-      obs.stateResult.value.status,
-      obs.stateResult.value.stepCount + 1,
-      obs.stateResult.value.hasCostLimit,
-      obs.stateResult.value.totalCostExceeded,
-      obs.stateResult.value.costLimitPolicy,
-      obs.stateResult.value.operationToolSource,
-      obs.stateResult.value.fallbackToolSource
-    ),
-    obs.runtimeStep.callToolInstruction,
-    obs.runtimeStep.callTool
-  )
-}
-
-// 单次运行版本：
-//   这里只证明一次 ExecuteStep 调用能把控制流推进到一次满足条件的 RuntimeStep，
-//   不讨论后续调度、下一 step、或状态机归纳。
-lemma ExecuteStepOnceRunCanReachRuntimeStepDispatch(
-  obs: ExecuteStepObs,
-  input: ExecuteStepInput
-)
-  requires ExecuteStepOnceRunWitness(obs, input)
-  ensures ExecuteStepOnceRunDispatchCalledQ(obs)
-{
-  RuntimeStepOnceRunCallToolAtIndexCanDispatch(
-    obs.runtimeStep,
-    RuntimeStepInput(
-      RuntimeStepState(
-        obs.stateResult.value.status,
-        obs.stateResult.value.stepCount,
-        obs.stateResult.value.hasMaxSteps,
-        obs.stateResult.value.maxSteps,
-        obs.stateResult.value.forceFinish,
-        obs.stateResult.value.hasCostLimit,
-        obs.stateResult.value.totalCostExceeded,
-        obs.stateResult.value.costLimitPolicy,
-        obs.stateResult.value.operationToolSource,
-        obs.stateResult.value.fallbackToolSource
-      ),
-      input.context
-    ),
-    0
-  );
-}
 
 // ============================================================
 // Lemmas

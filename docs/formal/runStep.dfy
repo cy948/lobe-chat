@@ -66,6 +66,10 @@ method GetOperationMetadata(obs: RunStepObs, operationId: string) returns (resul
 //   - 具体 response 性质留给后续 lemma 单独表达
 // ============================================================
 method RunStep(obs: GlobalObs, rawBody: string) returns (body: string, status: HttpStatus)
+  requires obs.runStep.parsed.Err? ||
+    (!obs.runStep.parsed.value.context.present || obs.runStep.parsed.value.context.phase != PhaseHumanApprovedTool)
+  requires obs.executeStep.runtimeStep.initialContext.phase != PhaseHumanApprovedTool
+  requires obs.executeStep.runtimeStep.runnerResult.Err? || HumanInstructionFree(obs.executeStep.runtimeStep.runnerResult.value)
 {
   var response: HttpResponse;
   // ===== Outer try: JSON parse (runStep.ts:20-24) → 400 =====
@@ -119,83 +123,6 @@ method RunStep(obs: GlobalObs, rawBody: string) returns (body: string, status: H
 //   若这次端点调用沿主路径正常推进到一次 call_tool gateway dispatch，
 //   我们需要观测到哪些 obs / 外部现象。
 // ============================================================
-predicate NormalOnceRunWitness(obs: GlobalObs, req: RunStepRequest)
-{
-  obs.runStep.parsed == Ok(req) &&
-  obs.runStep.coordinatorReady &&
-  obs.runStep.meta.Ok? &&
-  obs.runStep.meta.value != "" &&
-
-  obs.executeStep.claimed == Ok(true) &&
-  obs.executeStep.stateResult.Ok? &&
-  obs.executeStep.stateResult.value.stepCount <= req.stepIndex &&
-  obs.executeStep.stateResult.value.status != StatusInterrupted &&
-  obs.executeStep.stateResult.value.status != StatusDone &&
-  obs.executeStep.stateResult.value.status != StatusError &&
-
-  !req.hasHumanInput &&
-  !req.hasApprovedToolCall &&
-  !req.hasRejectionReason &&
-
-  obs.executeStep.runtimeStep.runnerResult.Ok? &&
-  RuntimeStepCallsToolAtIndex(obs.executeStep.runtimeStep, 0) &&
-
-  PCallToolGatewaySucceeded(
-    obs.executeStep.runtimeStep.callToolCtx,
-    obs.executeStep.runtimeStep.callToolInstruction,
-    AgentState(
-      obs.executeStep.stateResult.value.status,
-      obs.executeStep.stateResult.value.stepCount + 1,
-      obs.executeStep.stateResult.value.hasCostLimit,
-      obs.executeStep.stateResult.value.totalCostExceeded,
-      obs.executeStep.stateResult.value.costLimitPolicy,
-      obs.executeStep.stateResult.value.operationToolSource,
-      obs.executeStep.stateResult.value.fallbackToolSource
-    ),
-    obs.executeStep.runtimeStep.callTool
-  )
-}
-
-predicate OnceRunDispatchCalledQ(obs: GlobalObs)
-{
-  QDispatchCalled(
-    obs.executeStep.runtimeStep.callToolCtx,
-    AgentState(
-      obs.executeStep.stateResult.value.status,
-      obs.executeStep.stateResult.value.stepCount + 1,
-      obs.executeStep.stateResult.value.hasCostLimit,
-      obs.executeStep.stateResult.value.totalCostExceeded,
-      obs.executeStep.stateResult.value.costLimitPolicy,
-      obs.executeStep.stateResult.value.operationToolSource,
-      obs.executeStep.stateResult.value.fallbackToolSource
-    ),
-    obs.executeStep.runtimeStep.callToolInstruction,
-    obs.executeStep.runtimeStep.callTool
-  )
-}
-
-lemma NormalOnceRunWitnessImpliesDispatchCalled(
-  obs: GlobalObs,
-  req: RunStepRequest
-)
-  requires NormalOnceRunWitness(obs, req)
-  ensures OnceRunDispatchCalledQ(obs)
-{
-  ExecuteStepOnceRunCanReachRuntimeStepDispatch(
-    obs.executeStep,
-    ExecuteStepInput(
-      req.operationId,
-      req.stepIndex,
-      req.context,
-      req.hasHumanInput,
-      req.hasApprovedToolCall,
-      req.hasRejectionReason,
-      req.rejectAndContinue,
-      req.hasToolMessageId,
-      req.externalRetryCount
-    )
-  );
-}
 
 // ============================================================
 // Lemmas

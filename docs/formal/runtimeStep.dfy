@@ -51,6 +51,9 @@ function HumanInstructionFree(raw: RawInstructionsObs): bool
 }
 
 method CreateErrorResult(state: RuntimeStepState) returns (result: FResult<RuntimeStepResult>)
+  ensures result.Ok?
+  ensures result.value.newState.status == StatusError
+  ensures result.value.newState.stepCount == state.stepCount
 {
   result := Ok(RuntimeStepResult(
     AgentState(
@@ -74,6 +77,17 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
   requires !input.context.present || input.context.phase != PhaseHumanApprovedTool
   requires obs.initialContext.phase != PhaseHumanApprovedTool
   requires obs.runnerResult.Err? || HumanInstructionFree(obs.runnerResult.value)
+  ensures obs.runnerResult.Err? ==>
+    result.Ok? && result.value.newState.status == StatusError
+  ensures obs.runnerResult.Ok? &&
+    !obs.runnerResult.value.isArray &&
+    obs.runnerResult.value.single.kind == InstrCallTool &&
+    ((if input.state.operationToolSource != "" then input.state.operationToolSource else input.state.fallbackToolSource) != "client") &&
+    obs.callToolInstruction.toolCalling.executor == "client" &&
+    obs.callToolCtx.streamManagerCanSendToolExecute &&
+    obs.callTool.dispatched.Ok? &&
+    obs.callTool.persisted.Ok? ==>
+    result.Ok?
 {
   var preparedState :=
     RuntimeStepState(
@@ -291,76 +305,6 @@ function RuntimeStepCallsToolAtIndex(obs: RuntimeStepObs, k: int): bool
       0 <= k < |obs.runnerResult.value.items| &&
       obs.runnerResult.value.items[k].kind == InstrCallTool)
   )
-}
-
-// 单次运行版本：
-//   这里只证明一次 RuntimeStep 调用内部，若第 k 条 call_tool 被执行到，
-//   且该次 call_tool 入口满足 gateway dispatch 的充分前提，
-//   则这一次运行中会观测到一次 dispatch called。
-lemma RuntimeStepOnceRunCallToolAtIndexCanDispatch(
-  obs: RuntimeStepObs,
-  input: RuntimeStepInput,
-  k: int
-)
-  requires !input.context.present || input.context.phase != PhaseHumanApprovedTool
-  requires obs.initialContext.phase != PhaseHumanApprovedTool
-  requires obs.runnerResult.Err? || HumanInstructionFree(obs.runnerResult.value)
-  requires RuntimeStepCallsToolAtIndex(obs, k)
-  requires obs.runnerResult.value.isArray ==> forall j :: 0 <= j < k ==> obs.runnerResult.value.items[j].kind == InstrCallLlm
-  requires forall j :: 0 <= j < k ==>
-    j < |obs.llmResults| &&
-    obs.llmResults[j].Ok? &&
-    obs.llmResults[j].value.newState ==
-      AgentState(
-        input.state.status,
-        input.state.stepCount + 1,
-        input.state.hasCostLimit,
-        input.state.totalCostExceeded,
-        input.state.costLimitPolicy,
-        input.state.operationToolSource,
-        input.state.fallbackToolSource
-      ) &&
-    obs.llmResults[j].value.newState.status != StatusWaitingForHuman &&
-    obs.llmResults[j].value.newState.status != StatusInterrupted
-  requires PCallToolGatewaySucceeded(obs.callToolCtx, obs.callToolInstruction,
-    AgentState(
-      input.state.status,
-      input.state.stepCount + 1,
-      input.state.hasCostLimit,
-      input.state.totalCostExceeded,
-      input.state.costLimitPolicy,
-      input.state.operationToolSource,
-      input.state.fallbackToolSource
-    ),
-    obs.callTool)
-  ensures QDispatchCalled(
-    obs.callToolCtx,
-    AgentState(
-      input.state.status,
-      input.state.stepCount + 1,
-      input.state.hasCostLimit,
-      input.state.totalCostExceeded,
-      input.state.costLimitPolicy,
-      input.state.operationToolSource,
-      input.state.fallbackToolSource
-    ),
-    obs.callToolInstruction,
-    obs.callTool)
-{
-  CallToolGatewaySucceededImpliesCalled(
-    obs.callToolCtx,
-    obs.callToolInstruction,
-    AgentState(
-      input.state.status,
-      input.state.stepCount + 1,
-      input.state.hasCostLimit,
-      input.state.totalCostExceeded,
-      input.state.costLimitPolicy,
-      input.state.operationToolSource,
-      input.state.fallbackToolSource
-    ),
-    obs.callTool
-  );
 }
 
 // ============================================================

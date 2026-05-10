@@ -234,6 +234,26 @@ predicate StepProgressP(
     PhaseTransitionP(context, out.value.single.kind))
 }
 
+function PreparedToolCallState(input: RuntimeStepInput): AgentState
+{
+  AgentState(
+    input.state.status,
+    input.state.stepCount + 1,
+    input.state.hasCostLimit,
+    input.state.totalCostExceeded,
+    input.state.costLimitPolicy,
+    input.state.operationToolSource,
+    input.state.fallbackToolSource
+  )
+}
+
+predicate ToolCallTransitionProjection(input: RuntimeStepInput, stepResult: RuntimeStepResult)
+{
+  stepResult.newState == PreparedToolCallState(input) &&
+  stepResult.nextContext.present &&
+  stepResult.nextContext.phase == PhaseToolResult
+}
+
 predicate PBranchLlmResultWithToolCall(
   context: RuntimeContext,
   state: RuntimeStepState,
@@ -582,6 +602,7 @@ method RuntimeStepSingleCallToolSuccessProof(obs: RuntimeStepObs, input: Runtime
   requires PRuntimeStepSingleCallToolSuccess(obs, input)
   ensures executeCallToolSucceeded
   ensures callToolResult.Ok?
+  ensures ToolCallTransitionProjection(input, callToolResult.value)
 {
   callToolResult := ExecuteCallTool(
     obs.callTool,
@@ -598,6 +619,7 @@ method RuntimeStepSingleCallToolSuccessProof(obs: RuntimeStepObs, input: Runtime
     )
   );
   assert callToolResult.Ok?;
+  assert ToolCallTransitionProjection(input, callToolResult.value);
   executeCallToolSucceeded := true;
 }
 
@@ -634,8 +656,19 @@ method RuntimeStepSingleStepTransitionProof(
     obs.callToolCtx.streamManagerCanSendToolExecute &&
     obs.callTool.dispatched.Ok? &&
     obs.callTool.persisted.Ok?) ==> stepped.Ok?
+  ensures (PRuntimeStepSingleCallToolSuccess(obs, input) &&
+    input.state.status != StatusWaitingForHuman &&
+    obs.runnerResult == Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallTool, false), []))) ==>
+    stepped.Ok? &&
+    ToolCallTransitionProjection(input, stepped.value)
 {
-  stepped, executeCallToolSucceeded := RuntimeStep(obs, input);
+  if PRuntimeStepSingleCallToolSuccess(obs, input) &&
+      input.state.status != StatusWaitingForHuman &&
+      obs.runnerResult == Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallTool, false), [])) {
+    stepped, executeCallToolSucceeded := RuntimeStepSingleCallToolSuccessProof(obs, input);
+  } else {
+    stepped, executeCallToolSucceeded := RuntimeStep(obs, input);
+  }
 }
 
 predicate InitToToolResultBackToLlmP(
@@ -727,11 +760,43 @@ method RuntimeStepInputLlmToToolThenToolResultToLlm(
   assert stepped.Ok?;
 }
 
-predicate LinkedTrace(inputs: seq<RuntimeStepInput>, j: nat)
+predicate InputMatchesStepResult(nextInput: RuntimeStepInput, stepResult: RuntimeStepResult)
 {
-  j < |inputs| &&
+  nextInput.state.status == stepResult.newState.status &&
+  nextInput.state.stepCount == stepResult.newState.stepCount &&
+  nextInput.state.hasCostLimit == stepResult.newState.hasCostLimit &&
+  nextInput.state.totalCostExceeded == stepResult.newState.totalCostExceeded &&
+  nextInput.state.costLimitPolicy == stepResult.newState.costLimitPolicy &&
+  nextInput.state.operationToolSource == stepResult.newState.operationToolSource &&
+  nextInput.state.fallbackToolSource == stepResult.newState.fallbackToolSource &&
+  nextInput.context.present == stepResult.nextContext.present &&
+  nextInput.context.phase == stepResult.nextContext.phase
+}
+
+predicate WitnessMatchesExpectedToolCallTrace(
+  obsTrace: seq<RuntimeStepObs>,
+  inputTrace: seq<RuntimeStepInput>,
+  stepWitness: seq<RuntimeStepResult>,
+  j: nat
+)
+{
+  j < |obsTrace| &&
+  j < |inputTrace| &&
+  j <= |stepWitness| &&
   (forall i :: 0 <= i < j ==>
-    inputs[i + 1].state.stepCount == inputs[i].state.stepCount + 1)
+    obsTrace[i].callTool.persisted.Ok? &&
+    ToolCallTransitionProjection(inputTrace[i], stepWitness[i]))
+}
+
+predicate LinkedTraceByWitness(
+  obsTrace: seq<RuntimeStepObs>,
+  inputTrace: seq<RuntimeStepInput>,
+  stepWitness: seq<RuntimeStepResult>,
+  j: nat
+)
+{
+  WitnessMatchesExpectedToolCallTrace(obsTrace, inputTrace, stepWitness, j) &&
+  (forall i :: 0 <= i < j ==> InputMatchesStepResult(inputTrace[i + 1], stepWitness[i]))
 }
 
 predicate PBeforeJAlwaysToolCall(
@@ -746,7 +811,9 @@ predicate PBeforeJAlwaysToolCall(
     (if inputTrace[i].context.present then inputTrace[i].context else obsTrace[i].initialContext).llmResultHasToolCalls &&
     (if inputTrace[i].context.present then inputTrace[i].context else obsTrace[i].initialContext).llmResultToolCallsCount > 0 &&
     inputTrace[i].state.status != StatusInterrupted &&
+    inputTrace[i].state.status != StatusWaitingForHuman &&
     (if inputTrace[i].context.present then inputTrace[i].context.phase else obsTrace[i].initialContext.phase) == PhaseLlmResult &&
+    obsTrace[i].runnerResult == Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallTool, false), [])) &&
     obsTrace[i].runnerResult.Ok? &&
     HumanInstructionFree(obsTrace[i].runnerResult.value) &&
     StepProgressP(
@@ -789,9 +856,10 @@ predicate PAtJNoMoreToolCall(
 method JBoundedProgressThenFinish(
   obsTrace: seq<RuntimeStepObs>,
   inputTrace: seq<RuntimeStepInput>,
+  stepWitness: seq<RuntimeStepResult>,
   j: nat
 ) returns (ghost allBeforeJOk: bool)
-  requires LinkedTrace(inputTrace, j)
+  requires LinkedTraceByWitness(obsTrace, inputTrace, stepWitness, j)
   requires PBeforeJAlwaysToolCall(obsTrace, inputTrace, j)
   requires PAtJNoMoreToolCall(obsTrace, inputTrace, j)
   requires (forall i :: 0 <= i < j ==>
@@ -816,10 +884,23 @@ method JBoundedProgressThenFinish(
     invariant 0 <= i <= j
     invariant allBeforeJOk
   {
+    assert PRuntimeStepSingleCallToolSuccess(obsTrace[i], inputTrace[i]);
+    assert inputTrace[i].state.status != StatusWaitingForHuman;
+    assert obsTrace[i].runnerResult == Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallTool, false), []));
     var stepped: FResult<RuntimeStepResult>;
     ghost var executeCallToolSucceeded: bool;
     stepped, executeCallToolSucceeded := RuntimeStepSingleStepTransitionProof(obsTrace[i], inputTrace[i]);
     assert stepped.Ok?;
+    assert ToolCallTransitionProjection(inputTrace[i], stepWitness[i]);
+    assert ToolCallTransitionProjection(inputTrace[i], stepped.value);
+    assert stepWitness[i].newState == PreparedToolCallState(inputTrace[i]);
+    assert stepped.value.newState == PreparedToolCallState(inputTrace[i]);
+    assert stepWitness[i].nextContext.present;
+    assert stepped.value.nextContext.present;
+    assert stepWitness[i].nextContext.phase == PhaseToolResult;
+    assert stepped.value.nextContext.phase == PhaseToolResult;
+    assert InputMatchesStepResult(inputTrace[i + 1], stepWitness[i]);
+    assert InputMatchesStepResult(inputTrace[i + 1], stepped.value);
     i := i + 1;
   }
 }
@@ -838,9 +919,10 @@ predicate PAtJFinishStateOutcome(
 method JBoundedProgressThenTerminalState(
   obsTrace: seq<RuntimeStepObs>,
   inputTrace: seq<RuntimeStepInput>,
+  stepWitness: seq<RuntimeStepResult>,
   j: nat
 ) returns (ghost allBeforeJOk: bool, jStepResult: FResult<RuntimeStepResult>, ghost jStepExecuteCallToolSucceeded: bool)
-  requires LinkedTrace(inputTrace, j)
+  requires LinkedTraceByWitness(obsTrace, inputTrace, stepWitness, j)
   requires PBeforeJAlwaysToolCall(obsTrace, inputTrace, j)
   requires PAtJNoMoreToolCall(obsTrace, inputTrace, j)
   requires PAtJFinishStateOutcome(obsTrace, inputTrace, j)
@@ -860,7 +942,7 @@ method JBoundedProgressThenTerminalState(
   ensures jStepResult.Ok?
   ensures obsTrace[j].finishResult.newState.status == StatusDone
 {
-  allBeforeJOk := JBoundedProgressThenFinish(obsTrace, inputTrace, j);
+  allBeforeJOk := JBoundedProgressThenFinish(obsTrace, inputTrace, stepWitness, j);
   jStepResult, jStepExecuteCallToolSucceeded := RuntimeStep(obsTrace[j], inputTrace[j]);
   assert jStepResult.Ok?;
   assert obsTrace[j].runnerResult.Ok?;

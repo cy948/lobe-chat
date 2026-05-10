@@ -93,7 +93,15 @@ method ExecuteCallTool(
     ctx.streamManagerCanSendToolExecute &&
     obs.dispatched.Ok? &&
     obs.persisted.Ok?) ==>
-    result.Ok?
+    result.Ok? &&
+    result.value.newState == state &&
+    result.value.nextContext == ToolResultContext(
+      ctx,
+      state,
+      instruction,
+      obs.persisted.value,
+      ToolExecutionOutcome(true, 0)
+    )
 {
   var toolCalling := instruction.toolCalling;
   var toolSource :=

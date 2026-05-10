@@ -50,6 +50,72 @@ function HumanInstructionFree(raw: RawInstructionsObs): bool
      raw.items[i].kind == InstrCallToolsBatch))
 }
 
+// ============================================================
+// Simplified GeneralChatAgent runner model (human branches omitted)
+//
+// 仅保留核心流转语义：
+//   init/user_input    -> call_llm
+//   llm_result         -> call_tool | finish
+//   tool_result        -> call_llm
+//   tools_batch_result -> call_llm
+// 以及与源码一致的入口特判：
+//   status=interrupted -> finish
+// ============================================================
+method GeneralChatAgentRunnerModel(
+  context: RuntimeContext,
+  state: RuntimeStepState,
+  llmHasToolCalls: bool
+) returns (result: FResult<RawInstructionsObs>)
+  ensures state.status == StatusInterrupted ==>
+    result == Ok(RawInstructionsObs(false, ObservedInstruction(InstrFinish, false), []))
+  ensures (state.status != StatusInterrupted &&
+    (context.phase == PhaseInit || context.phase == PhaseUserInput ||
+      context.phase == PhaseToolResult || context.phase == PhaseToolsBatchResult)) ==>
+    result == Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallLlm, false), []))
+  ensures (state.status != StatusInterrupted &&
+    context.phase == PhaseLlmResult && llmHasToolCalls) ==>
+    result == Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallTool, false), []))
+  ensures (state.status != StatusInterrupted &&
+    context.phase == PhaseLlmResult && !llmHasToolCalls) ==>
+    result == Ok(RawInstructionsObs(false, ObservedInstruction(InstrFinish, false), []))
+  ensures (state.status != StatusInterrupted &&
+    context.phase != PhaseInit &&
+    context.phase != PhaseUserInput &&
+    context.phase != PhaseToolResult &&
+    context.phase != PhaseToolsBatchResult &&
+    context.phase != PhaseLlmResult) ==>
+    result == Ok(RawInstructionsObs(false, ObservedInstruction(InstrFinish, false), []))
+{
+  if state.status == StatusInterrupted {
+    result := Ok(RawInstructionsObs(false, ObservedInstruction(InstrFinish, false), []));
+    return;
+  }
+
+  if context.phase == PhaseInit {
+    result := Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallLlm, false), []));
+    return;
+  } else if context.phase == PhaseUserInput {
+    result := Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallLlm, false), []));
+    return;
+  } else if context.phase == PhaseToolResult {
+    result := Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallLlm, false), []));
+    return;
+  } else if context.phase == PhaseToolsBatchResult {
+    result := Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallLlm, false), []));
+    return;
+  } else if context.phase == PhaseLlmResult {
+    if llmHasToolCalls {
+      result := Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallTool, false), []));
+      return;
+    } else {
+      result := Ok(RawInstructionsObs(false, ObservedInstruction(InstrFinish, false), []));
+      return;
+    }
+  }
+
+  result := Ok(RawInstructionsObs(false, ObservedInstruction(InstrFinish, false), []));
+}
+
 method CreateErrorResult(state: RuntimeStepState) returns (result: FResult<RuntimeStepResult>)
   ensures result.Ok?
   ensures result.value.newState.status == StatusError

@@ -196,5 +196,4 @@ method RunStepPImpliesQ(obs: GlobalObs)
       obs.runStep.parsed.value.externalRetryCount
     )
   );
-  var body, status := RunStep(obs, "raw");
 }

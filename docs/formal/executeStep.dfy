@@ -349,5 +349,4 @@ method ExecuteStepSingleCallToolSuccessProof(obs: ExecuteStepObs, input: Execute
       input.context
     )
   );
-  var executeStepResult := ExecuteStep(obs, input);
 }

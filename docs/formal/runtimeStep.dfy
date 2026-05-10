@@ -297,6 +297,11 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
     (if input.context.present then input.context.phase else obs.initialContext.phase) == PhaseLlmResult &&
     (if input.context.present then input.context else obs.initialContext).llmResultHasToolCalls &&
     (if input.context.present then input.context else obs.initialContext).llmResultToolCallsCount > 0 &&
+    StepProgressP(
+      if input.context.present then input.context else obs.initialContext,
+      input.state,
+      obs.runnerResult
+    ) &&
     |obs.instructionResults| > 0 &&
     ((if input.state.operationToolSource != "" then input.state.operationToolSource else input.state.fallbackToolSource) != "client") &&
     obs.callToolInstruction.toolCalling.executor == "client" &&
@@ -594,9 +599,6 @@ method RuntimeStepSingleCallToolSuccessProof(obs: RuntimeStepObs, input: Runtime
   );
   assert callToolResult.Ok?;
   executeCallToolSucceeded := true;
-  var runtimeStepResult: FResult<RuntimeStepResult>;
-  ghost var runtimeStepGhost: bool;
-  runtimeStepResult, runtimeStepGhost := RuntimeStep(obs, input);
 }
 
 method GeneralChatAgentRunnerModelStepProgressProof(

@@ -45,7 +45,9 @@ datatype AgentState = AgentState(
   stepCount: int,
   hasCostLimit: bool,
   totalCostExceeded: bool,
-  costLimitPolicy: CostLimitPolicy
+  costLimitPolicy: CostLimitPolicy,
+  operationToolSource: string,
+  fallbackToolSource: string
 )
 
 datatype RuntimePhase =
@@ -59,11 +61,95 @@ datatype RuntimePhase =
   | PhaseError
   | PhaseOther
 
-datatype RuntimeContext = RuntimeContext(present: bool, phase: RuntimePhase)
+// RuntimeContext 先只投影“后续顺序推进需要继续消费”的字段。
+// 当前尤其补齐 tool_result phase 的最小上下文：
+//   - parentMessageId / toolCallId / toolCall
+//   - isSuccess / executionTime / execution result
+//   - session 中最关键的 sessionId / stepCount / status
+//
+// 仍未展开的 drift:
+//   - session.eventCount
+//   - session.messageCount
+//   - stepUsage 细粒度 cost / unitPrice / usageCount
+datatype ToolResultPayload = ToolResultPayload(
+  data: ToolExecutionOutcome,
+  executionTime: int,
+  isSuccess: bool,
+  parentMessageId: string,
+  toolCall: ToolCallingPayload,
+  toolCallId: string
+)
+
+datatype RuntimeSession = RuntimeSession(
+  sessionId: string,
+  status: string,
+  stepCount: int
+)
+
+datatype RuntimeContext = RuntimeContext(
+  present: bool,
+  phase: RuntimePhase,
+  toolResultPresent: bool,
+  toolResult: ToolResultPayload,
+  sessionPresent: bool,
+  session: RuntimeSession
+)
+
+function EmptyToolExecutionOutcome(): ToolExecutionOutcome
+{
+  ToolExecutionOutcome(false, 0)
+}
+
+function EmptyLocalSystemInput(): LocalSystemInput
+{
+  LocalSystemInput("", "")
+}
+
+function EmptyBuiltinExecutionInput(): BuiltinExecutionInput
+{
+  BuiltinExecutionInput(
+    false,
+    false,
+    false,
+    SourceNone,
+    false,
+    false,
+    false,
+    false,
+    EmptyLocalSystemInput()
+  )
+}
+
+function EmptyToolCallingPayload(): ToolCallingPayload
+{
+  ToolCallingPayload("", "", "", "", ToolOther, SourceNone, EmptyBuiltinExecutionInput())
+}
+
+function EmptyToolResultPayload(): ToolResultPayload
+{
+  ToolResultPayload(
+    EmptyToolExecutionOutcome(),
+    0,
+    false,
+    "",
+    EmptyToolCallingPayload(),
+    ""
+  )
+}
+
+function EmptyRuntimeSession(): RuntimeSession
+{
+  RuntimeSession("", "", 0)
+}
+
+function EmptyRuntimeContext(): RuntimeContext
+{
+  RuntimeContext(false, PhaseNone, false, EmptyToolResultPayload(), false, EmptyRuntimeSession())
+}
 
 datatype RuntimeStepResult = RuntimeStepResult(newState: AgentState, nextContext: RuntimeContext)
 
-datatype ToolExecutionOutcome = ToolExecutionOutcome(success: bool)
+datatype ToolExecutionOutcome = ToolExecutionOutcome(success: bool, executionTime: int)
 
 datatype LocalSystemInput = LocalSystemInput(
   userId: string,
@@ -107,10 +193,12 @@ datatype ToolExecutionContextInput = ToolExecutionContextInput(
 )
 
 datatype CallToolCtx = CallToolCtx(
-  streamManagerCanSendToolExecute: bool
+  streamManagerCanSendToolExecute: bool,
+  operationId: string
 )
 
 datatype ToolCallingPayload = ToolCallingPayload(
+  id: string,
   identifier: string,
   apiName: string,
   executor: string,
@@ -123,11 +211,6 @@ datatype CallToolInstruction = CallToolInstruction(
   parentMessageId: string,
   skipCreateToolMessage: bool,
   toolCalling: ToolCallingPayload
-)
-
-datatype CallToolStateInfo = CallToolStateInfo(
-  operationToolSource: string,
-  fallbackToolSource: string
 )
 
 datatype ExecuteStepInput = ExecuteStepInput(

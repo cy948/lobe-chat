@@ -90,7 +90,6 @@ method ExecuteInstruction(
       deps.callTool,
       deps.callToolCtx,
       deps.callToolInstruction,
-      deps.callToolStateInfo,
       state
     );
     return;
@@ -114,7 +113,9 @@ function PreparedState(state: AgentState): AgentState
     state.stepCount + 1,
     state.hasCostLimit,
     state.totalCostExceeded,
-    state.costLimitPolicy
+    state.costLimitPolicy,
+    state.operationToolSource,
+    state.fallbackToolSource
   )
 }
 
@@ -128,7 +129,9 @@ function FinalizeStepState(stateAfterExecution: AgentState, preparedState: Agent
       preparedState.stepCount,
     stateAfterExecution.hasCostLimit,
     stateAfterExecution.totalCostExceeded,
-    stateAfterExecution.costLimitPolicy
+    stateAfterExecution.costLimitPolicy,
+    stateAfterExecution.operationToolSource,
+    stateAfterExecution.fallbackToolSource
   )
 }
 
@@ -165,7 +168,7 @@ method ExecuteInstructions(
 ) returns (result: FResult<RuntimeStepResult>)
 {
   var currentState := state;
-  var finalContext := RuntimeContext(false, PhaseNone);
+  var finalContext := EmptyRuntimeContext();
   var i := 0;
 
   while i < |plan.kinds|
@@ -229,9 +232,11 @@ method RuntimeStep(deps: RuntimeStepDeps, input: RuntimeStepInput)
             input.state.stepCount + 1,
             preparedState.hasCostLimit,
             preparedState.totalCostExceeded,
-            preparedState.costLimitPolicy
+            preparedState.costLimitPolicy,
+            preparedState.operationToolSource,
+            preparedState.fallbackToolSource
           ),
-          RuntimeContext(false, PhaseNone)
+          EmptyRuntimeContext()
         ));
         return;
       }
@@ -253,7 +258,7 @@ method RuntimeStep(deps: RuntimeStepDeps, input: RuntimeStepInput)
   var finalState := FinalizeStepState(stepResult.newState, preparedState, plan.hasFinish);
   var finalContext :=
     if finalState.status == StatusWaitingForHuman || finalState.status == StatusInterrupted then
-      RuntimeContext(false, PhaseNone)
+      EmptyRuntimeContext()
     else
       stepResult.nextContext;
   result := Ok(RuntimeStepResult(finalState, finalContext));

@@ -87,7 +87,7 @@ method RunStep(deps: GlobalDeps, rawBody: string) returns (body: string, status:
   var stepResult := ExecuteStep(deps.executeStep, ExecuteStepInput(
     req.operationId,
     req.stepIndex,
-    RuntimeContext(false, PhaseNone),
+    EmptyRuntimeContext(),
     false,
     false,
     false,

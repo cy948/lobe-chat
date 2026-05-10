@@ -14,7 +14,7 @@
 // 当前已知失真（后续若要继续贴源码，需要再展开）:
 //   1. 当前仍未保留完整 payload/context，仅保留 builtin 分支需要的最小投影。
 //   2. `parsed || {}`、args 透传、runtime[apiName](args, context) 的参数细节仍被压缩。
-//   3. 返回值仍只投影 success: bool，未保留 content/error。
+//   3. 返回值当前只投影 success/executionTime，未保留 content/error。
 //   4. ExecuteBuiltinRuntimeCall(...) 当前把多层源码逻辑压成了一个黑盒返回：
 //      - getServerRuntime(identifier, context)
 //      - runtime[apiName] 是否存在
@@ -50,7 +50,7 @@ method ExecuteBuiltinTool(obs: BuiltinToolExecutionObs, context: BuiltinExecutio
   returns (result: ToolExecutionOutcome)
 {
   if context.hasArguments && !context.argumentsParseOk {
-    result := ToolExecutionOutcome(false);
+    result := ToolExecutionOutcome(false, 0);
     return;
   }
 
@@ -60,7 +60,7 @@ method ExecuteBuiltinTool(obs: BuiltinToolExecutionObs, context: BuiltinExecutio
   }
 
   if !context.hasServerRuntime || !context.hasApiMethod {
-    result := ToolExecutionOutcome(false);
+    result := ToolExecutionOutcome(false, 0);
     return;
   }
 
@@ -73,7 +73,7 @@ method ExecuteBuiltinTool(obs: BuiltinToolExecutionObs, context: BuiltinExecutio
       }
       case Err(_) => {
         // 对应 builtin.ts 内部 runtime path 的异常被 catch 后归一化为 success=false。
-        result := ToolExecutionOutcome(false);
+        result := ToolExecutionOutcome(false, 0);
         return;
       }
     }

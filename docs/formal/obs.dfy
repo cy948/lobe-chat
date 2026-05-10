@@ -44,7 +44,6 @@ datatype RuntimeStepDeps = RuntimeStepDeps(
   callTool: CallToolDeps,
   callToolCtx: CallToolCtx,
   callToolInstruction: CallToolInstruction,
-  callToolStateInfo: CallToolStateInfo,
   finishResult: RuntimeStepResult,
   instructionResults: seq<FResult<RuntimeStepResult>>
 )
@@ -71,7 +70,7 @@ datatype ToolExecutionDeps = ToolExecutionDeps(
 // ============================================================
 datatype CallToolDeps = CallToolDeps(
   dispatched: FResult<bool>,
-  persisted: FResult<bool>,
+  persisted: FResult<string>,
   toolExecution: ToolExecutionDeps
 )
 

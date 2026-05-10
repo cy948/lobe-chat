@@ -78,7 +78,7 @@ method ExecuteStep(deps: ExecuteStepDeps, input: ExecuteStepInput)
       result := Ok(ExecuteStepResult(
         true,
         false,
-        AgentState(StatusRunning, 0, false, false, CostLimitContinue),
+        AgentState(StatusRunning, 0, false, false, CostLimitContinue, "", ""),
         false,
         false
       ));

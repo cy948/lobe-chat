@@ -10,7 +10,7 @@
 //   createRuntimeExecutors(ctx) 返回的 call_tool(instruction, state)
 //
 //   当前 formal 选择翻译为：
-//   ExecuteCallTool(obs, ctx, instruction, stateInfo, state)
+//   ExecuteCallTool(obs, ctx, instruction, state)
 //
 //   然后建模 call_tool 的三分支骨架与返回语义:
 //   - client-source pause/interrupted
@@ -34,27 +34,60 @@ method DispatchClientTool(deps: CallToolDeps) returns (result: FResult<bool>)
   result := deps.dispatched;
 }
 
-method PersistToolMessage(deps: CallToolDeps, skipCreateToolMessage: bool) returns (result: FResult<bool>)
+method PersistToolMessage(deps: CallToolDeps, skipCreateToolMessage: bool) returns (result: FResult<string>)
   ensures result == deps.persisted
 {
   result := deps.persisted;
+}
+
+function NoContext(): RuntimeContext
+{
+  EmptyRuntimeContext()
+}
+
+function ToolResultContext(
+  ctx: CallToolCtx,
+  state: AgentState,
+  instruction: CallToolInstruction,
+  toolMessageId: string,
+  executionResult: ToolExecutionOutcome
+): RuntimeContext
+{
+  RuntimeContext(
+    true,
+    PhaseToolResult,
+    true,
+    ToolResultPayload(
+      executionResult,
+      executionResult.executionTime,
+      executionResult.success,
+      toolMessageId,
+      instruction.toolCalling,
+      instruction.toolCalling.id
+    ),
+    true,
+    RuntimeSession(
+      ctx.operationId,
+      "running",
+      state.stepCount + 1
+    )
+  )
 }
 
 method ExecuteCallTool(
   obs: CallToolDeps,
   ctx: CallToolCtx,
   instruction: CallToolInstruction,
-  stateInfo: CallToolStateInfo,
   state: AgentState
 )
   returns (result: FResult<RuntimeStepResult>)
 {
   var toolCalling := instruction.toolCalling;
   var toolSource :=
-    if stateInfo.operationToolSource != "" then
-      stateInfo.operationToolSource
+    if state.operationToolSource != "" then
+      state.operationToolSource
     else
-      stateInfo.fallbackToolSource;
+      state.fallbackToolSource;
 
   if toolSource == "client" {
     result := Ok(RuntimeStepResult(
@@ -63,9 +96,11 @@ method ExecuteCallTool(
         state.stepCount,
         state.hasCostLimit,
         state.totalCostExceeded,
-        state.costLimitPolicy
+        state.costLimitPolicy,
+        state.operationToolSource,
+        state.fallbackToolSource
       ),
-      RuntimeContext(false, PhaseNone)
+      NoContext()
     ));
     return;
   }
@@ -86,7 +121,13 @@ method ExecuteCallTool(
 
     result := Ok(RuntimeStepResult(
       state,
-      RuntimeContext(true, PhaseToolResult)
+      ToolResultContext(
+        ctx,
+        state,
+        instruction,
+        persistedGateway.value,
+        ToolExecutionOutcome(true, 0)
+      )
     ));
     return;
   }
@@ -116,6 +157,6 @@ method ExecuteCallTool(
 
   result := Ok(RuntimeStepResult(
     state,
-    RuntimeContext(true, PhaseToolResult)
+    ToolResultContext(ctx, state, instruction, persisted.value, executed)
   ));
 }

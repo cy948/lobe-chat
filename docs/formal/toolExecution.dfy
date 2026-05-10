@@ -13,8 +13,8 @@
 //   1. 当前 formal 只保留了 executeTool 所需的最小 payload/context 投影，
 //      尚未覆盖 ToolExecutionContext 的全部字段。
 //   2. executeTool(...) 源码返回 content/error/executionTime/success，
-//      当前 formal 只投影 success: bool；truncateToolResult / normalizeExecutionError / executionTime
-//      相关语义目前被整体压掉。
+//      当前 formal 只投影 success/executionTime；content/error 以及
+//      truncateToolResult / normalizeExecutionError 相关语义目前被整体压掉。
 //   3. builtin executor 的内部控制流已下沉到 builtinToolExecution.dfy；
 //      当前文件只保留 executeTool(payload, context) 这一层的 type dispatch + 外层归一化。
 // ============================================================
@@ -45,7 +45,7 @@ method ExecuteTool(obs: ToolExecutionDeps, payload: ToolExecutionPayload, contex
         return;
       }
       case Err(_) => {
-        result := ToolExecutionOutcome(false);
+        result := ToolExecutionOutcome(false, 0);
         return;
       }
     }

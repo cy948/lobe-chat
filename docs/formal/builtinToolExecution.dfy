@@ -81,3 +81,18 @@ method ExecuteBuiltinTool(obs: BuiltinToolExecutionObs, context: BuiltinExecutio
 
   result := ExecuteBuiltinRuntimeCall(obs, context.runtimeCallSucceeds);
 }
+
+lemma BuiltinLocalSystemWitnessImpliesGatewayCalled(
+  obs: BuiltinToolExecutionObs,
+  context: BuiltinExecutionInput
+)
+  requires !(context.hasArguments && !context.argumentsParseOk)
+  requires context.source != SourceLobehubSkill
+  requires context.source != SourceKlavis
+  requires context.hasServerRuntime
+  requires context.hasApiMethod
+  requires context.isLocalSystem
+  requires LocalSystemGatewayWitness(obs.localSystem, context.localSystemInput)
+  ensures LocalSystemGatewayCalledQ(obs.localSystem)
+{
+}

@@ -91,6 +91,19 @@ datatype RunStepObs = RunStepObs(
   meta: FResult<string>
 )
 
+datatype ExecuteStepState = ExecuteStepState(
+  status: AgentStatus,
+  stepCount: int,
+  hasMaxSteps: bool,
+  maxSteps: int,
+  forceFinish: bool,
+  hasCostLimit: bool,
+  totalCostExceeded: bool,
+  costLimitPolicy: CostLimitPolicy,
+  operationToolSource: string,
+  fallbackToolSource: string
+)
+
 // ============================================================
 // Global observation bundle
 //

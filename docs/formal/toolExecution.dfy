@@ -28,13 +28,13 @@ include "builtinToolExecution.dfy"
 //
 // obs 决定黑盒结果。
 // ============================================================
-method ExecuteMcpTool(obs: ToolExecutionDeps) returns (result: FResult<ToolExecutionOutcome>)
+method ExecuteMcpTool(obs: ToolExecutionObs) returns (result: FResult<ToolExecutionOutcome>)
   ensures result == obs.mcpResult
 {
   result := obs.mcpResult;
 }
 
-method ExecuteTool(obs: ToolExecutionDeps, payload: ToolExecutionPayload, context: ToolExecutionContextInput)
+method ExecuteTool(obs: ToolExecutionObs, payload: ToolExecutionPayload, context: ToolExecutionContextInput)
   returns (result: ToolExecutionOutcome)
 {
   if payload.kind == ToolMcp {

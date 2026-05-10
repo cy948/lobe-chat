@@ -13,19 +13,6 @@ include "types.dfy"
 include "obs.dfy"
 include "runtimeStep.dfy"
 
-datatype ExecuteStepState = ExecuteStepState(
-  status: AgentStatus,
-  stepCount: int,
-  hasMaxSteps: bool,
-  maxSteps: int,
-  forceFinish: bool,
-  hasCostLimit: bool,
-  totalCostExceeded: bool,
-  costLimitPolicy: CostLimitPolicy,
-  operationToolSource: string,
-  fallbackToolSource: string
-)
-
 // ============================================================
 // L3 Cut Point: Redis step lock
 //
@@ -169,7 +156,7 @@ method ExecuteStep(obs: ExecuteStepObs, input: ExecuteStepInput)
   );
   var currentContext := input.context;
   if input.hasHumanInput || input.hasApprovedToolCall || input.hasRejectionReason {
-    var intervention := HandleHumanIntervention(obs, state, input);
+    var intervention := HandleHumanIntervention(obs, currentState, input);
     match intervention {
       case Err(_) => {
         result := Err("human intervention failed");
@@ -228,6 +215,52 @@ method ExecuteStep(obs: ExecuteStepObs, input: ExecuteStepInput)
   }
 }
 
+predicate ExecuteStepOnceRunWitness(obs: ExecuteStepObs, input: ExecuteStepInput)
+{
+  obs.claimed == Ok(true) &&
+  obs.stateResult.Ok? &&
+  obs.stateResult.value.stepCount <= input.stepIndex &&
+  obs.stateResult.value.status != StatusInterrupted &&
+  obs.stateResult.value.status != StatusDone &&
+  obs.stateResult.value.status != StatusError &&
+  !input.hasHumanInput &&
+  !input.hasApprovedToolCall &&
+  !input.hasRejectionReason &&
+  RuntimeStepCallsToolAtIndex(obs.runtimeStep, 0) &&
+  PCallToolGatewaySucceeded(
+    obs.runtimeStep.callToolCtx,
+    obs.runtimeStep.callToolInstruction,
+    AgentState(
+      obs.stateResult.value.status,
+      obs.stateResult.value.stepCount + 1,
+      obs.stateResult.value.hasCostLimit,
+      obs.stateResult.value.totalCostExceeded,
+      obs.stateResult.value.costLimitPolicy,
+      obs.stateResult.value.operationToolSource,
+      obs.stateResult.value.fallbackToolSource
+    ),
+    obs.runtimeStep.callTool
+  )
+}
+
+predicate ExecuteStepOnceRunDispatchCalledQ(obs: ExecuteStepObs)
+{
+  QDispatchCalled(
+    obs.runtimeStep.callToolCtx,
+    AgentState(
+      obs.stateResult.value.status,
+      obs.stateResult.value.stepCount + 1,
+      obs.stateResult.value.hasCostLimit,
+      obs.stateResult.value.totalCostExceeded,
+      obs.stateResult.value.costLimitPolicy,
+      obs.stateResult.value.operationToolSource,
+      obs.stateResult.value.fallbackToolSource
+    ),
+    obs.runtimeStep.callToolInstruction,
+    obs.runtimeStep.callTool
+  )
+}
+
 // 单次运行版本：
 //   这里只证明一次 ExecuteStep 调用能把控制流推进到一次满足条件的 RuntimeStep，
 //   不讨论后续调度、下一 step、或状态机归纳。
@@ -235,44 +268,8 @@ lemma ExecuteStepOnceRunCanReachRuntimeStepDispatch(
   obs: ExecuteStepObs,
   input: ExecuteStepInput
 )
-  requires obs.claimed == Ok(true)
-  requires obs.stateResult.Ok?
-  requires obs.stateResult.value.stepCount <= input.stepIndex
-  requires obs.stateResult.value.status != StatusInterrupted
-  requires obs.stateResult.value.status != StatusDone
-  requires obs.stateResult.value.status != StatusError
-  requires !input.hasHumanInput
-  requires !input.hasApprovedToolCall
-  requires !input.hasRejectionReason
-  requires RuntimeStepCallsToolAtIndex(obs.runtimeStep, 0)
-  requires PCallToolGatewaySucceeded(
-    obs.runtimeStep.callToolCtx,
-    obs.runtimeStep.callToolInstruction,
-    AgentState(
-      obs.stateResult.value.status,
-      obs.stateResult.value.stepCount + 1,
-      obs.stateResult.value.hasCostLimit,
-      obs.stateResult.value.totalCostExceeded,
-      obs.stateResult.value.costLimitPolicy,
-      obs.stateResult.value.operationToolSource,
-      obs.stateResult.value.fallbackToolSource
-    ),
-    obs.runtimeStep.callTool
-  )
-  ensures QDispatchCalled(
-    obs.runtimeStep.callToolCtx,
-    AgentState(
-      obs.stateResult.value.status,
-      obs.stateResult.value.stepCount + 1,
-      obs.stateResult.value.hasCostLimit,
-      obs.stateResult.value.totalCostExceeded,
-      obs.stateResult.value.costLimitPolicy,
-      obs.stateResult.value.operationToolSource,
-      obs.stateResult.value.fallbackToolSource
-    ),
-    obs.runtimeStep.callToolInstruction,
-    obs.runtimeStep.callTool
-  )
+  requires ExecuteStepOnceRunWitness(obs, input)
+  ensures ExecuteStepOnceRunDispatchCalledQ(obs)
 {
   RuntimeStepOnceRunCallToolAtIndexCanDispatch(
     obs.runtimeStep,

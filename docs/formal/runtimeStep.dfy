@@ -247,11 +247,25 @@ function PreparedToolCallState(input: RuntimeStepInput): AgentState
   )
 }
 
-predicate ToolCallTransitionProjection(input: RuntimeStepInput, stepResult: RuntimeStepResult)
+function ExpectedSingleToolCallStepResult(obs: RuntimeStepObs, input: RuntimeStepInput): RuntimeStepResult
+  requires obs.callTool.persisted.Ok?
 {
-  stepResult.newState == PreparedToolCallState(input) &&
-  stepResult.nextContext.present &&
-  stepResult.nextContext.phase == PhaseToolResult
+  RuntimeStepResult(
+    PreparedToolCallState(input),
+    ToolResultContext(
+      obs.callToolCtx,
+      PreparedToolCallState(input),
+      obs.callToolInstruction,
+      obs.callTool.persisted.value,
+      ToolExecutionOutcome(true, 0)
+    )
+  )
+}
+
+predicate ToolCallTransitionProjection(obs: RuntimeStepObs, input: RuntimeStepInput, stepResult: RuntimeStepResult)
+{
+  obs.callTool.persisted.Ok? &&
+  stepResult == ExpectedSingleToolCallStepResult(obs, input)
 }
 
 predicate PBranchLlmResultWithToolCall(
@@ -602,24 +616,18 @@ method RuntimeStepSingleCallToolSuccessProof(obs: RuntimeStepObs, input: Runtime
   requires PRuntimeStepSingleCallToolSuccess(obs, input)
   ensures executeCallToolSucceeded
   ensures callToolResult.Ok?
-  ensures ToolCallTransitionProjection(input, callToolResult.value)
+  ensures callToolResult == Ok(ExpectedSingleToolCallStepResult(obs, input))
+  ensures ToolCallTransitionProjection(obs, input, callToolResult.value)
 {
   callToolResult := ExecuteCallTool(
     obs.callTool,
     obs.callToolCtx,
     obs.callToolInstruction,
-    AgentState(
-      input.state.status,
-      input.state.stepCount + 1,
-      input.state.hasCostLimit,
-      input.state.totalCostExceeded,
-      input.state.costLimitPolicy,
-      input.state.operationToolSource,
-      input.state.fallbackToolSource
-    )
+    PreparedToolCallState(input)
   );
   assert callToolResult.Ok?;
-  assert ToolCallTransitionProjection(input, callToolResult.value);
+  assert callToolResult == Ok(ExpectedSingleToolCallStepResult(obs, input));
+  assert ToolCallTransitionProjection(obs, input, callToolResult.value);
   executeCallToolSucceeded := true;
 }
 
@@ -659,8 +667,7 @@ method RuntimeStepSingleStepTransitionProof(
   ensures (PRuntimeStepSingleCallToolSuccess(obs, input) &&
     input.state.status != StatusWaitingForHuman &&
     obs.runnerResult == Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallTool, false), []))) ==>
-    stepped.Ok? &&
-    ToolCallTransitionProjection(input, stepped.value)
+    stepped == Ok(ExpectedSingleToolCallStepResult(obs, input))
 {
   if PRuntimeStepSingleCallToolSuccess(obs, input) &&
       input.state.status != StatusWaitingForHuman &&
@@ -769,8 +776,7 @@ predicate InputMatchesStepResult(nextInput: RuntimeStepInput, stepResult: Runtim
   nextInput.state.costLimitPolicy == stepResult.newState.costLimitPolicy &&
   nextInput.state.operationToolSource == stepResult.newState.operationToolSource &&
   nextInput.state.fallbackToolSource == stepResult.newState.fallbackToolSource &&
-  nextInput.context.present == stepResult.nextContext.present &&
-  nextInput.context.phase == stepResult.nextContext.phase
+  nextInput.context == stepResult.nextContext
 }
 
 predicate WitnessMatchesExpectedToolCallTrace(
@@ -785,7 +791,7 @@ predicate WitnessMatchesExpectedToolCallTrace(
   j <= |stepWitness| &&
   (forall i :: 0 <= i < j ==>
     obsTrace[i].callTool.persisted.Ok? &&
-    ToolCallTransitionProjection(inputTrace[i], stepWitness[i]))
+    stepWitness[i] == ExpectedSingleToolCallStepResult(obsTrace[i], inputTrace[i]))
 }
 
 predicate LinkedTraceByWitness(
@@ -891,14 +897,9 @@ method JBoundedProgressThenFinish(
     ghost var executeCallToolSucceeded: bool;
     stepped, executeCallToolSucceeded := RuntimeStepSingleStepTransitionProof(obsTrace[i], inputTrace[i]);
     assert stepped.Ok?;
-    assert ToolCallTransitionProjection(inputTrace[i], stepWitness[i]);
-    assert ToolCallTransitionProjection(inputTrace[i], stepped.value);
-    assert stepWitness[i].newState == PreparedToolCallState(inputTrace[i]);
-    assert stepped.value.newState == PreparedToolCallState(inputTrace[i]);
-    assert stepWitness[i].nextContext.present;
-    assert stepped.value.nextContext.present;
-    assert stepWitness[i].nextContext.phase == PhaseToolResult;
-    assert stepped.value.nextContext.phase == PhaseToolResult;
+    assert stepWitness[i] == ExpectedSingleToolCallStepResult(obsTrace[i], inputTrace[i]);
+    assert stepped == Ok(ExpectedSingleToolCallStepResult(obsTrace[i], inputTrace[i]));
+    assert stepped.value == stepWitness[i];
     assert InputMatchesStepResult(inputTrace[i + 1], stepWitness[i]);
     assert InputMatchesStepResult(inputTrace[i + 1], stepped.value);
     i := i + 1;

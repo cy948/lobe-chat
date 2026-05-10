@@ -50,6 +50,16 @@ method HandleHumanIntervention(deps: ExecuteStepDeps, state: AgentState, input: 
   result := deps.interventionResult;
 }
 
+function ShouldContinueExecution(state: AgentState, nextContext: RuntimeContext): bool
+{
+  if state.status == StatusDone then false
+  else if state.status == StatusInterrupted then false
+  else if state.status == StatusError then false
+  else if state.status == StatusWaitingForHuman then false
+  else if state.hasCostLimit && state.totalCostExceeded && state.costLimitPolicy == CostLimitStop then false
+  else nextContext.present
+}
+
 // ============================================================
 // L2: ExecuteStep 最小状态机骨架
 //
@@ -135,7 +145,16 @@ method ExecuteStep(deps: ExecuteStepDeps, input: ExecuteStepInput)
     }
   }
 
-  var stepped := RuntimeStep(deps.runtimeStep, RuntimeStepInput(currentState, currentContext));
+  var stepped := RuntimeStep(
+    deps.runtimeStep,
+    RuntimeStepInput(
+      currentState,
+      currentContext,
+      false,
+      0,
+      false
+    )
+  );
   match stepped {
     case Err(_) => {
       result := Err("runtime step failed");

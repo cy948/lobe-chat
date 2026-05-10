@@ -37,7 +37,7 @@ datatype PlannedInstructions = PlannedInstructions(
 // ============================================================
 // runtimeStep black-box observations
 // ============================================================
-datatype RuntimeStepDeps = RuntimeStepDeps(
+datatype RuntimeStepObs = RuntimeStepObs(
   initialContext: RuntimeContext,
   planResult: FResult<PlannedInstructions>,
   llmResults: seq<FResult<RuntimeStepResult>>,
@@ -81,7 +81,7 @@ datatype ExecuteStepDeps = ExecuteStepDeps(
   claimed: FResult<bool>,
   stateResult: FResult<AgentState>,
   interventionResult: FResult<RuntimeStepResult>,
-  runtimeStep: RuntimeStepDeps
+  runtimeStep: RuntimeStepObs
 )
 
 // ============================================================

@@ -8,8 +8,7 @@
 //   关注:
 //   - pre-step 状态推进
 //   - runtimeContext 选择
-//   - human_approved_tool shortcut
-//   - runner / executor / batch-executor 分发
+//   - 非 human 主路径下的 runner / executor 分发
 //   - blocked / finish / error 收尾
 // ============================================================
 
@@ -20,216 +19,125 @@ include "callTool.dfy"
 // ============================================================
 // Local projection: runtime.step 的输入
 // ============================================================
-datatype RuntimeStepInput = RuntimeStepInput(state: AgentState, context: RuntimeContext)
-
-// ============================================================
-// L3 cut points
-//
-// 关键原则:
-//   obs 决定黑盒结果。
-//
-// RuntimeStep 自身仍然保留源码中的顺序控制流；
-// obs 的作用不是直接替代 if/else 判断，而是作为参数传给黑盒函数，
-// 由黑盒函数根据 obs 决定返回什么结果；RuntimeStep 再像源码一样，
-// 只根据这些黑盒返回值继续做 if/else / loop。
-// ============================================================
-method CreateInitialContext(deps: RuntimeStepDeps, state: AgentState) returns (context: RuntimeContext)
-  ensures context == deps.initialContext
-{
-  context := deps.initialContext;
-}
-
-method RunnerPlan(deps: RuntimeStepDeps, context: RuntimeContext, state: AgentState) returns (result: FResult<PlannedInstructions>)
-  ensures result == deps.planResult
-{
-  result := deps.planResult;
-}
-
-method ExecuteCallLlmInstruction(
-  deps: RuntimeStepDeps,
-  index: int,
+datatype RuntimeStepInput = RuntimeStepInput(
   state: AgentState,
-  context: RuntimeContext
-) returns (result: FResult<RuntimeStepResult>)
-  requires 0 <= index < |deps.llmResults|
-  ensures result == deps.llmResults[index]
+  context: RuntimeContext,
+  hasMaxSteps: bool,
+  maxSteps: int,
+  forceFinish: bool
+)
+
+function HumanInstructionFree(plan: PlannedInstructions): bool
 {
-  result := deps.llmResults[index];
-}
-
-method ExecuteFinishInstruction(
-  deps: RuntimeStepDeps,
-  state: AgentState,
-  context: RuntimeContext
-) returns (result: FResult<RuntimeStepResult>)
-  ensures result == Ok(deps.finishResult)
-{
-  result := Ok(deps.finishResult);
-}
-
-method ExecuteInstruction(
-  deps: RuntimeStepDeps,
-  kind: InstructionKind,
-  index: int,
-  state: AgentState,
-  context: RuntimeContext
-) returns (result: FResult<RuntimeStepResult>)
-  requires 0 <= index < |deps.instructionResults|
-{
-  if kind == InstrCallLlm {
-    if index >= |deps.llmResults| {
-      result := Err("llm observation missing");
-      return;
-    }
-    result := ExecuteCallLlmInstruction(deps, index, state, context);
-    return;
-  }
-
-  if kind == InstrCallTool {
-    result := ExecuteCallTool(
-      deps.callTool,
-      deps.callToolCtx,
-      deps.callToolInstruction,
-      state
-    );
-    return;
-  }
-
-  if kind == InstrFinish {
-    result := ExecuteFinishInstruction(deps, state, context);
-    return;
-  }
-
-  result := deps.instructionResults[index];
-}
-
-// ============================================================
-// Local helpers
-// ============================================================
-function PreparedState(state: AgentState): AgentState
-{
-  AgentState(
-    state.status,
-    state.stepCount + 1,
-    state.hasCostLimit,
-    state.totalCostExceeded,
-    state.costLimitPolicy,
-    state.operationToolSource,
-    state.fallbackToolSource
-  )
-}
-
-function FinalizeStepState(stateAfterExecution: AgentState, preparedState: AgentState, hasFinish: bool): AgentState
-{
-  AgentState(
-    stateAfterExecution.status,
-    if hasFinish then
-      preparedState.stepCount - 1
-    else
-      preparedState.stepCount,
-    stateAfterExecution.hasCostLimit,
-    stateAfterExecution.totalCostExceeded,
-    stateAfterExecution.costLimitPolicy,
-    stateAfterExecution.operationToolSource,
-    stateAfterExecution.fallbackToolSource
-  )
-}
-
-function IsBlockingStatus(status: AgentStatus): bool
-{
-  status == StatusWaitingForHuman || status == StatusInterrupted
-}
-
-function ShouldContinueExecution(state: AgentState, nextContext: RuntimeContext): bool
-{
-  if state.status == StatusDone then false
-  else if state.status == StatusInterrupted then false
-  else if state.status == StatusError then false
-  else if state.status == StatusWaitingForHuman then false
-  else if state.hasCostLimit && state.totalCostExceeded && state.costLimitPolicy == CostLimitStop then false
-  else nextContext.present
-}
-
-// ============================================================
-// L2: execute all normalized instructions sequentially
-//
-// 对应 TS:
-//   packages/agent-runtime/src/core/runtime.ts:150-199
-// 关键语义:
-//   - instruction 按顺序执行
-//   - finalNextContext 取“最后一个 present 的 nextContext”
-//   - waiting_for_human / interrupted 会 break
-// ============================================================
-method ExecuteInstructions(
-  deps: RuntimeStepDeps,
-  plan: PlannedInstructions,
-  state: AgentState,
-  context: RuntimeContext
-) returns (result: FResult<RuntimeStepResult>)
-{
-  var currentState := state;
-  var finalContext := EmptyRuntimeContext();
-  var i := 0;
-
-  while i < |plan.kinds|
-    invariant 0 <= i <= |plan.kinds|
-  {
-    if i >= |deps.instructionResults| {
-      result := Err("instruction observation missing");
-      return;
-    }
-
-    var exec := ExecuteInstruction(deps, plan.kinds[i], i, currentState, context);
-    var instructionResult: RuntimeStepResult;
-    match exec {
-      case Err(_) => {
-        result := Err("instruction execution failed");
-        return;
-      }
-      case Ok(r) => instructionResult := r;
-    }
-
-    currentState := instructionResult.newState;
-    if instructionResult.nextContext.present {
-      finalContext := instructionResult.nextContext;
-    }
-
-    if IsBlockingStatus(currentState.status) {
-      break;
-    }
-
-    i := i + 1;
-  }
-
-  result := Ok(RuntimeStepResult(currentState, finalContext));
+  forall i :: 0 <= i < |plan.kinds| ==>
+    (plan.kinds[i] == InstrCallLlm ||
+     plan.kinds[i] == InstrCallTool ||
+     plan.kinds[i] == InstrFinish)
 }
 
 // ============================================================
 // L2: runtime.step 骨架
 // ============================================================
-method RuntimeStep(deps: RuntimeStepDeps, input: RuntimeStepInput)
+method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
   returns (result: FResult<RuntimeStepResult>)
+  requires !input.context.present || input.context.phase != PhaseHumanApprovedTool
+  requires obs.initialContext.phase != PhaseHumanApprovedTool
+  requires obs.planResult.Err? || HumanInstructionFree(obs.planResult.value)
 {
-  var preparedState := PreparedState(input.state);
+  var preparedState :=
+    AgentState(
+      input.state.status,
+      input.state.stepCount + 1,
+      input.state.hasCostLimit,
+      input.state.totalCostExceeded,
+      input.state.costLimitPolicy,
+      input.state.operationToolSource,
+      input.state.fallbackToolSource
+    );
+
+  var forceFinish := input.forceFinish;
+  if input.hasMaxSteps && preparedState.stepCount > input.maxSteps {
+    if forceFinish {
+      // Already in forceFinish flow, skip maxSteps check and continue execution
+    } else {
+      // First time exceeding: set forceFinish flag
+      forceFinish := true;
+    }
+  }
+
+  if forceFinish {
+    // RuntimeState projection note:
+    // forceFinish is part of the runtime state in TS, but AgentState in types.dfy
+    // intentionally stays minimal. We therefore keep the flag as a local runtime-step
+    // projection rather than widening the shared type file.
+  }
 
   var runtimeContext: RuntimeContext;
   if input.context.present {
     runtimeContext := input.context;
   } else {
-    runtimeContext := CreateInitialContext(deps, preparedState);
+    runtimeContext := obs.initialContext;
+  }
+  assert runtimeContext.phase != PhaseHumanApprovedTool;
+
+  var planResult := obs.planResult;
+  match planResult {
+    case Err(_) => {
+      result := Ok(RuntimeStepResult(
+        AgentState(
+          StatusError,
+          preparedState.stepCount,
+          preparedState.hasCostLimit,
+          preparedState.totalCostExceeded,
+          preparedState.costLimitPolicy,
+          preparedState.operationToolSource,
+          preparedState.fallbackToolSource
+        ),
+        EmptyRuntimeContext()
+      ));
+      return;
+    }
+    case Ok(plan) => {
+      assert HumanInstructionFree(plan);
+    }
   }
 
-  var planResult: FResult<PlannedInstructions>;
-  if runtimeContext.phase == PhaseHumanApprovedTool {
-    planResult := Ok(PlannedInstructions([InstrCallTool], false));
-  } else {
-    planResult := RunnerPlan(deps, runtimeContext, preparedState);
-    match planResult {
-      case Err(_) => {
+  var plan := planResult.value;
+  var currentState := preparedState;
+  var finalContext := EmptyRuntimeContext();
+  var hasFinishInstruction := false;
+  var i := 0;
+
+  while i < |plan.kinds|
+    invariant 0 <= i <= |plan.kinds|
+  {
+    if i >= |obs.instructionResults| {
+      result := Ok(RuntimeStepResult(
+        AgentState(
+          StatusError,
+          preparedState.stepCount,
+          preparedState.hasCostLimit,
+          preparedState.totalCostExceeded,
+          preparedState.costLimitPolicy,
+          preparedState.operationToolSource,
+          preparedState.fallbackToolSource
+        ),
+        EmptyRuntimeContext()
+      ));
+      return;
+    }
+
+    if plan.kinds[i] == InstrFinish {
+      hasFinishInstruction := true;
+    }
+
+    var exec: FResult<RuntimeStepResult>;
+    if plan.kinds[i] == InstrCallLlm {
+      if i >= |obs.llmResults| {
         result := Ok(RuntimeStepResult(
           AgentState(
             StatusError,
-            input.state.stepCount + 1,
+            preparedState.stepCount,
             preparedState.hasCostLimit,
             preparedState.totalCostExceeded,
             preparedState.costLimitPolicy,
@@ -240,28 +148,81 @@ method RuntimeStep(deps: RuntimeStepDeps, input: RuntimeStepInput)
         ));
         return;
       }
-      case Ok(_) => {}
+      exec := obs.llmResults[i];
+    } else if plan.kinds[i] == InstrCallTool {
+      exec := ExecuteCallTool(
+        obs.callTool,
+        obs.callToolCtx,
+        obs.callToolInstruction,
+        currentState
+      );
+    } else if plan.kinds[i] == InstrFinish {
+      exec := Ok(obs.finishResult);
+    } else {
+      exec := obs.instructionResults[i];
     }
+
+    var instructionResult: RuntimeStepResult;
+    match exec {
+      case Err(_) => {
+        result := Ok(RuntimeStepResult(
+          AgentState(
+            StatusError,
+            preparedState.stepCount,
+            preparedState.hasCostLimit,
+            preparedState.totalCostExceeded,
+            preparedState.costLimitPolicy,
+            preparedState.operationToolSource,
+            preparedState.fallbackToolSource
+          ),
+          EmptyRuntimeContext()
+        ));
+        return;
+      }
+      case Ok(r) => instructionResult := r;
+    }
+
+    currentState := instructionResult.newState;
+    if instructionResult.nextContext.present {
+      finalContext := instructionResult.nextContext;
+    }
+
+    if currentState.status == StatusWaitingForHuman || currentState.status == StatusInterrupted {
+      break;
+    }
+
+    i := i + 1;
   }
 
-  var plan := planResult.value;
-  var executed := ExecuteInstructions(deps, plan, preparedState, runtimeContext);
-  var stepResult: RuntimeStepResult;
-  match executed {
-    case Err(_) => {
-      result := Err("instruction execution failed");
-      return;
-    }
-    case Ok(r) => stepResult := r;
+  currentState := AgentState(
+    currentState.status,
+    preparedState.stepCount,
+    currentState.hasCostLimit,
+    currentState.totalCostExceeded,
+    currentState.costLimitPolicy,
+    currentState.operationToolSource,
+    currentState.fallbackToolSource
+  );
+
+  if hasFinishInstruction {
+    currentState := AgentState(
+      currentState.status,
+      if currentState.stepCount - 1 >= 0 then currentState.stepCount - 1 else 0,
+      currentState.hasCostLimit,
+      currentState.totalCostExceeded,
+      currentState.costLimitPolicy,
+      currentState.operationToolSource,
+      currentState.fallbackToolSource
+    );
   }
 
-  var finalState := FinalizeStepState(stepResult.newState, preparedState, plan.hasFinish);
-  var finalContext :=
-    if finalState.status == StatusWaitingForHuman || finalState.status == StatusInterrupted then
+  result := Ok(RuntimeStepResult(
+    currentState,
+    if currentState.status == StatusWaitingForHuman || currentState.status == StatusInterrupted then
       EmptyRuntimeContext()
     else
-      stepResult.nextContext;
-  result := Ok(RuntimeStepResult(finalState, finalContext));
+      finalContext
+  ));
 }
 
 // ============================================================

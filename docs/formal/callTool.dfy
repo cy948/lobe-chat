@@ -56,6 +56,11 @@ function ToolResultContext(
   RuntimeContext(
     true,
     PhaseToolResult,
+    false,
+    0,
+    false,
+    0,
+    false,
     true,
     ToolResultPayload(
       executionResult,

@@ -132,9 +132,35 @@ predicate PRunStepCanReachExecuteCallTool(obs: GlobalObs)
   (!obs.runStep.parsed.value.context.present ||
     obs.runStep.parsed.value.context.phase != PhaseHumanApprovedTool) &&
   obs.executeStep.runtimeStep.initialContext.phase != PhaseHumanApprovedTool &&
-  obs.executeStep.runtimeStep.llmResultHasToolsCalling &&
+  (if obs.runStep.parsed.value.context.present then
+    obs.runStep.parsed.value.context
+   else
+    obs.executeStep.runtimeStep.initialContext).llmResultHasToolCalls &&
+  (if obs.runStep.parsed.value.context.present then
+    obs.runStep.parsed.value.context
+   else
+    obs.executeStep.runtimeStep.initialContext).llmResultToolCallsCount > 0 &&
   obs.executeStep.runtimeStep.runnerResult.Ok? &&
   HumanInstructionFree(obs.executeStep.runtimeStep.runnerResult.value) &&
+  StepProgressP(
+    if obs.runStep.parsed.value.context.present then
+      obs.runStep.parsed.value.context
+    else
+      obs.executeStep.runtimeStep.initialContext,
+    RuntimeStepState(
+      obs.executeStep.stateResult.value.status,
+      obs.executeStep.stateResult.value.stepCount,
+      obs.executeStep.stateResult.value.hasMaxSteps,
+      obs.executeStep.stateResult.value.maxSteps,
+      obs.executeStep.stateResult.value.forceFinish,
+      obs.executeStep.stateResult.value.hasCostLimit,
+      obs.executeStep.stateResult.value.totalCostExceeded,
+      obs.executeStep.stateResult.value.costLimitPolicy,
+      obs.executeStep.stateResult.value.operationToolSource,
+      obs.executeStep.stateResult.value.fallbackToolSource
+    ),
+    obs.executeStep.runtimeStep.runnerResult
+  ) &&
   (if obs.runStep.parsed.value.context.present then
     obs.runStep.parsed.value.context.phase
    else

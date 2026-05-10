@@ -56,27 +56,59 @@ function HumanInstructionFree(raw: RawInstructionsObs): bool
 // 仅保留核心流转语义：
 //   init/user_input    -> call_llm
 //   llm_result         -> call_tool | finish
-//   tool_result        -> call_llm
-//   tools_batch_result -> call_llm
+//   tool_result        -> unknown(exec_*) | request_human_approve | finish | call_llm
+//   tools_batch_result -> request_human_approve | finish | call_llm
 // 以及与源码一致的入口特判：
 //   status=interrupted -> finish
 // ============================================================
 method GeneralChatAgentRunnerModel(
   context: RuntimeContext,
-  state: RuntimeStepState,
-  llmHasToolCalls: bool
+  state: RuntimeStepState
 ) returns (result: FResult<RawInstructionsObs>)
   ensures state.status == StatusInterrupted ==>
     result == Ok(RawInstructionsObs(false, ObservedInstruction(InstrFinish, false), []))
   ensures (state.status != StatusInterrupted &&
     (context.phase == PhaseInit || context.phase == PhaseUserInput ||
-      context.phase == PhaseToolResult || context.phase == PhaseToolsBatchResult)) ==>
+      (context.phase == PhaseToolResult &&
+        !context.toolResultStopRequested &&
+        context.pendingToolsCallingCount <= 0 &&
+        !context.hasQueuedMessages) ||
+      (context.phase == PhaseToolsBatchResult &&
+        context.pendingToolsCallingCount <= 0 &&
+        !context.hasQueuedMessages))) ==>
     result == Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallLlm, false), []))
   ensures (state.status != StatusInterrupted &&
-    context.phase == PhaseLlmResult && llmHasToolCalls) ==>
+    context.phase == PhaseLlmResult &&
+    context.llmResultHasToolCalls &&
+    context.llmResultToolCallsCount > 0) ==>
     result == Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallTool, false), []))
   ensures (state.status != StatusInterrupted &&
-    context.phase == PhaseLlmResult && !llmHasToolCalls) ==>
+    context.phase == PhaseLlmResult &&
+    !(context.llmResultHasToolCalls && context.llmResultToolCallsCount > 0)) ==>
+    result == Ok(RawInstructionsObs(false, ObservedInstruction(InstrFinish, false), []))
+  ensures (state.status != StatusInterrupted &&
+    context.phase == PhaseToolResult &&
+    context.toolResultStopRequested) ==>
+    result == Ok(RawInstructionsObs(false, ObservedInstruction(InstrUnknown, false), []))
+  ensures (state.status != StatusInterrupted &&
+    context.phase == PhaseToolResult &&
+    !context.toolResultStopRequested &&
+    context.pendingToolsCallingCount > 0) ==>
+    result == Ok(RawInstructionsObs(false, ObservedInstruction(InstrRequestHumanApprove, false), []))
+  ensures (state.status != StatusInterrupted &&
+    context.phase == PhaseToolResult &&
+    !context.toolResultStopRequested &&
+    context.pendingToolsCallingCount <= 0 &&
+    context.hasQueuedMessages) ==>
+    result == Ok(RawInstructionsObs(false, ObservedInstruction(InstrFinish, false), []))
+  ensures (state.status != StatusInterrupted &&
+    context.phase == PhaseToolsBatchResult &&
+    context.pendingToolsCallingCount > 0) ==>
+    result == Ok(RawInstructionsObs(false, ObservedInstruction(InstrRequestHumanApprove, false), []))
+  ensures (state.status != StatusInterrupted &&
+    context.phase == PhaseToolsBatchResult &&
+    context.pendingToolsCallingCount <= 0 &&
+    context.hasQueuedMessages) ==>
     result == Ok(RawInstructionsObs(false, ObservedInstruction(InstrFinish, false), []))
   ensures (state.status != StatusInterrupted &&
     context.phase != PhaseInit &&
@@ -98,13 +130,33 @@ method GeneralChatAgentRunnerModel(
     result := Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallLlm, false), []));
     return;
   } else if context.phase == PhaseToolResult {
+    if context.toolResultStopRequested {
+      result := Ok(RawInstructionsObs(false, ObservedInstruction(InstrUnknown, false), []));
+      return;
+    }
+    if context.pendingToolsCallingCount > 0 {
+      result := Ok(RawInstructionsObs(false, ObservedInstruction(InstrRequestHumanApprove, false), []));
+      return;
+    }
+    if context.hasQueuedMessages {
+      result := Ok(RawInstructionsObs(false, ObservedInstruction(InstrFinish, false), []));
+      return;
+    }
     result := Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallLlm, false), []));
     return;
   } else if context.phase == PhaseToolsBatchResult {
+    if context.pendingToolsCallingCount > 0 {
+      result := Ok(RawInstructionsObs(false, ObservedInstruction(InstrRequestHumanApprove, false), []));
+      return;
+    }
+    if context.hasQueuedMessages {
+      result := Ok(RawInstructionsObs(false, ObservedInstruction(InstrFinish, false), []));
+      return;
+    }
     result := Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallLlm, false), []));
     return;
   } else if context.phase == PhaseLlmResult {
-    if llmHasToolCalls {
+    if context.llmResultHasToolCalls && context.llmResultToolCallsCount > 0 {
       result := Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallTool, false), []));
       return;
     } else {
@@ -122,29 +174,56 @@ predicate TerminalP(state: RuntimeStepState)
 }
 
 predicate PhaseTransitionP(
-  phase: RuntimePhase,
-  llmHasToolCalls: bool,
+  context: RuntimeContext,
   nextKind: InstructionKind
 )
 {
-  (phase == PhaseInit && nextKind == InstrCallLlm) ||
-  (phase == PhaseUserInput && nextKind == InstrCallLlm) ||
-  (phase == PhaseToolResult && nextKind == InstrCallLlm) ||
-  (phase == PhaseToolsBatchResult && nextKind == InstrCallLlm) ||
-  (phase == PhaseLlmResult && llmHasToolCalls && nextKind == InstrCallTool) ||
-  (phase == PhaseLlmResult && !llmHasToolCalls && nextKind == InstrFinish) ||
-  (phase != PhaseInit &&
-    phase != PhaseUserInput &&
-    phase != PhaseToolResult &&
-    phase != PhaseToolsBatchResult &&
-    phase != PhaseLlmResult &&
+  (context.phase == PhaseInit && nextKind == InstrCallLlm) ||
+  (context.phase == PhaseUserInput && nextKind == InstrCallLlm) ||
+  (context.phase == PhaseToolResult && context.toolResultStopRequested && nextKind == InstrUnknown) ||
+  (context.phase == PhaseToolResult &&
+    !context.toolResultStopRequested &&
+    context.pendingToolsCallingCount > 0 &&
+    nextKind == InstrRequestHumanApprove) ||
+  (context.phase == PhaseToolResult &&
+    !context.toolResultStopRequested &&
+    context.pendingToolsCallingCount <= 0 &&
+    context.hasQueuedMessages &&
+    nextKind == InstrFinish) ||
+  (context.phase == PhaseToolResult &&
+    !context.toolResultStopRequested &&
+    context.pendingToolsCallingCount <= 0 &&
+    !context.hasQueuedMessages &&
+    nextKind == InstrCallLlm) ||
+  (context.phase == PhaseToolsBatchResult &&
+    context.pendingToolsCallingCount > 0 &&
+    nextKind == InstrRequestHumanApprove) ||
+  (context.phase == PhaseToolsBatchResult &&
+    context.pendingToolsCallingCount <= 0 &&
+    context.hasQueuedMessages &&
+    nextKind == InstrFinish) ||
+  (context.phase == PhaseToolsBatchResult &&
+    context.pendingToolsCallingCount <= 0 &&
+    !context.hasQueuedMessages &&
+    nextKind == InstrCallLlm) ||
+  (context.phase == PhaseLlmResult &&
+    context.llmResultHasToolCalls &&
+    context.llmResultToolCallsCount > 0 &&
+    nextKind == InstrCallTool) ||
+  (context.phase == PhaseLlmResult &&
+    !(context.llmResultHasToolCalls && context.llmResultToolCallsCount > 0) &&
+    nextKind == InstrFinish) ||
+  (context.phase != PhaseInit &&
+    context.phase != PhaseUserInput &&
+    context.phase != PhaseToolResult &&
+    context.phase != PhaseToolsBatchResult &&
+    context.phase != PhaseLlmResult &&
     nextKind == InstrFinish)
 }
 
 predicate StepProgressP(
   context: RuntimeContext,
   state: RuntimeStepState,
-  llmHasToolCalls: bool,
   out: FResult<RawInstructionsObs>
 )
 {
@@ -152,7 +231,7 @@ predicate StepProgressP(
   (!TerminalP(state) &&
     out.Ok? &&
     !out.value.isArray &&
-    PhaseTransitionP(context.phase, llmHasToolCalls, out.value.single.kind))
+    PhaseTransitionP(context, out.value.single.kind))
 }
 
 predicate PBranchLlmResultWithToolCall(
@@ -163,7 +242,8 @@ predicate PBranchLlmResultWithToolCall(
 {
   state.status != StatusInterrupted &&
   context.phase == PhaseLlmResult &&
-  StepProgressP(context, state, true, out) &&
+  context.llmResultHasToolCalls &&
+  StepProgressP(context, state, out) &&
   out.Ok? &&
   !out.value.isArray &&
   out.value.single.kind == InstrCallTool
@@ -177,7 +257,7 @@ predicate PBranchToolResultToLlm(
 {
   state.status != StatusInterrupted &&
   context.phase == PhaseToolResult &&
-  StepProgressP(context, state, false, out) &&
+  StepProgressP(context, state, out) &&
   out.Ok? &&
   !out.value.isArray &&
   out.value.single.kind == InstrCallLlm
@@ -215,7 +295,8 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
   ensures (obs.runnerResult.Ok? &&
     input.state.status != StatusInterrupted &&
     (if input.context.present then input.context.phase else obs.initialContext.phase) == PhaseLlmResult &&
-    obs.llmResultHasToolsCalling &&
+    (if input.context.present then input.context else obs.initialContext).llmResultHasToolCalls &&
+    (if input.context.present then input.context else obs.initialContext).llmResultToolCallsCount > 0 &&
     |obs.instructionResults| > 0 &&
     ((if input.state.operationToolSource != "" then input.state.operationToolSource else input.state.fallbackToolSource) != "client") &&
     obs.callToolInstruction.toolCalling.executor == "client" &&
@@ -234,7 +315,8 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
     obs.runnerResult.Ok? &&
     input.state.status != StatusInterrupted &&
     (if input.context.present then input.context.phase else obs.initialContext.phase) == PhaseLlmResult &&
-    obs.llmResultHasToolsCalling &&
+    (if input.context.present then input.context else obs.initialContext).llmResultHasToolCalls &&
+    (if input.context.present then input.context else obs.initialContext).llmResultToolCallsCount > 0 &&
     |obs.instructionResults| > 0 &&
     ((if input.state.operationToolSource != "" then input.state.operationToolSource else input.state.fallbackToolSource) != "client") &&
     obs.callToolInstruction.toolCalling.executor == "client" &&
@@ -289,11 +371,12 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
   var rawInstructionsResult: FResult<RawInstructionsObs>;
   if obs.runnerResult.Err? {
     rawInstructionsResult := obs.runnerResult;
+  } else if StepProgressP(runtimeContext, input.state, obs.runnerResult) {
+    rawInstructionsResult := obs.runnerResult;
   } else {
     rawInstructionsResult := GeneralChatAgentRunnerModel(
       runtimeContext,
-      preparedState,
-      obs.llmResultHasToolsCalling
+      preparedState
     );
   }
   match rawInstructionsResult {
@@ -301,9 +384,7 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
       result := CreateErrorResult(preparedState);
       return;
     }
-    case Ok(plan) => {
-      assert HumanInstructionFree(plan);
-    }
+    case Ok(plan) => {}
   }
 
   var rawInstructions := rawInstructionsResult.value;
@@ -474,9 +555,15 @@ predicate PRuntimeStepSingleCallToolSuccess(obs: RuntimeStepObs, input: RuntimeS
   obs.initialContext.phase != PhaseHumanApprovedTool &&
   input.state.status != StatusInterrupted &&
   (if input.context.present then input.context.phase else obs.initialContext.phase) == PhaseLlmResult &&
-  obs.llmResultHasToolsCalling &&
+  (if input.context.present then input.context else obs.initialContext).llmResultHasToolCalls &&
+  (if input.context.present then input.context else obs.initialContext).llmResultToolCallsCount > 0 &&
   obs.runnerResult.Ok? &&
   HumanInstructionFree(obs.runnerResult.value) &&
+  StepProgressP(
+    if input.context.present then input.context else obs.initialContext,
+    input.state,
+    obs.runnerResult
+  ) &&
   |obs.instructionResults| > 0 &&
   ((if input.state.operationToolSource != "" then input.state.operationToolSource else input.state.fallbackToolSource) != "client") &&
   obs.callToolInstruction.toolCalling.executor == "client" &&
@@ -514,12 +601,11 @@ method RuntimeStepSingleCallToolSuccessProof(obs: RuntimeStepObs, input: Runtime
 
 method GeneralChatAgentRunnerModelStepProgressProof(
   context: RuntimeContext,
-  state: RuntimeStepState,
-  llmHasToolCalls: bool
+  state: RuntimeStepState
 ) returns (result: FResult<RawInstructionsObs>)
-  ensures StepProgressP(context, state, llmHasToolCalls, result)
+  ensures StepProgressP(context, state, result)
 {
-  result := GeneralChatAgentRunnerModel(context, state, llmHasToolCalls);
+  result := GeneralChatAgentRunnerModel(context, state);
 }
 
 method RuntimeStepSingleStepTransitionProof(
@@ -532,14 +618,14 @@ method RuntimeStepSingleStepTransitionProof(
   requires StepProgressP(
     if input.context.present then input.context else obs.initialContext,
     input.state,
-    obs.llmResultHasToolsCalling,
     obs.runnerResult
   )
   ensures obs.runnerResult.Err? ==> stepped.Ok?
   ensures (obs.runnerResult.Ok? &&
     input.state.status != StatusInterrupted &&
     (if input.context.present then input.context.phase else obs.initialContext.phase) == PhaseLlmResult &&
-    obs.llmResultHasToolsCalling &&
+    (if input.context.present then input.context else obs.initialContext).llmResultHasToolCalls &&
+    (if input.context.present then input.context else obs.initialContext).llmResultToolCallsCount > 0 &&
     |obs.instructionResults| > 0 &&
     ((if input.state.operationToolSource != "" then input.state.operationToolSource else input.state.fallbackToolSource) != "client") &&
     obs.callToolInstruction.toolCalling.executor == "client" &&
@@ -557,21 +643,18 @@ predicate InitToToolResultBackToLlmP(
 )
 {
   StepProgressP(
-    RuntimeContext(true, PhaseInit, false, EmptyToolResultPayload(), false, EmptyRuntimeSession()),
+    RuntimeContext(true, PhaseInit, false, 0, false, 0, false, false, EmptyToolResultPayload(), false, EmptyRuntimeSession()),
     initState,
-    false,
     Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallLlm, false), []))
   ) &&
   StepProgressP(
-    RuntimeContext(true, PhaseLlmResult, false, EmptyToolResultPayload(), false, EmptyRuntimeSession()),
+    RuntimeContext(true, PhaseLlmResult, true, 1, false, 0, false, false, EmptyToolResultPayload(), false, EmptyRuntimeSession()),
     llmState,
-    true,
     Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallTool, false), []))
   ) &&
   StepProgressP(
-    RuntimeContext(true, PhaseToolResult, false, EmptyToolResultPayload(), false, EmptyRuntimeSession()),
+    RuntimeContext(true, PhaseToolResult, false, 0, false, 0, false, false, EmptyToolResultPayload(), false, EmptyRuntimeSession()),
     toolState,
-    false,
     Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallLlm, false), []))
   )
 }
@@ -595,12 +678,12 @@ lemma LlmToolResultLoopBranches(
   requires llmState.status != StatusInterrupted
   requires toolState.status != StatusInterrupted
   ensures PBranchLlmResultWithToolCall(
-    RuntimeContext(true, PhaseLlmResult, false, EmptyToolResultPayload(), false, EmptyRuntimeSession()),
+    RuntimeContext(true, PhaseLlmResult, true, 1, false, 0, false, false, EmptyToolResultPayload(), false, EmptyRuntimeSession()),
     llmState,
     Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallTool, false), []))
   )
   ensures PBranchToolResultToLlm(
-    RuntimeContext(true, PhaseToolResult, false, EmptyToolResultPayload(), false, EmptyRuntimeSession()),
+    RuntimeContext(true, PhaseToolResult, false, 0, false, 0, false, false, EmptyToolResultPayload(), false, EmptyRuntimeSession()),
     toolState,
     Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallLlm, false), []))
   )
@@ -617,7 +700,8 @@ method RuntimeStepInputLlmToToolThenToolResultToLlm(
   requires HumanInstructionFree(obs.runnerResult.value)
   requires input.state.status != StatusInterrupted
   requires (if input.context.present then input.context.phase else obs.initialContext.phase) == PhaseLlmResult
-  requires obs.llmResultHasToolsCalling
+  requires (if input.context.present then input.context else obs.initialContext).llmResultHasToolCalls
+  requires (if input.context.present then input.context else obs.initialContext).llmResultToolCallsCount > 0
   requires |obs.instructionResults| > 0
   requires ((if input.state.operationToolSource != "" then input.state.operationToolSource else input.state.fallbackToolSource) != "client")
   requires obs.callToolInstruction.toolCalling.executor == "client"
@@ -627,11 +711,10 @@ method RuntimeStepInputLlmToToolThenToolResultToLlm(
   requires StepProgressP(
     if input.context.present then input.context else obs.initialContext,
     input.state,
-    true,
     obs.runnerResult
   )
   ensures PBranchToolResultToLlm(
-    RuntimeContext(true, PhaseToolResult, false, EmptyToolResultPayload(), false, EmptyRuntimeSession()),
+    RuntimeContext(true, PhaseToolResult, false, 0, false, 0, false, false, EmptyToolResultPayload(), false, EmptyRuntimeSession()),
     input.state,
     Ok(RawInstructionsObs(false, ObservedInstruction(InstrCallLlm, false), []))
   )
@@ -658,7 +741,8 @@ predicate PBeforeJAlwaysToolCall(
   j < |obsTrace| &&
   j < |inputTrace| &&
   (forall i :: 0 <= i < j ==>
-    obsTrace[i].llmResultHasToolsCalling &&
+    (if inputTrace[i].context.present then inputTrace[i].context else obsTrace[i].initialContext).llmResultHasToolCalls &&
+    (if inputTrace[i].context.present then inputTrace[i].context else obsTrace[i].initialContext).llmResultToolCallsCount > 0 &&
     inputTrace[i].state.status != StatusInterrupted &&
     (if inputTrace[i].context.present then inputTrace[i].context.phase else obsTrace[i].initialContext.phase) == PhaseLlmResult &&
     obsTrace[i].runnerResult.Ok? &&
@@ -666,7 +750,6 @@ predicate PBeforeJAlwaysToolCall(
     StepProgressP(
       if inputTrace[i].context.present then inputTrace[i].context else obsTrace[i].initialContext,
       inputTrace[i].state,
-      true,
       obsTrace[i].runnerResult
     ) &&
     |obsTrace[i].instructionResults| > 0 &&
@@ -688,7 +771,8 @@ predicate PAtJNoMoreToolCall(
 {
   j < |obsTrace| &&
   j < |inputTrace| &&
-  !obsTrace[j].llmResultHasToolsCalling &&
+  !((if inputTrace[j].context.present then inputTrace[j].context else obsTrace[j].initialContext).llmResultHasToolCalls &&
+    (if inputTrace[j].context.present then inputTrace[j].context else obsTrace[j].initialContext).llmResultToolCallsCount > 0) &&
   inputTrace[j].state.status != StatusInterrupted &&
   (if inputTrace[j].context.present then inputTrace[j].context.phase else obsTrace[j].initialContext.phase) == PhaseLlmResult &&
   obsTrace[j].runnerResult.Ok? &&
@@ -696,7 +780,6 @@ predicate PAtJNoMoreToolCall(
   StepProgressP(
     if inputTrace[j].context.present then inputTrace[j].context else obsTrace[j].initialContext,
     inputTrace[j].state,
-    false,
     obsTrace[j].runnerResult
   )
 }
@@ -716,14 +799,12 @@ method JBoundedProgressThenFinish(
     StepProgressP(
       if inputTrace[i].context.present then inputTrace[i].context else obsTrace[i].initialContext,
       inputTrace[i].state,
-      true,
       obsTrace[i].runnerResult
     ))
   ensures allBeforeJOk
   ensures StepProgressP(
-    RuntimeContext(true, PhaseLlmResult, false, EmptyToolResultPayload(), false, EmptyRuntimeSession()),
+    RuntimeContext(true, PhaseLlmResult, false, 0, false, 0, false, false, EmptyToolResultPayload(), false, EmptyRuntimeSession()),
     inputTrace[j].state,
-    false,
     Ok(RawInstructionsObs(false, ObservedInstruction(InstrFinish, false), []))
   )
 {
@@ -769,7 +850,6 @@ method JBoundedProgressThenTerminalState(
     StepProgressP(
       if inputTrace[i].context.present then inputTrace[i].context else obsTrace[i].initialContext,
       inputTrace[i].state,
-      true,
       obsTrace[i].runnerResult
     ))
   requires (!inputTrace[j].context.present || inputTrace[j].context.phase != PhaseHumanApprovedTool)

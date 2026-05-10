@@ -101,6 +101,11 @@ datatype RuntimeSession = RuntimeSession(
 datatype RuntimeContext = RuntimeContext(
   present: bool,
   phase: RuntimePhase,
+  llmResultHasToolCalls: bool,
+  llmResultToolCallsCount: int,
+  toolResultStopRequested: bool,
+  pendingToolsCallingCount: int,
+  hasQueuedMessages: bool,
   toolResultPresent: bool,
   toolResult: ToolResultPayload,
   sessionPresent: bool,
@@ -156,7 +161,7 @@ function EmptyRuntimeSession(): RuntimeSession
 
 function EmptyRuntimeContext(): RuntimeContext
 {
-  RuntimeContext(false, PhaseNone, false, EmptyToolResultPayload(), false, EmptyRuntimeSession())
+  RuntimeContext(false, PhaseNone, false, 0, false, 0, false, false, EmptyToolResultPayload(), false, EmptyRuntimeSession())
 }
 
 datatype RuntimeStepResult = RuntimeStepResult(newState: AgentState, nextContext: RuntimeContext)

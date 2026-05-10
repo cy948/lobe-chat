@@ -45,7 +45,6 @@ datatype RawInstructionsObs = RawInstructionsObs(
 // ============================================================
 datatype RuntimeStepObs = RuntimeStepObs(
   initialContext: RuntimeContext,
-  llmResultHasToolsCalling: bool,
   runnerResult: FResult<RawInstructionsObs>,
   llmResults: seq<FResult<RuntimeStepResult>>,
   callTool: CallToolObs,

@@ -20,11 +20,23 @@ datatype FResult<T> = Ok(value: T) | Err(error: string)
 
 // --- Request ---
 // TS: AgentExecutionParams (types.ts:117)
-// 投影: operationId (分支 + 下游), stepIndex (下游)
-// 投影掉: context, humanInput, approvedToolCall, rejectionReason,
-//         rejectAndContinue, toolMessageId, externalRetryCount
-// 原因: 这些字段直接透传给 executeStep，不在 handler 分支中使用
-datatype RunStepRequest = RunStepRequest(operationId: string, stepIndex: int)
+// 投影:
+//   - operationId / stepIndex                  → handler 分支 + 下游
+//   - context                                  → 透传给 executeStep
+//   - hasHumanInput / hasApprovedToolCall      → 透传给 executeStep
+//   - hasRejectionReason / rejectAndContinue   → 透传给 executeStep
+//   - hasToolMessageId / externalRetryCount    → 透传给 executeStep
+datatype RunStepRequest = RunStepRequest(
+  operationId: string,
+  stepIndex: int,
+  context: RuntimeContext,
+  hasHumanInput: bool,
+  hasApprovedToolCall: bool,
+  hasRejectionReason: bool,
+  rejectAndContinue: bool,
+  hasToolMessageId: bool,
+  externalRetryCount: int
+)
 
 // --- ExecuteStep minimal state projection ---
 // 只保留 ExecuteStep 第一阶段要证明的控制流字段:

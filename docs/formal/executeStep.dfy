@@ -32,10 +32,10 @@ datatype ExecuteStepState = ExecuteStepState(
 // obs 决定黑盒结果:
 //   - TryClaimStep 直接返回 obs.claimed
 // ============================================================
-method TryClaimStep(deps: ExecuteStepDeps, operationId: string, stepIndex: int) returns (result: FResult<bool>)
-  ensures result == deps.claimed
+method TryClaimStep(obs: ExecuteStepObs, operationId: string, stepIndex: int) returns (result: FResult<bool>)
+  ensures result == obs.claimed
 {
-  result := deps.claimed;
+  result := obs.claimed;
 }
 
 // ============================================================
@@ -44,10 +44,10 @@ method TryClaimStep(deps: ExecuteStepDeps, operationId: string, stepIndex: int) 
 // obs 决定黑盒结果:
 //   - LoadAgentState 直接返回 obs.stateResult
 // ============================================================
-method LoadAgentState(deps: ExecuteStepDeps, operationId: string) returns (result: FResult<ExecuteStepState>)
-  ensures result == deps.stateResult
+method LoadAgentState(obs: ExecuteStepObs, operationId: string) returns (result: FResult<ExecuteStepState>)
+  ensures result == obs.stateResult
 {
-  result := deps.stateResult;
+  result := obs.stateResult;
 }
 
 // ============================================================
@@ -56,11 +56,11 @@ method LoadAgentState(deps: ExecuteStepDeps, operationId: string) returns (resul
 // obs 决定黑盒结果:
 //   - HandleHumanIntervention 直接返回 obs.interventionResult
 // ============================================================
-method HandleHumanIntervention(deps: ExecuteStepDeps, state: AgentState, input: ExecuteStepInput)
+method HandleHumanIntervention(obs: ExecuteStepObs, state: AgentState, input: ExecuteStepInput)
   returns (result: FResult<RuntimeStepResult>)
-  ensures result == deps.interventionResult
+  ensures result == obs.interventionResult
 {
-  result := deps.interventionResult;
+  result := obs.interventionResult;
 }
 
 function ShouldContinueExecution(state: AgentState, nextContext: RuntimeContext): bool
@@ -88,10 +88,10 @@ function ShouldContinueExecution(state: AgentState, nextContext: RuntimeContext)
 //   - method 本身只定义控制流过程
 //   - 具体可证明分支性质留给后续 lemma 单独表达
 // ============================================================
-method ExecuteStep(deps: ExecuteStepDeps, input: ExecuteStepInput)
+method ExecuteStep(obs: ExecuteStepObs, input: ExecuteStepInput)
   returns (result: FResult<ExecuteStepResult>)
 {
-  var claimed := TryClaimStep(deps, input.operationId, input.stepIndex);
+  var claimed := TryClaimStep(obs, input.operationId, input.stepIndex);
   match claimed {
     case Err(_) => {
       result := Err("claim step failed");
@@ -110,7 +110,7 @@ method ExecuteStep(deps: ExecuteStepDeps, input: ExecuteStepInput)
     case Ok(true) => {}
   }
 
-  var stateResult := LoadAgentState(deps, input.operationId);
+  var stateResult := LoadAgentState(obs, input.operationId);
   var state: ExecuteStepState;
   match stateResult {
     case Err(_) => {
@@ -169,7 +169,7 @@ method ExecuteStep(deps: ExecuteStepDeps, input: ExecuteStepInput)
   );
   var currentContext := input.context;
   if input.hasHumanInput || input.hasApprovedToolCall || input.hasRejectionReason {
-    var intervention := HandleHumanIntervention(deps, state, input);
+    var intervention := HandleHumanIntervention(obs, state, input);
     match intervention {
       case Err(_) => {
         result := Err("human intervention failed");
@@ -183,7 +183,7 @@ method ExecuteStep(deps: ExecuteStepDeps, input: ExecuteStepInput)
   }
 
   var stepped := RuntimeStep(
-    deps.runtimeStep,
+    obs.runtimeStep,
     RuntimeStepInput(
       RuntimeStepState(
         state.status,
@@ -226,6 +226,73 @@ method ExecuteStep(deps: ExecuteStepDeps, input: ExecuteStepInput)
       return;
     }
   }
+}
+
+// 单次运行版本：
+//   这里只证明一次 ExecuteStep 调用能把控制流推进到一次满足条件的 RuntimeStep，
+//   不讨论后续调度、下一 step、或状态机归纳。
+lemma ExecuteStepOnceRunCanReachRuntimeStepDispatch(
+  obs: ExecuteStepObs,
+  input: ExecuteStepInput
+)
+  requires obs.claimed == Ok(true)
+  requires obs.stateResult.Ok?
+  requires obs.stateResult.value.stepCount <= input.stepIndex
+  requires obs.stateResult.value.status != StatusInterrupted
+  requires obs.stateResult.value.status != StatusDone
+  requires obs.stateResult.value.status != StatusError
+  requires !input.hasHumanInput
+  requires !input.hasApprovedToolCall
+  requires !input.hasRejectionReason
+  requires RuntimeStepCallsToolAtIndex(obs.runtimeStep, 0)
+  requires PCallToolGatewaySucceeded(
+    obs.runtimeStep.callToolCtx,
+    obs.runtimeStep.callToolInstruction,
+    AgentState(
+      obs.stateResult.value.status,
+      obs.stateResult.value.stepCount + 1,
+      obs.stateResult.value.hasCostLimit,
+      obs.stateResult.value.totalCostExceeded,
+      obs.stateResult.value.costLimitPolicy,
+      obs.stateResult.value.operationToolSource,
+      obs.stateResult.value.fallbackToolSource
+    ),
+    obs.runtimeStep.callTool
+  )
+  ensures QDispatchCalled(
+    obs.runtimeStep.callToolCtx,
+    AgentState(
+      obs.stateResult.value.status,
+      obs.stateResult.value.stepCount + 1,
+      obs.stateResult.value.hasCostLimit,
+      obs.stateResult.value.totalCostExceeded,
+      obs.stateResult.value.costLimitPolicy,
+      obs.stateResult.value.operationToolSource,
+      obs.stateResult.value.fallbackToolSource
+    ),
+    obs.runtimeStep.callToolInstruction,
+    obs.runtimeStep.callTool
+  )
+{
+  RuntimeStepOnceRunCallToolAtIndexCanDispatch(
+    obs.runtimeStep,
+    RuntimeStepInput(
+      RuntimeStepState(
+        obs.stateResult.value.status,
+        obs.stateResult.value.stepCount,
+        obs.stateResult.value.hasMaxSteps,
+        obs.stateResult.value.maxSteps,
+        obs.stateResult.value.forceFinish,
+        obs.stateResult.value.hasCostLimit,
+        obs.stateResult.value.totalCostExceeded,
+        obs.stateResult.value.costLimitPolicy,
+        obs.stateResult.value.operationToolSource,
+        obs.stateResult.value.fallbackToolSource
+      ),
+      input.context
+    ),
+    0
+  );
 }
 
 // ============================================================

@@ -22,10 +22,10 @@ include "executeStep.dfy"
 // 不假设: 解析出的字段内容（operationId 是否非空由 handler 检查）
 // 失败模式: JSON 语法错误 → Err → outer catch → 400
 // ============================================================
-method ParseBody(deps: RunStepDeps, raw: string) returns (result: FResult<RunStepRequest>)
-  ensures result == deps.parsed
+method ParseBody(obs: RunStepObs, raw: string) returns (result: FResult<RunStepRequest>)
+  ensures result == obs.parsed
 {
-  result := deps.parsed;
+  result := obs.parsed;
 }
 
 datatype HttpResponse = HttpResponse(status: HttpStatus, body: string)
@@ -37,14 +37,14 @@ datatype HttpResponse = HttpResponse(status: HttpStatus, body: string)
 //   - coordinator 不可用时，统一表现为 Err
 //   - coordinator 可用时，返回 obs.meta
 // ============================================================
-method GetOperationMetadata(deps: RunStepDeps, operationId: string) returns (result: FResult<string>)
-  ensures !deps.coordinatorReady ==> result.Err?
-  ensures deps.coordinatorReady ==> result == deps.meta
+method GetOperationMetadata(obs: RunStepObs, operationId: string) returns (result: FResult<string>)
+  ensures !obs.coordinatorReady ==> result.Err?
+  ensures obs.coordinatorReady ==> result == obs.meta
 {
-  if !deps.coordinatorReady {
+  if !obs.coordinatorReady {
     result := Err("coordinator unavailable");
   } else {
-    result := deps.meta;
+    result := obs.meta;
   }
 }
 
@@ -65,11 +65,11 @@ method GetOperationMetadata(deps: RunStepDeps, operationId: string) returns (res
 //   - method 本身只定义控制流过程
 //   - 具体 response 性质留给后续 lemma 单独表达
 // ============================================================
-method RunStep(deps: GlobalDeps, rawBody: string) returns (body: string, status: HttpStatus)
+method RunStep(obs: GlobalObs, rawBody: string) returns (body: string, status: HttpStatus)
 {
   var response: HttpResponse;
   // ===== Outer try: JSON parse (runStep.ts:20-24) → 400 =====
-  var parsed := ParseBody(deps.runStep, rawBody);
+  var parsed := ParseBody(obs.runStep, rawBody);
   if parsed.Err? {
     response := HttpResponse(Status400, "{ \"error\": \"Invalid JSON body\" }");
     body := response.body;
@@ -83,17 +83,17 @@ method RunStep(deps: GlobalDeps, rawBody: string) returns (body: string, status:
     status := response.status;
     return;
   }
-  var meta := GetOperationMetadata(deps.runStep, req.operationId);
-  var stepResult := ExecuteStep(deps.executeStep, ExecuteStepInput(
+  var meta := GetOperationMetadata(obs.runStep, req.operationId);
+  var stepResult := ExecuteStep(obs.executeStep, ExecuteStepInput(
     req.operationId,
     req.stepIndex,
-    EmptyRuntimeContext(),
-    false,
-    false,
-    false,
-    false,
-    false,
-    0
+    req.context,
+    req.hasHumanInput,
+    req.hasApprovedToolCall,
+    req.hasRejectionReason,
+    req.rejectAndContinue,
+    req.hasToolMessageId,
+    req.externalRetryCount
   ));
   if meta.Err? {
     response := HttpResponse(Status500, "{ \"error\": \"Internal server error\" }");
@@ -108,6 +108,88 @@ method RunStep(deps: GlobalDeps, rawBody: string) returns (body: string, status:
   }
   body := response.body;
   status := response.status;
+}
+
+// ============================================================
+// Once-run observation witness
+//
+// 作用：
+//   不把“第 k 次运行 / 本次正常运行”的见证塞进 req，
+//   而是单独用一个 predicate 描述：
+//   若这次端点调用沿主路径正常推进到一次 call_tool gateway dispatch，
+//   我们需要观测到哪些 obs / 外部现象。
+// ============================================================
+predicate NormalOnceRunWitness(obs: GlobalObs, req: RunStepRequest)
+{
+  obs.runStep.parsed == Ok(req) &&
+  obs.runStep.coordinatorReady &&
+  obs.runStep.meta.Ok? &&
+  obs.runStep.meta.value != "" &&
+
+  obs.executeStep.claimed == Ok(true) &&
+  obs.executeStep.stateResult.Ok? &&
+  obs.executeStep.stateResult.value.stepCount <= req.stepIndex &&
+  obs.executeStep.stateResult.value.status != StatusInterrupted &&
+  obs.executeStep.stateResult.value.status != StatusDone &&
+  obs.executeStep.stateResult.value.status != StatusError &&
+
+  !req.hasHumanInput &&
+  !req.hasApprovedToolCall &&
+  !req.hasRejectionReason &&
+
+  obs.executeStep.runtimeStep.runnerResult.Ok? &&
+  RuntimeStepCallsToolAtIndex(obs.executeStep.runtimeStep, 0) &&
+
+  PCallToolGatewaySucceeded(
+    obs.executeStep.runtimeStep.callToolCtx,
+    obs.executeStep.runtimeStep.callToolInstruction,
+    AgentState(
+      obs.executeStep.stateResult.value.status,
+      obs.executeStep.stateResult.value.stepCount + 1,
+      obs.executeStep.stateResult.value.hasCostLimit,
+      obs.executeStep.stateResult.value.totalCostExceeded,
+      obs.executeStep.stateResult.value.costLimitPolicy,
+      obs.executeStep.stateResult.value.operationToolSource,
+      obs.executeStep.stateResult.value.fallbackToolSource
+    ),
+    obs.executeStep.runtimeStep.callTool
+  )
+}
+
+lemma NormalOnceRunWitnessImpliesDispatchCalled(
+  obs: GlobalObs,
+  req: RunStepRequest
+)
+  requires NormalOnceRunWitness(obs, req)
+  ensures QDispatchCalled(
+    obs.executeStep.runtimeStep.callToolCtx,
+    AgentState(
+      obs.executeStep.stateResult.value.status,
+      obs.executeStep.stateResult.value.stepCount + 1,
+      obs.executeStep.stateResult.value.hasCostLimit,
+      obs.executeStep.stateResult.value.totalCostExceeded,
+      obs.executeStep.stateResult.value.costLimitPolicy,
+      obs.executeStep.stateResult.value.operationToolSource,
+      obs.executeStep.stateResult.value.fallbackToolSource
+    ),
+    obs.executeStep.runtimeStep.callToolInstruction,
+    obs.executeStep.runtimeStep.callTool
+  )
+{
+  ExecuteStepOnceRunCanReachRuntimeStepDispatch(
+    obs.executeStep,
+    ExecuteStepInput(
+      req.operationId,
+      req.stepIndex,
+      req.context,
+      req.hasHumanInput,
+      req.hasApprovedToolCall,
+      req.hasRejectionReason,
+      req.rejectAndContinue,
+      req.hasToolMessageId,
+      req.externalRetryCount
+    )
+  );
 }
 
 // ============================================================

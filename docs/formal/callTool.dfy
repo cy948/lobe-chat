@@ -28,16 +28,16 @@ include "toolExecution.dfy"
 //
 // obs 决定黑盒结果。
 // ============================================================
-method DispatchClientTool(deps: CallToolDeps) returns (result: FResult<bool>)
-  ensures result == deps.dispatched
+method DispatchClientTool(obs: CallToolObs) returns (result: FResult<bool>)
+  ensures result == obs.dispatched
 {
-  result := deps.dispatched;
+  result := obs.dispatched;
 }
 
-method PersistToolMessage(deps: CallToolDeps, skipCreateToolMessage: bool) returns (result: FResult<string>)
-  ensures result == deps.persisted
+method PersistToolMessage(obs: CallToolObs, skipCreateToolMessage: bool) returns (result: FResult<string>)
+  ensures result == obs.persisted
 {
-  result := deps.persisted;
+  result := obs.persisted;
 }
 
 function NoContext(): RuntimeContext
@@ -74,13 +74,98 @@ function ToolResultContext(
   )
 }
 
+// ============================================================
+// Backward proof entry: gateway tool-call dispatch
+//
+// Q_dispatchCalled:
+//   这次 call_tool 执行走到了 gateway client dispatch 分支，
+//   因而发生了一次 DispatchClientTool(...) 调用。
+//
+// P_callToolGateway:
+//   从 Q 倒推得到的当前最小前提，只覆盖 gateway dispatch 分支。
+// ============================================================
+function QDispatchCalled(
+  ctx: CallToolCtx,
+  state: AgentState,
+  instruction: CallToolInstruction,
+  obs: CallToolObs
+): bool
+{
+  (if state.operationToolSource != "" then state.operationToolSource else state.fallbackToolSource) != "client" &&
+  instruction.toolCalling.executor == "client" &&
+  ctx.streamManagerCanSendToolExecute &&
+  obs.dispatchCalled
+}
+
+function PCallToolGateway(
+  ctx: CallToolCtx,
+  instruction: CallToolInstruction,
+  state: AgentState,
+  obs: CallToolObs
+): bool
+{
+  (if state.operationToolSource != "" then state.operationToolSource else state.fallbackToolSource) != "client" &&
+  instruction.toolCalling.executor == "client" &&
+  ctx.streamManagerCanSendToolExecute &&
+  obs.dispatchCalled
+}
+
+function PCallToolGatewaySucceeded(
+  ctx: CallToolCtx,
+  instruction: CallToolInstruction,
+  state: AgentState,
+  obs: CallToolObs
+): bool
+{
+  PCallToolGateway(ctx, instruction, state, obs) &&
+  obs.dispatched.Ok? &&
+  obs.persisted.Ok?
+}
+
+lemma CallToolGatewayBranchSuffices(
+  ctx: CallToolCtx,
+  instruction: CallToolInstruction,
+  state: AgentState,
+  obs: CallToolObs
+)
+  requires PCallToolGateway(ctx, instruction, state, obs)
+  ensures QDispatchCalled(ctx, state, instruction, obs)
+{
+}
+
+lemma CallToolGatewaySucceededImpliesCalled(
+  ctx: CallToolCtx,
+  instruction: CallToolInstruction,
+  state: AgentState,
+  obs: CallToolObs
+)
+  requires PCallToolGatewaySucceeded(ctx, instruction, state, obs)
+  ensures QDispatchCalled(ctx, state, instruction, obs)
+{
+}
+
+method ExecuteCallToolGatewayDispatchCalled(
+  ctx: CallToolCtx,
+  instruction: CallToolInstruction,
+  state: AgentState,
+  obs: CallToolObs
+) returns (result: FResult<RuntimeStepResult>)
+  requires PCallToolGatewaySucceeded(ctx, instruction, state, obs)
+  ensures QDispatchCalled(ctx, state, instruction, obs)
+  ensures result.Ok?
+{
+  CallToolGatewaySucceededImpliesCalled(ctx, instruction, state, obs);
+  result := ExecuteCallTool(obs, ctx, instruction, state);
+}
+
 method ExecuteCallTool(
-  obs: CallToolDeps,
+  obs: CallToolObs,
   ctx: CallToolCtx,
   instruction: CallToolInstruction,
   state: AgentState
 )
   returns (result: FResult<RuntimeStepResult>)
+  ensures PCallToolGatewaySucceeded(ctx, instruction, state, obs) ==> result.Ok?
 {
   var toolCalling := instruction.toolCalling;
   var toolSource :=
@@ -107,6 +192,11 @@ method ExecuteCallTool(
 
   if toolCalling.executor == "client" &&
       ctx.streamManagerCanSendToolExecute {
+    if PCallToolGatewaySucceeded(ctx, instruction, state, obs) {
+      assert obs.dispatched.Ok?;
+      assert obs.persisted.Ok?;
+    }
+
     var dispatched := DispatchClientTool(obs);
     if dispatched.Err? {
       result := Err("gateway dispatch failed");

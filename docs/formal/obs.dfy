@@ -12,7 +12,7 @@ include "types.dfy"
 // ============================================================
 // localSystemTool black-box observations
 // ============================================================
-datatype LocalSystemDeps = LocalSystemDeps(
+datatype LocalSystemObs = LocalSystemObs(
   gatewayResult: bool
 )
 
@@ -47,7 +47,7 @@ datatype RuntimeStepObs = RuntimeStepObs(
   initialContext: RuntimeContext,
   runnerResult: FResult<RawInstructionsObs>,
   llmResults: seq<FResult<RuntimeStepResult>>,
-  callTool: CallToolDeps,
+  callTool: CallToolObs,
   callToolCtx: CallToolCtx,
   callToolInstruction: CallToolInstruction,
   finishResult: RuntimeStepResult,
@@ -63,13 +63,13 @@ datatype RuntimeStepObs = RuntimeStepObs(
 datatype BuiltinToolExecutionObs = BuiltinToolExecutionObs(
   builtinSpecialResult: ToolExecutionOutcome,
   builtinRuntimeCallResult: ToolExecutionOutcome,
-  localSystem: LocalSystemDeps
+  localSystem: LocalSystemObs
 )
 
 // ============================================================
 // toolExecution black-box observations
 // ============================================================
-datatype ToolExecutionDeps = ToolExecutionDeps(
+datatype ToolExecutionObs = ToolExecutionObs(
   mcpResult: FResult<ToolExecutionOutcome>,
   builtin: BuiltinToolExecutionObs
 )
@@ -77,26 +77,14 @@ datatype ToolExecutionDeps = ToolExecutionDeps(
 // ============================================================
 // callTool black-box observations
 // ============================================================
-datatype CallToolDeps = CallToolDeps(
+datatype CallToolObs = CallToolObs(
+  dispatchCalled: bool,
   dispatched: FResult<bool>,
   persisted: FResult<string>,
-  toolExecution: ToolExecutionDeps
+  toolExecution: ToolExecutionObs
 )
 
-// ============================================================
-// executeStep black-box observations
-// ============================================================
-datatype ExecuteStepDeps = ExecuteStepDeps(
-  claimed: FResult<bool>,
-  stateResult: FResult<ExecuteStepState>,
-  interventionResult: FResult<RuntimeStepResult>,
-  runtimeStep: RuntimeStepObs
-)
-
-// ============================================================
-// runStep black-box observations
-// ============================================================
-datatype RunStepDeps = RunStepDeps(
+datatype RunStepObs = RunStepObs(
   parsed: FResult<RunStepRequest>,
   coordinatorReady: bool,
   meta: FResult<string>
@@ -108,7 +96,14 @@ datatype RunStepDeps = RunStepDeps(
 // runStep 可以一次接收整条调用链的观测输入；
 // 以后 runtimeStep / toolExecution 迁移完成后，继续往这里扩。
 // ============================================================
-datatype GlobalDeps = GlobalDeps(
-  runStep: RunStepDeps,
-  executeStep: ExecuteStepDeps
+datatype ExecuteStepObs = ExecuteStepObs(
+  claimed: FResult<bool>,
+  stateResult: FResult<ExecuteStepState>,
+  interventionResult: FResult<RuntimeStepResult>,
+  runtimeStep: RuntimeStepObs
+)
+
+datatype GlobalObs = GlobalObs(
+  runStep: RunStepObs,
+  executeStep: ExecuteStepObs
 )

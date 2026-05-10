@@ -13,6 +13,7 @@ include "types.dfy"
 // localSystemTool black-box observations
 // ============================================================
 datatype LocalSystemObs = LocalSystemObs(
+  gatewayCalled: bool,
   gatewayResult: bool
 )
 

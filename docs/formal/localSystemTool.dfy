@@ -27,15 +27,22 @@ include "obs.dfy"
 // Trust Base: GatewayHttpClient.executeToolCall(...)
 // obs 决定黑盒结果:
 //   - localSystemRuntime.factory 的前置 userId / activeDeviceId 检查不在这里处理
-//   - gateway/http/client 是否配置、HTTP 是否失败、最终 success 与否，统一由 obs.gatewayResult 给出
-method GatewayExecuteToolCall(obs: LocalSystemDeps, userId: string, activeDeviceId: string) returns (result: bool)
-  ensures result == obs.gatewayResult
+//   - obs.gatewayCalled 表示这次分流是否真的命中了 GatewayExecuteToolCall(...)
+//   - 只有在 gatewayCalled=true 时，才返回真实的 obs.gatewayResult；
+//     否则当前 cut point 视为未发生真正 gateway 调用，返回 false 作为保守占位结果。
+method GatewayExecuteToolCall(obs: LocalSystemObs, userId: string, activeDeviceId: string) returns (result: bool)
+  ensures result == (if obs.gatewayCalled then obs.gatewayResult else false)
 {
-  result := obs.gatewayResult;
+  if obs.gatewayCalled {
+    result := obs.gatewayResult;
+  } else {
+    result := false;
+  }
 }
 
-method ExecuteLocalSystemTool(obs: LocalSystemDeps, input: LocalSystemInput)
+method ExecuteLocalSystemTool(obs: LocalSystemObs, input: LocalSystemInput)
   returns (result: FResult<ToolExecutionOutcome>)
+  ensures LocalSystemGatewayWitness(obs, input) ==> result.Ok?
 {
   // 对应 localSystemRuntime.factory(...) 内部的同步 throw 分支。
   if input.userId == "" {
@@ -49,6 +56,31 @@ method ExecuteLocalSystemTool(obs: LocalSystemDeps, input: LocalSystemInput)
   }
 
   // 只有 factory 成功后，才会进入真正的 gateway tool-call。
+  if LocalSystemGatewayWitness(obs, input) {
+    assert obs.gatewayResult;
+  }
   var gatewaySuccess := GatewayExecuteToolCall(obs, input.userId, input.activeDeviceId);
   result := Ok(ToolExecutionOutcome(gatewaySuccess, 0));
+}
+
+predicate LocalSystemGatewayCalledQ(obs: LocalSystemObs)
+{
+  obs.gatewayCalled
+}
+
+predicate LocalSystemGatewayWitness(obs: LocalSystemObs, input: LocalSystemInput)
+{
+  input.userId != "" &&
+  input.activeDeviceId != "" &&
+  obs.gatewayCalled &&
+  obs.gatewayResult
+}
+
+lemma LocalSystemGatewayWitnessImpliesCalled(
+  obs: LocalSystemObs,
+  input: LocalSystemInput
+)
+  requires LocalSystemGatewayWitness(obs, input)
+  ensures LocalSystemGatewayCalledQ(obs)
+{
 }

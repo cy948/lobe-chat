@@ -67,7 +67,6 @@ method HandleHumanIntervention(deps: ExecuteStepDeps, state: AgentState, input: 
 // ============================================================
 method ExecuteStep(deps: ExecuteStepDeps, input: ExecuteStepInput)
   returns (result: FResult<ExecuteStepResult>)
-  requires input.operationId != ""
 {
   var claimed := TryClaimStep(deps, input.operationId, input.stepIndex);
   match claimed {

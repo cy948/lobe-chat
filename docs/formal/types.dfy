@@ -66,9 +66,8 @@ datatype RuntimeStepResult = RuntimeStepResult(newState: AgentState, nextContext
 datatype ToolExecutionOutcome = ToolExecutionOutcome(success: bool)
 
 datatype LocalSystemInput = LocalSystemInput(
-  hasUserId: bool,
-  hasActiveDeviceId: bool,
-  gatewayConfigured: bool
+  userId: string,
+  activeDeviceId: string
 )
 
 datatype ToolKind =

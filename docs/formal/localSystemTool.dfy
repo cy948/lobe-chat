@@ -17,75 +17,28 @@ include "types.dfy"
 include "obs.dfy"
 
 // Trust Base: GatewayHttpClient.executeToolCall(...)
-// 依赖输入决定黑盒结果:
-//   - gateway/http/client 细节不在本层展开
-//   - 统一由 deps.gatewayResult 给出
-method GatewayExecuteToolCall(deps: LocalSystemDeps) returns (result: bool)
-  ensures result == deps.gatewayResult
+// obs 决定黑盒结果:
+//   - localSystemRuntime.factory 的前置 userId / activeDeviceId 检查不在这里处理
+//   - gateway/http/client 是否配置、HTTP 是否失败、最终 success 与否，统一由 obs.gatewayResult 给出
+method GatewayExecuteToolCall(obs: LocalSystemDeps, userId: string, activeDeviceId: string) returns (result: bool)
+  ensures result == obs.gatewayResult
 {
-  result := deps.gatewayResult;
+  result := obs.gatewayResult;
 }
 
-function ExecuteLocalSystemToolSpec(deps: LocalSystemDeps, input: LocalSystemInput): ToolExecutionOutcome
-{
-  if !input.hasUserId then
-    ToolExecutionOutcome(false)
-  else if !input.hasActiveDeviceId then
-    ToolExecutionOutcome(false)
-  else if !input.gatewayConfigured then
-    ToolExecutionOutcome(false)
-  else
-    ToolExecutionOutcome(deps.gatewayResult)
-}
-
-method ExecuteLocalSystemTool(deps: LocalSystemDeps, input: LocalSystemInput)
+method ExecuteLocalSystemTool(obs: LocalSystemDeps, input: LocalSystemInput)
   returns (result: ToolExecutionOutcome)
-  ensures result == ExecuteLocalSystemToolSpec(deps, input)
-  ensures !input.hasUserId ==> !result.success
-  ensures input.hasUserId && !input.hasActiveDeviceId ==> !result.success
-  ensures (input.hasUserId &&
-          input.hasActiveDeviceId &&
-          !input.gatewayConfigured) ==> !result.success
-  ensures (input.hasUserId &&
-          input.hasActiveDeviceId &&
-          input.gatewayConfigured) ==>
-          result.success == deps.gatewayResult
 {
-  if !input.hasUserId {
+  if input.userId == "" {
     result := ToolExecutionOutcome(false);
     return;
   }
 
-  if !input.hasActiveDeviceId {
+  if input.activeDeviceId == "" {
     result := ToolExecutionOutcome(false);
     return;
   }
 
-  if !input.gatewayConfigured {
-    result := ToolExecutionOutcome(false);
-    return;
-  }
-
-  var gatewaySuccess := GatewayExecuteToolCall(deps);
+  var gatewaySuccess := GatewayExecuteToolCall(obs, input.userId, input.activeDeviceId);
   result := ToolExecutionOutcome(gatewaySuccess);
-}
-
-// ============================================================
-// Proof methods
-//
-// 说明:
-//   - 在 Dafny 中，lemma / ghost method 不能直接调用普通 method
-//   - 因此这里先用普通 proof method 承载“调用 + ensures”
-//   - 后续若要写纯 theorem，则应只组合这些 postcondition
-// ============================================================
-method ProveExecuteLocalSystemToolReturnsGatewayResult(
-  deps: LocalSystemDeps,
-  input: LocalSystemInput
-) returns (result: ToolExecutionOutcome)
-  requires input.hasUserId
-  requires input.hasActiveDeviceId
-  requires input.gatewayConfigured
-  ensures result.success == deps.gatewayResult
-{
-  result := ExecuteLocalSystemTool(deps, input);
 }

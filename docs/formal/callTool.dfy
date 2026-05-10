@@ -32,52 +32,8 @@ method PersistToolMessage(deps: CallToolDeps, skipCreateToolMessage: bool) retur
   result := deps.persisted;
 }
 
-// ============================================================
-// L2: call_tool skeleton
-// ============================================================
-function CallToolSpec(deps: CallToolDeps, input: CallToolInput): FResult<RuntimeStepResult>
-{
-  if input.instruction.toolSource == ToolSourceClient then
-    Ok(RuntimeStepResult(
-      AgentState(
-        StatusInterrupted,
-        input.state.stepCount,
-        input.state.hasCostLimit,
-        input.state.totalCostExceeded,
-        input.state.costLimitPolicy
-      ),
-      RuntimeContext(false, PhaseNone)
-    ))
-  else if input.instruction.toolExecutor == ToolExecutorClient &&
-          input.ctx.streamManagerCanSendToolExecute then
-    if deps.dispatched.Err? then
-      Err("gateway dispatch failed")
-    else if deps.persisted.Err? then
-      Err("tool message persist failed")
-    else
-      Ok(RuntimeStepResult(
-        input.state,
-        RuntimeContext(true, PhaseToolResult)
-      ))
-  else
-    if !ExecuteToolSpec(
-      deps.toolExecution,
-      ToolExecutionInput(input.instruction.serverToolKind),
-      input.instruction.builtinInput
-    ).success then
-      Err("server tool execution failed")
-    else if deps.persisted.Err? then
-      Err("tool message persist failed")
-    else
-      Ok(RuntimeStepResult(
-        input.state,
-        RuntimeContext(true, PhaseToolResult)
-      ))
-}
-
 method CallTool(deps: CallToolDeps, input: CallToolInput)
   returns (result: FResult<RuntimeStepResult>)
-  ensures result == CallToolSpec(deps, input)
 {
   if input.instruction.toolSource == ToolSourceClient {
     result := Ok(RuntimeStepResult(

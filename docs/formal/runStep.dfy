@@ -132,10 +132,13 @@ predicate PRunStepCanReachExecuteCallTool(obs: GlobalObs)
   (!obs.runStep.parsed.value.context.present ||
     obs.runStep.parsed.value.context.phase != PhaseHumanApprovedTool) &&
   obs.executeStep.runtimeStep.initialContext.phase != PhaseHumanApprovedTool &&
+  obs.executeStep.runtimeStep.llmResultHasToolsCalling &&
   obs.executeStep.runtimeStep.runnerResult.Ok? &&
   HumanInstructionFree(obs.executeStep.runtimeStep.runnerResult.value) &&
-  !obs.executeStep.runtimeStep.runnerResult.value.isArray &&
-  obs.executeStep.runtimeStep.runnerResult.value.single.kind == InstrCallTool &&
+  (if obs.runStep.parsed.value.context.present then
+    obs.runStep.parsed.value.context.phase
+   else
+    obs.executeStep.runtimeStep.initialContext.phase) == PhaseLlmResult &&
   |obs.executeStep.runtimeStep.instructionResults| > 0 &&
   obs.executeStep.runtimeStep.callToolInstruction.toolCalling.executor == "client" &&
   obs.executeStep.runtimeStep.callToolCtx.streamManagerCanSendToolExecute &&

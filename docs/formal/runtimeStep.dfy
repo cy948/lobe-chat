@@ -213,8 +213,9 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
   ensures obs.runnerResult.Err? ==>
     result.Ok? && result.value.newState.status == StatusError
   ensures (obs.runnerResult.Ok? &&
-    !obs.runnerResult.value.isArray &&
-    obs.runnerResult.value.single.kind == InstrCallTool &&
+    input.state.status != StatusInterrupted &&
+    (if input.context.present then input.context.phase else obs.initialContext.phase) == PhaseLlmResult &&
+    obs.llmResultHasToolsCalling &&
     |obs.instructionResults| > 0 &&
     ((if input.state.operationToolSource != "" then input.state.operationToolSource else input.state.fallbackToolSource) != "client") &&
     obs.callToolInstruction.toolCalling.executor == "client" &&
@@ -231,8 +232,9 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
   executeCallToolSucceeded := false;
   ghost var expectExecuteCallToolSuccess :=
     obs.runnerResult.Ok? &&
-    !obs.runnerResult.value.isArray &&
-    obs.runnerResult.value.single.kind == InstrCallTool &&
+    input.state.status != StatusInterrupted &&
+    (if input.context.present then input.context.phase else obs.initialContext.phase) == PhaseLlmResult &&
+    obs.llmResultHasToolsCalling &&
     |obs.instructionResults| > 0 &&
     ((if input.state.operationToolSource != "" then input.state.operationToolSource else input.state.fallbackToolSource) != "client") &&
     obs.callToolInstruction.toolCalling.executor == "client" &&
@@ -284,7 +286,16 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
   }
   assert runtimeContext.phase != PhaseHumanApprovedTool;
 
-  var rawInstructionsResult := obs.runnerResult;
+  var rawInstructionsResult: FResult<RawInstructionsObs>;
+  if obs.runnerResult.Err? {
+    rawInstructionsResult := obs.runnerResult;
+  } else {
+    rawInstructionsResult := GeneralChatAgentRunnerModel(
+      runtimeContext,
+      preparedState,
+      obs.llmResultHasToolsCalling
+    );
+  }
   match rawInstructionsResult {
     case Err(_) => {
       result := CreateErrorResult(preparedState);
@@ -461,10 +472,11 @@ predicate PRuntimeStepSingleCallToolSuccess(obs: RuntimeStepObs, input: RuntimeS
 {
   (!input.context.present || input.context.phase != PhaseHumanApprovedTool) &&
   obs.initialContext.phase != PhaseHumanApprovedTool &&
+  input.state.status != StatusInterrupted &&
+  (if input.context.present then input.context.phase else obs.initialContext.phase) == PhaseLlmResult &&
+  obs.llmResultHasToolsCalling &&
   obs.runnerResult.Ok? &&
   HumanInstructionFree(obs.runnerResult.value) &&
-  !obs.runnerResult.value.isArray &&
-  obs.runnerResult.value.single.kind == InstrCallTool &&
   |obs.instructionResults| > 0 &&
   ((if input.state.operationToolSource != "" then input.state.operationToolSource else input.state.fallbackToolSource) != "client") &&
   obs.callToolInstruction.toolCalling.executor == "client" &&
@@ -520,15 +532,14 @@ method RuntimeStepSingleStepTransitionProof(
   requires StepProgressP(
     if input.context.present then input.context else obs.initialContext,
     input.state,
-    obs.runnerResult.Ok? &&
-      !obs.runnerResult.value.isArray &&
-      obs.runnerResult.value.single.kind == InstrCallTool,
+    obs.llmResultHasToolsCalling,
     obs.runnerResult
   )
   ensures obs.runnerResult.Err? ==> stepped.Ok?
   ensures (obs.runnerResult.Ok? &&
-    !obs.runnerResult.value.isArray &&
-    obs.runnerResult.value.single.kind == InstrCallTool &&
+    input.state.status != StatusInterrupted &&
+    (if input.context.present then input.context.phase else obs.initialContext.phase) == PhaseLlmResult &&
+    obs.llmResultHasToolsCalling &&
     |obs.instructionResults| > 0 &&
     ((if input.state.operationToolSource != "" then input.state.operationToolSource else input.state.fallbackToolSource) != "client") &&
     obs.callToolInstruction.toolCalling.executor == "client" &&
@@ -604,8 +615,9 @@ method RuntimeStepInputLlmToToolThenToolResultToLlm(
   requires obs.initialContext.phase != PhaseHumanApprovedTool
   requires obs.runnerResult.Ok?
   requires HumanInstructionFree(obs.runnerResult.value)
-  requires !obs.runnerResult.value.isArray
-  requires obs.runnerResult.value.single.kind == InstrCallTool
+  requires input.state.status != StatusInterrupted
+  requires (if input.context.present then input.context.phase else obs.initialContext.phase) == PhaseLlmResult
+  requires obs.llmResultHasToolsCalling
   requires |obs.instructionResults| > 0
   requires ((if input.state.operationToolSource != "" then input.state.operationToolSource else input.state.fallbackToolSource) != "client")
   requires obs.callToolInstruction.toolCalling.executor == "client"
@@ -646,10 +658,17 @@ predicate PBeforeJAlwaysToolCall(
   j < |obsTrace| &&
   j < |inputTrace| &&
   (forall i :: 0 <= i < j ==>
+    obsTrace[i].llmResultHasToolsCalling &&
+    inputTrace[i].state.status != StatusInterrupted &&
+    (if inputTrace[i].context.present then inputTrace[i].context.phase else obsTrace[i].initialContext.phase) == PhaseLlmResult &&
     obsTrace[i].runnerResult.Ok? &&
     HumanInstructionFree(obsTrace[i].runnerResult.value) &&
-    !obsTrace[i].runnerResult.value.isArray &&
-    obsTrace[i].runnerResult.value.single.kind == InstrCallTool &&
+    StepProgressP(
+      if inputTrace[i].context.present then inputTrace[i].context else obsTrace[i].initialContext,
+      inputTrace[i].state,
+      true,
+      obsTrace[i].runnerResult
+    ) &&
     |obsTrace[i].instructionResults| > 0 &&
     ((if inputTrace[i].state.operationToolSource != "" then
       inputTrace[i].state.operationToolSource
@@ -669,13 +688,13 @@ predicate PAtJNoMoreToolCall(
 {
   j < |obsTrace| &&
   j < |inputTrace| &&
+  !obsTrace[j].llmResultHasToolsCalling &&
   inputTrace[j].state.status != StatusInterrupted &&
+  (if inputTrace[j].context.present then inputTrace[j].context.phase else obsTrace[j].initialContext.phase) == PhaseLlmResult &&
   obsTrace[j].runnerResult.Ok? &&
   HumanInstructionFree(obsTrace[j].runnerResult.value) &&
-  !obsTrace[j].runnerResult.value.isArray &&
-  obsTrace[j].runnerResult.value.single.kind == InstrFinish &&
   StepProgressP(
-    RuntimeContext(true, PhaseLlmResult, false, EmptyToolResultPayload(), false, EmptyRuntimeSession()),
+    if inputTrace[j].context.present then inputTrace[j].context else obsTrace[j].initialContext,
     inputTrace[j].state,
     false,
     obsTrace[j].runnerResult
@@ -763,7 +782,5 @@ method JBoundedProgressThenTerminalState(
   jStepResult, jStepExecuteCallToolSucceeded := RuntimeStep(obsTrace[j], inputTrace[j]);
   assert jStepResult.Ok?;
   assert obsTrace[j].runnerResult.Ok?;
-  assert !obsTrace[j].runnerResult.value.isArray;
-  assert obsTrace[j].runnerResult.value.single.kind == InstrFinish;
   assert |obsTrace[j].instructionResults| > 0;
 }

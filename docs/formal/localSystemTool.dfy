@@ -25,24 +25,18 @@ include "types.dfy"
 include "obs.dfy"
 
 // Trust Base: GatewayHttpClient.executeToolCall(...)
-// obs 决定黑盒结果:
-//   - localSystemRuntime.factory 的前置 userId / activeDeviceId 检查不在这里处理
-//   - obs.gatewayCalled 表示这次分流是否真的命中了 GatewayExecuteToolCall(...)
-//   - 只有在 gatewayCalled=true 时，才返回真实的 obs.gatewayResult；
-//     否则当前 cut point 视为未发生真正 gateway 调用，返回 false 作为保守占位结果。
+// obs 只决定这个黑盒调用一旦发生，返回什么结果。
+// 是否真的走到这个调用点，不由 obs 决定，而由当前层源码分支决定。
 method GatewayExecuteToolCall(obs: LocalSystemObs, userId: string, activeDeviceId: string) returns (result: bool)
-  ensures result == (if obs.gatewayCalled then obs.gatewayResult else false)
+  ensures result == obs.gatewayResult
 {
-  if obs.gatewayCalled {
-    result := obs.gatewayResult;
-  } else {
-    result := false;
-  }
+  result := obs.gatewayResult;
 }
 
 method ExecuteLocalSystemTool(obs: LocalSystemObs, input: LocalSystemInput)
   returns (result: FResult<ToolExecutionOutcome>)
-  ensures LocalSystemGatewayWitness(obs, input) ==> result.Ok?
+  ensures input.userId != "" && input.activeDeviceId != "" && obs.gatewayResult ==>
+    result.Ok? && result.value.success
 {
   // 对应 localSystemRuntime.factory(...) 内部的同步 throw 分支。
   if input.userId == "" {
@@ -56,31 +50,22 @@ method ExecuteLocalSystemTool(obs: LocalSystemObs, input: LocalSystemInput)
   }
 
   // 只有 factory 成功后，才会进入真正的 gateway tool-call。
-  if LocalSystemGatewayWitness(obs, input) {
+  if input.userId != "" && input.activeDeviceId != "" && obs.gatewayResult {
     assert obs.gatewayResult;
   }
   var gatewaySuccess := GatewayExecuteToolCall(obs, input.userId, input.activeDeviceId);
   result := Ok(ToolExecutionOutcome(gatewaySuccess, 0));
 }
 
-predicate LocalSystemGatewayCalledQ(obs: LocalSystemObs)
-{
-  obs.gatewayCalled
-}
-
-predicate LocalSystemGatewayWitness(obs: LocalSystemObs, input: LocalSystemInput)
-{
-  input.userId != "" &&
-  input.activeDeviceId != "" &&
-  obs.gatewayCalled &&
-  obs.gatewayResult
-}
-
-lemma LocalSystemGatewayWitnessImpliesCalled(
+method ExecuteLocalSystemToolUnderWitness(
   obs: LocalSystemObs,
   input: LocalSystemInput
-)
-  requires LocalSystemGatewayWitness(obs, input)
-  ensures LocalSystemGatewayCalledQ(obs)
+) returns (result: FResult<ToolExecutionOutcome>)
+  requires input.userId != ""
+  requires input.activeDeviceId != ""
+  requires obs.gatewayResult
+  ensures result.Ok?
+  ensures result.value.success
 {
+  result := ExecuteLocalSystemTool(obs, input);
 }

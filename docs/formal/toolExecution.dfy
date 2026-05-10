@@ -26,7 +26,8 @@ include "builtinToolExecution.dfy"
 // ============================================================
 // L3 cut points
 //
-// obs 决定黑盒结果。
+// obs 决定黑盒返回；
+// 分支是否命中 builtin / mcp，则由当前层源码控制流决定。
 // ============================================================
 method ExecuteMcpTool(obs: ToolExecutionObs) returns (result: FResult<ToolExecutionOutcome>)
   ensures result == obs.mcpResult
@@ -52,4 +53,30 @@ method ExecuteTool(obs: ToolExecutionObs, payload: ToolExecutionPayload, context
   }
 
   result := ExecuteBuiltinTool(obs.builtin, payload.builtinContext);
+}
+
+predicate ToolExecutionBuiltinLocalSystemWitness(obs: ToolExecutionObs, payload: ToolExecutionPayload)
+{
+  payload.kind != ToolMcp &&
+  !(payload.builtinContext.hasArguments && !payload.builtinContext.argumentsParseOk) &&
+  payload.builtinContext.source != SourceLobehubSkill &&
+  payload.builtinContext.source != SourceKlavis &&
+  payload.builtinContext.hasServerRuntime &&
+  payload.builtinContext.hasApiMethod &&
+  payload.builtinContext.isLocalSystem &&
+  payload.builtinContext.localSystemInput.userId != "" &&
+  payload.builtinContext.localSystemInput.activeDeviceId != "" &&
+  obs.builtin.localSystem.gatewayResult
+}
+
+method ExecuteLocalSystemToolFromToolExecutionWitness(
+  obs: ToolExecutionObs,
+  payload: ToolExecutionPayload,
+  context: ToolExecutionContextInput
+) returns (result: FResult<ToolExecutionOutcome>)
+  requires ToolExecutionBuiltinLocalSystemWitness(obs, payload)
+  ensures result.Ok?
+  ensures result.value.success
+{
+  result := ExecuteLocalSystemTool(obs.builtin.localSystem, payload.builtinContext.localSystemInput);
 }

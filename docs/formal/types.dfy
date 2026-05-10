@@ -75,8 +75,6 @@ datatype ToolKind =
   | ToolMcp
   | ToolOther
 
-datatype ToolExecutionInput = ToolExecutionInput(kind: ToolKind)
-
 datatype BuiltinSource =
   | SourceNone
   | SourceLobehubSkill
@@ -94,32 +92,42 @@ datatype BuiltinExecutionInput = BuiltinExecutionInput(
   localSystemInput: LocalSystemInput
 )
 
+datatype ToolExecutionPayload = ToolExecutionPayload(
+  identifier: string,
+  apiName: string,
+  kind: ToolKind,
+  source: BuiltinSource,
+  executor: string,
+  builtinContext: BuiltinExecutionInput
+)
+
+datatype ToolExecutionContextInput = ToolExecutionContextInput(
+  activeDeviceId: string,
+  userId: string
+)
+
 datatype CallToolCtx = CallToolCtx(
   streamManagerCanSendToolExecute: bool
 )
 
-datatype ToolSource =
-  | ToolSourceNone
-  | ToolSourceClient
-  | ToolSourceOther
-
-datatype ToolExecutorMode =
-  | ToolExecutorDefault
-  | ToolExecutorClient
-  | ToolExecutorOther
-
-datatype CallToolInstruction = CallToolInstruction(
-  toolSource: ToolSource,
-  toolExecutor: ToolExecutorMode,
-  skipCreateToolMessage: bool,
-  serverToolKind: ToolKind,
-  builtinInput: BuiltinExecutionInput
+datatype ToolCallingPayload = ToolCallingPayload(
+  identifier: string,
+  apiName: string,
+  executor: string,
+  kind: ToolKind,
+  source: BuiltinSource,
+  builtinContext: BuiltinExecutionInput
 )
 
-datatype CallToolInput = CallToolInput(
-  ctx: CallToolCtx,
-  instruction: CallToolInstruction,
-  state: AgentState
+datatype CallToolInstruction = CallToolInstruction(
+  parentMessageId: string,
+  skipCreateToolMessage: bool,
+  toolCalling: ToolCallingPayload
+)
+
+datatype CallToolStateInfo = CallToolStateInfo(
+  operationToolSource: string,
+  fallbackToolSource: string
 )
 
 datatype ExecuteStepInput = ExecuteStepInput(

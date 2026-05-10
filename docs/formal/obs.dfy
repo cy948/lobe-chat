@@ -42,9 +42,20 @@ datatype RuntimeStepDeps = RuntimeStepDeps(
   planResult: FResult<PlannedInstructions>,
   llmResults: seq<FResult<RuntimeStepResult>>,
   callTool: CallToolDeps,
-  callToolInput: CallToolInput,
+  callToolCtx: CallToolCtx,
+  callToolInstruction: CallToolInstruction,
+  callToolStateInfo: CallToolStateInfo,
   finishResult: RuntimeStepResult,
   instructionResults: seq<FResult<RuntimeStepResult>>
+)
+
+// ============================================================
+// builtinToolExecution black-box observations
+// ============================================================
+datatype BuiltinToolExecutionObs = BuiltinToolExecutionObs(
+  builtinSpecialResult: ToolExecutionOutcome,
+  builtinRuntimeCallResult: ToolExecutionOutcome,
+  localSystem: LocalSystemDeps
 )
 
 // ============================================================
@@ -52,9 +63,7 @@ datatype RuntimeStepDeps = RuntimeStepDeps(
 // ============================================================
 datatype ToolExecutionDeps = ToolExecutionDeps(
   mcpResult: FResult<ToolExecutionOutcome>,
-  builtinSpecialResult: ToolExecutionOutcome,
-  builtinRuntimeCallResult: ToolExecutionOutcome,
-  localSystem: LocalSystemDeps
+  builtin: BuiltinToolExecutionObs
 )
 
 // ============================================================

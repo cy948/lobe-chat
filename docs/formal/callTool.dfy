@@ -1,10 +1,18 @@
 // ============================================================
 // callTool — formal module for createRuntimeExecutors(ctx).call_tool(...)
 //
-// 对应 TS: src/server/modules/AgentRuntime/RuntimeExecutors.ts:1392 call_tool
+// 对应 TS:
+//   src/server/modules/AgentRuntime/RuntimeExecutors.ts createRuntimeExecutors(...)
+//   src/server/modules/AgentRuntime/RuntimeExecutors.ts:1392 call_tool
 //
 // 当前目标:
-//   先建模 call_tool 的三分支骨架与返回语义:
+//   在不实化 JS 闭包对象的前提下，直接用参数传递表达：
+//   createRuntimeExecutors(ctx) 返回的 call_tool(instruction, state)
+//
+//   当前 formal 选择翻译为：
+//   ExecuteCallTool(obs, ctx, instruction, stateInfo, state)
+//
+//   然后建模 call_tool 的三分支骨架与返回语义:
 //   - client-source pause/interrupted
 //   - gateway client dispatch
 //   - server-side execute
@@ -32,62 +40,82 @@ method PersistToolMessage(deps: CallToolDeps, skipCreateToolMessage: bool) retur
   result := deps.persisted;
 }
 
-method CallTool(deps: CallToolDeps, input: CallToolInput)
+method ExecuteCallTool(
+  obs: CallToolDeps,
+  ctx: CallToolCtx,
+  instruction: CallToolInstruction,
+  stateInfo: CallToolStateInfo,
+  state: AgentState
+)
   returns (result: FResult<RuntimeStepResult>)
 {
-  if input.instruction.toolSource == ToolSourceClient {
+  var toolCalling := instruction.toolCalling;
+  var toolSource :=
+    if stateInfo.operationToolSource != "" then
+      stateInfo.operationToolSource
+    else
+      stateInfo.fallbackToolSource;
+
+  if toolSource == "client" {
     result := Ok(RuntimeStepResult(
       AgentState(
         StatusInterrupted,
-        input.state.stepCount,
-        input.state.hasCostLimit,
-        input.state.totalCostExceeded,
-        input.state.costLimitPolicy
+        state.stepCount,
+        state.hasCostLimit,
+        state.totalCostExceeded,
+        state.costLimitPolicy
       ),
       RuntimeContext(false, PhaseNone)
     ));
     return;
   }
 
-  if input.instruction.toolExecutor == ToolExecutorClient &&
-      input.ctx.streamManagerCanSendToolExecute {
-    var dispatched := DispatchClientTool(deps);
+  if toolCalling.executor == "client" &&
+      ctx.streamManagerCanSendToolExecute {
+    var dispatched := DispatchClientTool(obs);
     if dispatched.Err? {
       result := Err("gateway dispatch failed");
       return;
     }
 
-    var persistedGateway := PersistToolMessage(deps, input.instruction.skipCreateToolMessage);
+    var persistedGateway := PersistToolMessage(obs, instruction.skipCreateToolMessage);
     if persistedGateway.Err? {
       result := Err("tool message persist failed");
       return;
     }
 
     result := Ok(RuntimeStepResult(
-      input.state,
+      state,
       RuntimeContext(true, PhaseToolResult)
     ));
     return;
   }
 
   var executed := ExecuteTool(
-    deps.toolExecution,
-    ToolExecutionInput(input.instruction.serverToolKind),
-    input.instruction.builtinInput
+    obs.toolExecution,
+    ToolExecutionPayload(
+      toolCalling.identifier,
+      toolCalling.apiName,
+      toolCalling.kind,
+      toolCalling.source,
+      toolCalling.executor,
+      toolCalling.builtinContext
+    ),
+    ToolExecutionContextInput("", "")
   );
   if !executed.success {
     result := Err("server tool execution failed");
     return;
   }
 
-  var persisted := PersistToolMessage(deps, input.instruction.skipCreateToolMessage);
+  var persisted := PersistToolMessage(obs, instruction.skipCreateToolMessage);
   if persisted.Err? {
     result := Err("tool message persist failed");
     return;
   }
 
   result := Ok(RuntimeStepResult(
-    input.state,
+    state,
     RuntimeContext(true, PhaseToolResult)
   ));
 }

@@ -86,9 +86,12 @@ method ExecuteInstruction(
   }
 
   if kind == InstrCallTool {
-    result := CallTool(
+    result := ExecuteCallTool(
       deps.callTool,
-      CallToolInput(deps.callToolInput.ctx, deps.callToolInput.instruction, state)
+      deps.callToolCtx,
+      deps.callToolInstruction,
+      deps.callToolStateInfo,
+      state
     );
     return;
   }

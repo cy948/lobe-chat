@@ -8,77 +8,37 @@
 //   - payload.type === mcp 走 MCP 分支
 //   - 其他类型默认走 builtin 分支
 //   - 任一分支 throw 时，被 executeTool catch 并收口为 success=false
+//
+// 当前已知失真（后续若要继续贴源码，需要再展开）:
+//   1. 当前 formal 只保留了 executeTool 所需的最小 payload/context 投影，
+//      尚未覆盖 ToolExecutionContext 的全部字段。
+//   2. executeTool(...) 源码返回 content/error/executionTime/success，
+//      当前 formal 只投影 success: bool；truncateToolResult / normalizeExecutionError / executionTime
+//      相关语义目前被整体压掉。
+//   3. builtin executor 的内部控制流已下沉到 builtinToolExecution.dfy；
+//      当前文件只保留 executeTool(payload, context) 这一层的 type dispatch + 外层归一化。
 // ============================================================
 
 include "types.dfy"
 include "obs.dfy"
-include "localSystemTool.dfy"
+include "builtinToolExecution.dfy"
 
 // ============================================================
 // L3 cut points
 //
 // obs 决定黑盒结果。
 // ============================================================
-method ExecuteMcpTool(deps: ToolExecutionDeps) returns (result: FResult<ToolExecutionOutcome>)
-  ensures result == deps.mcpResult
+method ExecuteMcpTool(obs: ToolExecutionDeps) returns (result: FResult<ToolExecutionOutcome>)
+  ensures result == obs.mcpResult
 {
-  result := deps.mcpResult;
+  result := obs.mcpResult;
 }
 
-method ExecuteBuiltinSpecialRoute(deps: ToolExecutionDeps, source: BuiltinSource) returns (result: ToolExecutionOutcome)
-  ensures result == deps.builtinSpecialResult
-{
-  result := deps.builtinSpecialResult;
-}
-
-method ExecuteBuiltinRuntimeCall(deps: ToolExecutionDeps, runtimeCallSucceeds: bool) returns (result: ToolExecutionOutcome)
-  ensures result == deps.builtinRuntimeCallResult
-{
-  result := deps.builtinRuntimeCallResult;
-}
-
-method ExecuteBuiltinTool(deps: ToolExecutionDeps, input: BuiltinExecutionInput)
+method ExecuteTool(obs: ToolExecutionDeps, payload: ToolExecutionPayload, context: ToolExecutionContextInput)
   returns (result: ToolExecutionOutcome)
 {
-  if input.hasArguments && !input.argumentsParseOk {
-    result := ToolExecutionOutcome(false);
-    return;
-  }
-
-  if input.source == SourceLobehubSkill || input.source == SourceKlavis {
-    result := ExecuteBuiltinSpecialRoute(deps, input.source);
-    return;
-  }
-
-  if !input.hasServerRuntime || !input.hasApiMethod {
-    result := ToolExecutionOutcome(false);
-    return;
-  }
-
-  if input.isLocalSystem {
-    var localResult := ExecuteLocalSystemTool(deps.localSystem, input.localSystemInput);
-    match localResult {
-      case Ok(outcome) => {
-        result := outcome;
-        return;
-      }
-      case Err(_) => {
-        // 对应 ToolExecutionService.executeTool(...) 外层 try/catch:
-        // builtin runtime 内部 throw，最终被归一化为 success=false。
-        result := ToolExecutionOutcome(false);
-        return;
-      }
-    }
-  }
-
-  result := ExecuteBuiltinRuntimeCall(deps, input.runtimeCallSucceeds);
-}
-
-method ExecuteTool(deps: ToolExecutionDeps, input: ToolExecutionInput, builtinInput: BuiltinExecutionInput)
-  returns (result: ToolExecutionOutcome)
-{
-  if input.kind == ToolMcp {
-    var mcpResult := ExecuteMcpTool(deps);
+  if payload.kind == ToolMcp {
+    var mcpResult := ExecuteMcpTool(obs);
     match mcpResult {
       case Ok(outcome) => {
         result := outcome;
@@ -91,5 +51,5 @@ method ExecuteTool(deps: ToolExecutionDeps, input: ToolExecutionInput, builtinIn
     }
   }
 
-  result := ExecuteBuiltinTool(deps, builtinInput);
+  result := ExecuteBuiltinTool(obs.builtin, payload.builtinContext);
 }

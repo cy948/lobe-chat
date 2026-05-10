@@ -73,7 +73,7 @@ method CreateErrorResult(state: RuntimeStepState) returns (result: FResult<Runti
 // L2: runtime.step 骨架
 // ============================================================
 method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
-  returns (result: FResult<RuntimeStepResult>)
+  returns (result: FResult<RuntimeStepResult>, ghost executeCallToolSucceeded: bool)
   requires !input.context.present || input.context.phase != PhaseHumanApprovedTool
   requires obs.initialContext.phase != PhaseHumanApprovedTool
   requires obs.runnerResult.Err? || HumanInstructionFree(obs.runnerResult.value)
@@ -82,13 +82,26 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
   ensures (obs.runnerResult.Ok? &&
     !obs.runnerResult.value.isArray &&
     obs.runnerResult.value.single.kind == InstrCallTool &&
+    |obs.instructionResults| > 0 &&
     ((if input.state.operationToolSource != "" then input.state.operationToolSource else input.state.fallbackToolSource) != "client") &&
     obs.callToolInstruction.toolCalling.executor == "client" &&
     obs.callToolCtx.streamManagerCanSendToolExecute &&
     obs.callTool.dispatched.Ok? &&
     obs.callTool.persisted.Ok?) ==>
     result.Ok?
+  ensures executeCallToolSucceeded ==> obs.runnerResult.Ok?
 {
+  executeCallToolSucceeded := false;
+  ghost var expectExecuteCallToolSuccess :=
+    obs.runnerResult.Ok? &&
+    !obs.runnerResult.value.isArray &&
+    obs.runnerResult.value.single.kind == InstrCallTool &&
+    |obs.instructionResults| > 0 &&
+    ((if input.state.operationToolSource != "" then input.state.operationToolSource else input.state.fallbackToolSource) != "client") &&
+    obs.callToolInstruction.toolCalling.executor == "client" &&
+    obs.callToolCtx.streamManagerCanSendToolExecute &&
+    obs.callTool.dispatched.Ok? &&
+    obs.callTool.persisted.Ok?;
   var preparedState :=
     RuntimeStepState(
       input.state.status,
@@ -177,7 +190,6 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
       normalizedKinds := [rawInstructions.single.kind];
     }
   }
-
   var currentState := AgentState(
     preparedState.status,
     preparedState.stepCount,
@@ -217,6 +229,18 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
         obs.callToolInstruction,
         currentState
       );
+      match exec {
+        case Err(_) => {
+          if expectExecuteCallToolSuccess {
+            assert false;
+          }
+          result := CreateErrorResult(preparedState);
+          return;
+        }
+        case Ok(r) => {
+          executeCallToolSucceeded := true;
+        }
+      }
     } else if normalizedKinds[i] == InstrCallToolsBatch {
       if i >= |obs.batchCustomExecutorPresent| {
         result := CreateErrorResult(preparedState);
@@ -248,7 +272,9 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
         result := CreateErrorResult(preparedState);
         return;
       }
-      case Ok(r) => instructionResult := r;
+      case Ok(r) => {
+        instructionResult := r;
+      }
     }
 
     currentState := instructionResult.newState;
@@ -292,4 +318,47 @@ method RuntimeStep(obs: RuntimeStepObs, input: RuntimeStepInput)
     else
       finalContext
   ));
+}
+
+predicate PRuntimeStepSingleCallToolSuccess(obs: RuntimeStepObs, input: RuntimeStepInput)
+{
+  (!input.context.present || input.context.phase != PhaseHumanApprovedTool) &&
+  obs.initialContext.phase != PhaseHumanApprovedTool &&
+  obs.runnerResult.Ok? &&
+  HumanInstructionFree(obs.runnerResult.value) &&
+  !obs.runnerResult.value.isArray &&
+  obs.runnerResult.value.single.kind == InstrCallTool &&
+  |obs.instructionResults| > 0 &&
+  ((if input.state.operationToolSource != "" then input.state.operationToolSource else input.state.fallbackToolSource) != "client") &&
+  obs.callToolInstruction.toolCalling.executor == "client" &&
+  obs.callToolCtx.streamManagerCanSendToolExecute &&
+  obs.callTool.dispatched.Ok? &&
+  obs.callTool.persisted.Ok?
+}
+
+method RuntimeStepSingleCallToolSuccessProof(obs: RuntimeStepObs, input: RuntimeStepInput)
+  returns (callToolResult: FResult<RuntimeStepResult>, ghost executeCallToolSucceeded: bool)
+  requires PRuntimeStepSingleCallToolSuccess(obs, input)
+  ensures executeCallToolSucceeded
+  ensures callToolResult.Ok?
+{
+  callToolResult := ExecuteCallTool(
+    obs.callTool,
+    obs.callToolCtx,
+    obs.callToolInstruction,
+    AgentState(
+      input.state.status,
+      input.state.stepCount + 1,
+      input.state.hasCostLimit,
+      input.state.totalCostExceeded,
+      input.state.costLimitPolicy,
+      input.state.operationToolSource,
+      input.state.fallbackToolSource
+    )
+  );
+  assert callToolResult.Ok?;
+  executeCallToolSucceeded := true;
+  var runtimeStepResult: FResult<RuntimeStepResult>;
+  ghost var runtimeStepGhost: bool;
+  runtimeStepResult, runtimeStepGhost := RuntimeStep(obs, input);
 }

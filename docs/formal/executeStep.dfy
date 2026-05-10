@@ -247,7 +247,9 @@ method ExecuteStep(obs: ExecuteStepObs, input: ExecuteStepInput)
     }
   }
 
-  var stepped := RuntimeStep(
+  var stepped: FResult<RuntimeStepResult>;
+  ghost var executeCallToolSucceeded: bool;
+  stepped, executeCallToolSucceeded := RuntimeStep(
     obs.runtimeStep,
     RuntimeStepInput(
       RuntimeStepState(

@@ -113,3 +113,57 @@ method RunStep(obs: GlobalObs, rawBody: string) returns (body: string, status: H
   body := response.body;
   status := response.status;
 }
+
+predicate PRunStepCanReachExecuteCallTool(obs: GlobalObs)
+{
+  obs.runStep.parsed.Ok? &&
+  obs.runStep.parsed.value.operationId != "" &&
+  obs.runStep.coordinatorReady &&
+  obs.runStep.meta == Ok("ok") &&
+  !obs.runStep.parsed.value.hasHumanInput &&
+  !obs.runStep.parsed.value.hasApprovedToolCall &&
+  !obs.runStep.parsed.value.hasRejectionReason &&
+  obs.executeStep.claimed == Ok(true) &&
+  obs.executeStep.stateResult.Ok? &&
+  obs.executeStep.stateResult.value.stepCount <= obs.runStep.parsed.value.stepIndex &&
+  obs.executeStep.stateResult.value.status != StatusInterrupted &&
+  obs.executeStep.stateResult.value.status != StatusDone &&
+  obs.executeStep.stateResult.value.status != StatusError &&
+  (!obs.runStep.parsed.value.context.present ||
+    obs.runStep.parsed.value.context.phase != PhaseHumanApprovedTool) &&
+  obs.executeStep.runtimeStep.initialContext.phase != PhaseHumanApprovedTool &&
+  obs.executeStep.runtimeStep.runnerResult.Ok? &&
+  HumanInstructionFree(obs.executeStep.runtimeStep.runnerResult.value) &&
+  !obs.executeStep.runtimeStep.runnerResult.value.isArray &&
+  obs.executeStep.runtimeStep.runnerResult.value.single.kind == InstrCallTool &&
+  obs.executeStep.runtimeStep.callToolInstruction.toolCalling.executor == "client" &&
+  obs.executeStep.runtimeStep.callToolCtx.streamManagerCanSendToolExecute &&
+  obs.executeStep.runtimeStep.callTool.dispatched.Ok? &&
+  obs.executeStep.runtimeStep.callTool.persisted.Ok? &&
+  (if obs.executeStep.stateResult.value.operationToolSource != "" then
+    obs.executeStep.stateResult.value.operationToolSource
+   else
+    obs.executeStep.stateResult.value.fallbackToolSource) != "client"
+}
+
+method RunStepPImpliesQ(obs: GlobalObs)
+  returns (callToolResult: FResult<RuntimeStepResult>)
+  requires PRunStepCanReachExecuteCallTool(obs)
+  ensures callToolResult.Ok?
+{
+  callToolResult := ExecuteCallTool(
+    obs.executeStep.runtimeStep.callTool,
+    obs.executeStep.runtimeStep.callToolCtx,
+    obs.executeStep.runtimeStep.callToolInstruction,
+    AgentState(
+      obs.executeStep.stateResult.value.status,
+      obs.executeStep.stateResult.value.stepCount + 1,
+      obs.executeStep.stateResult.value.hasCostLimit,
+      obs.executeStep.stateResult.value.totalCostExceeded,
+      obs.executeStep.stateResult.value.costLimitPolicy,
+      obs.executeStep.stateResult.value.operationToolSource,
+      obs.executeStep.stateResult.value.fallbackToolSource
+    )
+  );
+  var body, status := RunStep(obs, "raw");
+}

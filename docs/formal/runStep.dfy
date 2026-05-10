@@ -156,12 +156,9 @@ predicate NormalOnceRunWitness(obs: GlobalObs, req: RunStepRequest)
   )
 }
 
-lemma NormalOnceRunWitnessImpliesDispatchCalled(
-  obs: GlobalObs,
-  req: RunStepRequest
-)
-  requires NormalOnceRunWitness(obs, req)
-  ensures QDispatchCalled(
+predicate OnceRunDispatchCalledQ(obs: GlobalObs)
+{
+  QDispatchCalled(
     obs.executeStep.runtimeStep.callToolCtx,
     AgentState(
       obs.executeStep.stateResult.value.status,
@@ -175,6 +172,14 @@ lemma NormalOnceRunWitnessImpliesDispatchCalled(
     obs.executeStep.runtimeStep.callToolInstruction,
     obs.executeStep.runtimeStep.callTool
   )
+}
+
+lemma NormalOnceRunWitnessImpliesDispatchCalled(
+  obs: GlobalObs,
+  req: RunStepRequest
+)
+  requires NormalOnceRunWitness(obs, req)
+  ensures OnceRunDispatchCalledQ(obs)
 {
   ExecuteStepOnceRunCanReachRuntimeStepDispatch(
     obs.executeStep,

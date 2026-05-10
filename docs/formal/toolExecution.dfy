@@ -57,12 +57,23 @@ method ExecuteBuiltinTool(deps: ToolExecutionDeps, input: BuiltinExecutionInput)
 
   if input.isLocalSystem {
     var localResult := ExecuteLocalSystemTool(deps.localSystem, input.localSystemInput);
-    result := localResult;
-    return;
+    match localResult {
+      case Ok(outcome) => {
+        result := outcome;
+        return;
+      }
+      case Err(_) => {
+        // 对应 ToolExecutionService.executeTool(...) 外层 try/catch:
+        // builtin runtime 内部 throw，最终被归一化为 success=false。
+        result := ToolExecutionOutcome(false);
+        return;
+      }
+    }
   }
 
   result := ExecuteBuiltinRuntimeCall(deps, input.runtimeCallSucceeds);
 }
+
 method ExecuteTool(deps: ToolExecutionDeps, input: ToolExecutionInput, builtinInput: BuiltinExecutionInput)
   returns (result: ToolExecutionOutcome)
 {

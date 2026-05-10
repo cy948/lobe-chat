@@ -8,7 +8,7 @@
 //
 // 当前目标:
 //   将 builtin runtime dispatch 命中 local-system 之后的链路展开为:
-//   - context precondition check
+//   - localSystemRuntime.factory 的前置检查
 //   - deviceProxy.executeToolCall
 //   - GatewayHttpClient.executeToolCall
 // ============================================================
@@ -27,18 +27,20 @@ method GatewayExecuteToolCall(obs: LocalSystemDeps, userId: string, activeDevice
 }
 
 method ExecuteLocalSystemTool(obs: LocalSystemDeps, input: LocalSystemInput)
-  returns (result: ToolExecutionOutcome)
+  returns (result: FResult<ToolExecutionOutcome>)
 {
+  // 对应 localSystemRuntime.factory(...) 内部的同步 throw 分支。
   if input.userId == "" {
-    result := ToolExecutionOutcome(false);
+    result := Err("userId is required for Local System device proxy execution");
     return;
   }
 
   if input.activeDeviceId == "" {
-    result := ToolExecutionOutcome(false);
+    result := Err("activeDeviceId is required for Local System device proxy execution");
     return;
   }
 
+  // 只有 factory 成功后，才会进入真正的 gateway tool-call。
   var gatewaySuccess := GatewayExecuteToolCall(obs, input.userId, input.activeDeviceId);
-  result := ToolExecutionOutcome(gatewaySuccess);
+  result := Ok(ToolExecutionOutcome(gatewaySuccess));
 }

@@ -147,6 +147,14 @@ export class AgentRuntime {
 
       logToolCallPc(state.operationId, state.stepCount, 'rt.progress', () => {
         return {
+          humanInstructionFree: instructions.every(
+            (instruction) =>
+              instruction?.type === 'call_llm' ||
+              instruction?.type === 'call_tool' ||
+              instruction?.type === 'finish' ||
+              instruction?.type === 'call_tools_batch',
+          ),
+          instructionCount: instructions.length,
           isArray: Array.isArray(rawInstructions),
           nextKind: instructions[0]?.type ?? null,
           stateStatus: state.status,
@@ -174,6 +182,7 @@ export class AgentRuntime {
             ),
             contextLlmResultToolCallsCount:
               runtimeContext.phase === 'llm_result' ? runtimeContextToolCalls.length : 0,
+            contextNotHumanApprovedTool: runtimeContext.phase !== 'human_approved_tool',
             contextPendingToolsCallingCount: state.pendingToolsCalling?.length ?? 0,
             contextPhase: runtimeContext.phase,
             contextToolResultStopRequested: Boolean(

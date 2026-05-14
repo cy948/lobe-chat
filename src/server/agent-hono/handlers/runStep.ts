@@ -81,9 +81,11 @@ export async function runStep(c: Context): Promise<Response> {
         | undefined;
 
       return {
+        coordinatorReady: true,
         hasApprovedToolCall: Boolean(approvedToolCall),
         hasHumanInput: Boolean(humanInput),
         hasRejectionReason: Boolean(rejectionReason),
+        contextNotHumanApprovedTool: context?.phase !== 'human_approved_tool',
         contextLlmResultHasToolCalls: Boolean(
           context?.phase === 'llm_result' &&
           (contextPayload?.hasToolCalls ??
@@ -94,6 +96,7 @@ export async function runStep(c: Context): Promise<Response> {
             ? contextPayload.toolCalls.length
             : 0,
         contextPhase: context?.phase ?? null,
+        userIdPresent: true,
       };
     });
 

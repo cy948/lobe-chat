@@ -685,6 +685,7 @@ export class AgentRuntimeService {
           | undefined;
 
         return {
+          inputContextNotHumanApprovedTool: currentContext?.phase !== 'human_approved_tool',
           inputContextLlmResultHasToolCalls: Boolean(
             currentContext?.phase === 'llm_result' &&
             (currentContextPayload?.hasToolCalls ??
@@ -699,6 +700,16 @@ export class AgentRuntimeService {
           inputContextPhase: currentContext?.phase ?? null,
           stateStatus: currentState.status,
           stateStepCount: currentState.stepCount,
+          stateToolSource:
+            currentState.operationToolSet?.sourceMap?.[
+              (currentContextPayload?.toolCalls as Array<{ identifier?: string }> | undefined)?.[0]
+                ?.identifier ?? ''
+            ] ??
+            currentState.toolSourceMap?.[
+              (currentContextPayload?.toolCalls as Array<{ identifier?: string }> | undefined)?.[0]
+                ?.identifier ?? ''
+            ] ??
+            null,
         };
       });
 

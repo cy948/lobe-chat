@@ -142,6 +142,7 @@ export class AgentRuntime {
         rawInstructions = await this.agent.runner(runtimeContext, newState);
       }
 
+      // Normalize to array
       const instructions = Array.isArray(rawInstructions) ? rawInstructions : [rawInstructions];
 
       logToolCallPc(state.operationId, state.stepCount, 'rt.progress', () => {

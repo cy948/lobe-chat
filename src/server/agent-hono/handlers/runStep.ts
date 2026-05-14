@@ -6,7 +6,8 @@ import { getServerDB } from '@/database/core/db-adaptor';
 import { AgentRuntimeCoordinator } from '@/server/modules/AgentRuntime';
 import { AgentRuntimeService } from '@/server/services/agentRuntime';
 
-const log = debug('lobe-server:agent-runtime:tool-call-stability');
+const log = debug('lobe-server:agent:run-step');
+const debugLog = debug('lobe-server:agent-runtime:tool-call-stability');
 const MISSING_OPERATION_ID = '_missing';
 const logToolCallPc = (
   operationId: string,
@@ -15,7 +16,7 @@ const logToolCallPc = (
   getObs: () => Record<string, unknown>,
 ) => {
   try {
-    log('%s', formatFormalObservationLog(operationId, stepIndex, pc, getObs()));
+    debugLog('%s', formatFormalObservationLog(operationId, stepIndex, pc, getObs()));
   } catch (error) {
     console.warn('[tool-call-stability] %s obs error: %O', pc, error);
   }
@@ -59,15 +60,19 @@ export async function runStep(c: Context): Promise<Response> {
       return c.json({ error: 'operationId is required' }, 400);
     }
 
+    log(`[${operationId}] Starting step ${stepIndex}`);
+
     // Get userId from operation metadata stored in Redis
     const coordinator = new AgentRuntimeCoordinator();
     const metadata = await coordinator.getOperationMetadata(operationId);
+
     if (!metadata?.userId) {
       logToolCallPc(operationId, stepIndex, 'rs.require_user_id', () => ({
         coordinatorReady: false,
         userIdPresent: false,
       }));
 
+      log(`[${operationId}] Invalid operation or no userId found`);
       return c.json({ error: 'Invalid operation or unauthorized' }, 401);
     }
 
@@ -115,6 +120,7 @@ export async function runStep(c: Context): Promise<Response> {
         statusCode: 429,
       }));
 
+      log(`[${operationId}] Step ${stepIndex} locked by another instance, returning 429`);
       return c.json(
         { error: 'Step is currently being executed, retry later', operationId, stepIndex },
         429,
@@ -141,6 +147,10 @@ export async function runStep(c: Context): Promise<Response> {
       totalSteps: result.state.stepCount,
       waitingForHuman: result.state.status === 'waiting_for_human',
     };
+
+    log(
+      `[${operationId}] Step ${stepIndex} completed (${executionTime}ms, status: ${result.state.status})`,
+    );
 
     return c.json(responseData);
   } catch (error: any) {

@@ -45,11 +45,12 @@ export class GatewayHttpClient {
   }
 
   async executeToolCall(
-    params: { deviceId?: string; timeout?: number; userId: string },
+    params: { deviceId?: string; operationId?: string; timeout?: number; userId: string },
     toolCall: { apiName: string; arguments: string; identifier: string },
   ): Promise<DeviceToolCallResult> {
     const res = await this.post('/api/device/tool-call', {
       deviceId: params.deviceId,
+      operationId: params.operationId,
       timeout: params.timeout,
       toolCall,
       userId: params.userId,
@@ -78,7 +79,7 @@ export class GatewayHttpClient {
     cwd?: string;
     deviceId?: string;
     jwt: string;
-    operationId: string;
+    operationId?: string;
     prompt: string;
     resumeSessionId?: string;
     timeout?: number;

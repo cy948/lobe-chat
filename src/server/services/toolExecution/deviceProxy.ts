@@ -71,7 +71,7 @@ export class DeviceProxy {
     cwd?: string;
     deviceId?: string;
     jwt: string;
-    operationId: string;
+    operationId?: string;
     prompt: string;
     resumeSessionId?: string;
     topicId: string;
@@ -90,7 +90,7 @@ export class DeviceProxy {
   }
 
   async executeToolCall(
-    params: { deviceId: string; userId: string },
+    params: { deviceId: string; operationId?: string; userId: string },
     toolCall: { apiName: string; arguments: string; identifier: string },
     timeout = 30_000,
   ): Promise<{ content: string; error?: string; success: boolean }> {
@@ -104,7 +104,8 @@ export class DeviceProxy {
     }
 
     log(
-      'executeToolCall: userId=%s, deviceId=%s, tool=%s/%s',
+      'executeToolCall: operationId=%s, userId=%s, deviceId=%s, tool=%s/%s',
+      params.operationId,
       params.userId,
       params.deviceId,
       toolCall.identifier,
@@ -113,7 +114,12 @@ export class DeviceProxy {
 
     try {
       return await client.executeToolCall(
-        { deviceId: params.deviceId, timeout, userId: params.userId },
+        {
+          deviceId: params.deviceId,
+          operationId: params.operationId,
+          timeout,
+          userId: params.userId,
+        },
         toolCall,
       );
     } catch (error) {

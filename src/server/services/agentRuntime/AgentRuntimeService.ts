@@ -492,35 +492,11 @@ export class AgentRuntimeService {
       toolMessageId,
       externalRetryCount = 0,
     } = params;
-    const getBaseObs = () => {
-      const contextPayload = context?.payload as
-        | { hasToolCalls?: boolean; toolCalls?: unknown[] }
-        | undefined;
-
-      return {
-        hasApprovedToolCall: Boolean(approvedToolCall),
-        hasHumanInput: Boolean(humanInput),
-        hasRejectionReason: Boolean(rejectionReason),
-        inputContextLlmResultHasToolCalls: Boolean(
-          context?.phase === 'llm_result' &&
-          (contextPayload?.hasToolCalls ??
-            (Array.isArray(contextPayload?.toolCalls) && contextPayload.toolCalls.length > 0)),
-        ),
-        inputContextLlmResultToolCallsCount:
-          context?.phase === 'llm_result' && Array.isArray(contextPayload?.toolCalls)
-            ? contextPayload.toolCalls.length
-            : 0,
-        inputContextPhase: context?.phase ?? null,
-        inputContextPresent: Boolean(context),
-        stepIndex,
-      };
-    };
 
     // ===== Distributed lock: prevent duplicate execution from QStash retries =====
     const claimed = await this.coordinator.tryClaimStep(operationId, stepIndex, 35);
     if (!claimed) {
       logToolCallPc(operationId, stepIndex, 'es.require_step_claim', () => ({
-        ...getBaseObs(),
         stepClaimed: false,
       }));
       log(
@@ -557,9 +533,7 @@ export class AgentRuntimeService {
 
       if (!agentState) {
         logToolCallPc(operationId, stepIndex, 'es.require_agent_state', () => ({
-          ...getBaseObs(),
           agentStatePresent: false,
-          stepClaimed: true,
         }));
         throw new Error(`Agent state not found for operation ${operationId}`);
       }
@@ -572,10 +546,7 @@ export class AgentRuntimeService {
       // Layer 2 defense: catch extremely delayed retries that arrive after lock TTL expired
       if (agentState.stepCount > stepIndex) {
         logToolCallPc(operationId, stepIndex, 'es.require_step_fresh', () => ({
-          ...getBaseObs(),
           stateStepCount: agentState.stepCount,
-          stepClaimed: true,
-          stepFresh: false,
         }));
         log(
           '[%s][%d] Step already completed (stepCount=%d), skipping',
@@ -599,10 +570,7 @@ export class AgentRuntimeService {
         agentState.status === 'error'
       ) {
         logToolCallPc(operationId, stepIndex, 'es.require_runnable_state', () => ({
-          ...getBaseObs(),
           stateStatus: agentState.status,
-          stepClaimed: true,
-          stateRunnable: false,
         }));
         log(
           '[%s][%d] Skipping step — operation already in terminal state: %s',
@@ -717,9 +685,6 @@ export class AgentRuntimeService {
           | undefined;
 
         return {
-          hasApprovedToolCall: Boolean(approvedToolCall),
-          hasHumanInput: Boolean(humanInput),
-          hasRejectionReason: Boolean(rejectionReason),
           inputContextLlmResultHasToolCalls: Boolean(
             currentContext?.phase === 'llm_result' &&
             (currentContextPayload?.hasToolCalls ??
@@ -732,16 +697,8 @@ export class AgentRuntimeService {
               ? currentContextPayload.toolCalls.length
               : 0,
           inputContextPhase: currentContext?.phase ?? null,
-          stateCostLimitPolicy: currentState.costLimit?.onExceeded ?? null,
-          stateForceFinish: Boolean(currentState.forceFinish),
-          stateHasCostLimit: Boolean(currentState.costLimit),
-          stateHasMaxSteps: currentState.maxSteps !== undefined,
-          stateMaxSteps: currentState.maxSteps ?? null,
           stateStatus: currentState.status,
           stateStepCount: currentState.stepCount,
-          stateTotalCostExceeded: Boolean(
-            currentState.costLimit && currentState.cost.total > currentState.costLimit.maxTotalCost,
-          ),
         };
       });
 
@@ -755,11 +712,7 @@ export class AgentRuntimeService {
       if (latestState?.status === 'interrupted') {
         stepResult.newState.status = 'interrupted';
         stepResult.newState.lastModified = new Date().toISOString();
-        log(
-          '[%s][%d] Operation was interrupted during step execution',
-          operationId,
-          stepIndex,
-        );
+        log('[%s][%d] Operation was interrupted during step execution', operationId, stepIndex);
       }
 
       // Save state, coordinator will handle event sending automatically
@@ -1180,11 +1133,7 @@ export class AgentRuntimeService {
     const { operationId, userId } = params;
 
     try {
-      log(
-        'Getting pending interventions for operationId: %s, userId: %s',
-        operationId,
-        userId,
-      );
+      log('Getting pending interventions for operationId: %s, userId: %s', operationId, userId);
 
       let operations: string[] = [];
 

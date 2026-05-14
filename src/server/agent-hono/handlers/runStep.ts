@@ -68,7 +68,6 @@ export async function runStep(c: Context): Promise<Response> {
 
     if (!metadata?.userId) {
       logToolCallPc(operationId, stepIndex, 'rs.require_user_id', () => ({
-        coordinatorReady: false,
         userIdPresent: false,
       }));
 
@@ -115,10 +114,7 @@ export async function runStep(c: Context): Promise<Response> {
 
     // Step is currently being executed by another instance — tell QStash to retry later
     if (result.locked) {
-      logToolCallPc(operationId, stepIndex, 'rs.return_locked', () => ({
-        retryAfterSeconds: 37,
-        statusCode: 429,
-      }));
+      logToolCallPc(operationId, stepIndex, 'rs.return_locked', () => ({ locked: true }));
 
       log(`[${operationId}] Step ${stepIndex} locked by another instance, returning 429`);
       return c.json(

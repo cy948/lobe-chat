@@ -146,21 +146,9 @@ export class AgentRuntime {
       const instructions = Array.isArray(rawInstructions) ? rawInstructions : [rawInstructions];
 
       logToolCallPc(state.operationId, state.stepCount, 'rt.progress', () => {
-        const firstInstruction = instructions[0];
-
         return {
-          runnerResult: {
-            isArray: Array.isArray(rawInstructions),
-            itemsKinds: instructions.map((instruction) => instruction.type),
-            itemsPayloadIsOldToolsArray: instructions.map(
-              (instruction) =>
-                instruction.type === 'call_tools_batch' && Array.isArray(instruction.payload),
-            ),
-            singleKind: firstInstruction?.type ?? null,
-            singlePayloadIsOldToolsArray:
-              firstInstruction?.type === 'call_tools_batch' &&
-              Array.isArray(firstInstruction.payload),
-          },
+          isArray: Array.isArray(rawInstructions),
+          nextKind: instructions[0]?.type ?? null,
           stateStatus: state.status,
         };
       });
@@ -269,29 +257,10 @@ export class AgentRuntime {
 
           if (toolResultPayload) {
             logToolCallPc(state.operationId, state.stepCount, 'rt.call_tool_success', () => {
-              const runtimeContextPayload = runtimeContext.payload as
-                | {
-                    hasToolCalls?: boolean;
-                    toolCalls?: unknown[];
-                  }
-                | undefined;
-              const runtimeContextToolCalls = Array.isArray(runtimeContextPayload?.toolCalls)
-                ? runtimeContextPayload.toolCalls
-                : [];
-
               return {
                 executor: callToolInstruction.payload.toolCalling.executor ?? null,
-                inputContextLlmResultHasToolCalls: Boolean(
-                  runtimeContext.phase === 'llm_result' &&
-                  (runtimeContextPayload?.hasToolCalls ?? runtimeContextToolCalls.length > 0),
-                ),
-                inputContextLlmResultToolCallsCount:
-                  runtimeContext.phase === 'llm_result' ? runtimeContextToolCalls.length : 0,
-                inputContextPhase: runtimeContext.phase,
-                inputContextPresent: true,
                 resultError: toolResultPayload.data?.error ?? null,
                 resultSuccess: toolResultPayload.isSuccess ?? null,
-                stateStatus: result.newState.status,
                 toolMessageId: toolResultPayload.parentMessageId ?? null,
                 toolSource:
                   currentState.operationToolSet?.sourceMap?.[

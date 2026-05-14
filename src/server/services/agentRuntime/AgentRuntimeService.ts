@@ -713,6 +713,54 @@ export class AgentRuntimeService {
         };
       });
 
+      logToolCallPc(operationId, stepIndex, 'es.input_matches_step_result_input', () => {
+        const currentContextPayload = currentContext?.payload as
+          | {
+              isSuccess?: boolean;
+              parentMessageId?: string;
+              toolCall?: { identifier?: string };
+              toolCallId?: string;
+              toolCalls?: unknown[];
+            }
+          | undefined;
+        const currentContextToolIdentifier =
+          currentContextPayload?.toolCall?.identifier ??
+          (currentContextPayload?.toolCalls as Array<{ identifier?: string }> | undefined)?.[0]
+            ?.identifier ??
+          '';
+
+        return {
+          inputContextPhase: currentContext?.phase ?? null,
+          inputContextPresent: Boolean(currentContext),
+          inputContextSessionStatus: currentContext?.session?.status ?? null,
+          inputContextSessionStepCount: currentContext?.session?.stepCount ?? null,
+          inputContextToolResultParentMessageId:
+            currentContext?.phase === 'tool_result'
+              ? (currentContextPayload?.parentMessageId ?? null)
+              : null,
+          inputContextToolResultSuccess:
+            currentContext?.phase === 'tool_result'
+              ? (currentContextPayload?.isSuccess ?? null)
+              : null,
+          inputContextToolResultToolCallId:
+            currentContext?.phase === 'tool_result'
+              ? (currentContextPayload?.toolCallId ?? null)
+              : null,
+          inputStateCostLimitPolicy: currentState.costLimit?.onExceeded ?? null,
+          inputStateHasCostLimit: Boolean(currentState.costLimit),
+          inputStateFallbackToolSource:
+            currentState.toolSourceMap?.[currentContextToolIdentifier] ?? null,
+          inputStateOperationToolSource:
+            currentState.operationToolSet?.sourceMap?.[currentContextToolIdentifier] ?? null,
+          inputStateStatus: currentState.status,
+          inputStateStepCount: currentState.stepCount,
+          inputStateTotalCostExceeded: Boolean(
+            currentState.costLimit &&
+            currentState.cost?.total >= currentState.costLimit.maxTotalCost,
+          ),
+        };
+      });
+
       // Execute step
       const startAt = Date.now();
       const stepResult = await runtime.step(currentState, currentContext);
@@ -908,6 +956,60 @@ export class AgentRuntimeService {
 
         log('[%s][%d] Scheduled next step %d', operationId, stepIndex, nextStepIndex);
       }
+
+      logToolCallPc(operationId, stepIndex, 'es.step_result', () => ({
+        nextContextPhase: stepResult.nextContext?.phase ?? null,
+        nextContextPresent: Boolean(stepResult.nextContext),
+        nextStepScheduled,
+        resultStateStatus: stepResult.newState.status,
+        resultStateStepCount: stepResult.newState.stepCount,
+        shouldContinue,
+      }));
+
+      logToolCallPc(operationId, stepIndex, 'es.input_matches_step_result_result', () => {
+        const nextContextPayload = stepResult.nextContext?.payload as
+          | {
+              isSuccess?: boolean;
+              parentMessageId?: string;
+              toolCall?: { identifier?: string };
+              toolCallId?: string;
+            }
+          | undefined;
+
+        return {
+          resultContextPhase: stepResult.nextContext?.phase ?? null,
+          resultContextPresent: Boolean(stepResult.nextContext),
+          resultContextSessionStatus: stepResult.nextContext?.session?.status ?? null,
+          resultContextSessionStepCount: stepResult.nextContext?.session?.stepCount ?? null,
+          resultContextToolResultParentMessageId:
+            stepResult.nextContext?.phase === 'tool_result'
+              ? (nextContextPayload?.parentMessageId ?? null)
+              : null,
+          resultContextToolResultSuccess:
+            stepResult.nextContext?.phase === 'tool_result'
+              ? (nextContextPayload?.isSuccess ?? null)
+              : null,
+          resultContextToolResultToolCallId:
+            stepResult.nextContext?.phase === 'tool_result'
+              ? (nextContextPayload?.toolCallId ?? null)
+              : null,
+          resultStateCostLimitPolicy: stepResult.newState.costLimit?.onExceeded ?? null,
+          resultStateHasCostLimit: Boolean(stepResult.newState.costLimit),
+          resultStateFallbackToolSource:
+            stepResult.newState.toolSourceMap?.[nextContextPayload?.toolCall?.identifier ?? ''] ??
+            null,
+          resultStateOperationToolSource:
+            stepResult.newState.operationToolSet?.sourceMap?.[
+              nextContextPayload?.toolCall?.identifier ?? ''
+            ] ?? null,
+          resultStateStatus: stepResult.newState.status,
+          resultStateStepCount: stepResult.newState.stepCount,
+          resultStateTotalCostExceeded: Boolean(
+            stepResult.newState.costLimit &&
+            stepResult.newState.cost?.total >= stepResult.newState.costLimit.maxTotalCost,
+          ),
+        };
+      });
 
       // Check if operation is complete
       if (!shouldContinue) {

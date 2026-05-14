@@ -1,3 +1,4 @@
+import { formatFormalObservationLog } from '@lobechat/agent-runtime';
 import debug from 'debug';
 import type { Context } from 'hono';
 
@@ -5,7 +6,8 @@ import { getServerDB } from '@/database/core/db-adaptor';
 import { AgentRuntimeCoordinator } from '@/server/modules/AgentRuntime';
 import { AgentRuntimeService } from '@/server/services/agentRuntime';
 
-const log = debug('lobe-server:agent:run-step');
+const log = debug('lobe-server:agent-runtime:tool-call-stability');
+const MISSING_OPERATION_ID = '_missing';
 
 /**
  * Execute a single agent step. Invoked by QStash with the body
@@ -36,21 +38,59 @@ export async function runStep(c: Context): Promise<Response> {
       rejectAndContinue,
       toolMessageId,
     } = body;
+    const logToolCallPc = (
+      currentOperationId: string,
+      pc: string,
+      getObs: () => Record<string, unknown>,
+    ) => {
+      try {
+        log('%s', formatFormalObservationLog(currentOperationId, stepIndex, pc, getObs()));
+      } catch (error) {
+        console.warn('[tool-call-stability] %s obs error: %O', pc, error);
+      }
+    };
 
     if (!operationId) {
+      logToolCallPc(MISSING_OPERATION_ID, 'rs.require_operation_id', () => ({
+        operationIdPresent: false,
+      }));
+
       return c.json({ error: 'operationId is required' }, 400);
     }
-
-    log(`[${operationId}] Starting step ${stepIndex}`);
 
     // Get userId from operation metadata stored in Redis
     const coordinator = new AgentRuntimeCoordinator();
     const metadata = await coordinator.getOperationMetadata(operationId);
-
     if (!metadata?.userId) {
-      log(`[${operationId}] Invalid operation or no userId found`);
+      logToolCallPc(operationId, 'rs.require_user_id', () => ({
+        coordinatorReady: false,
+        userIdPresent: false,
+      }));
+
       return c.json({ error: 'Invalid operation or unauthorized' }, 401);
     }
+
+    logToolCallPc(operationId, 'rs.reach_call_tool', () => {
+      const contextPayload = context?.payload as
+        | { hasToolCalls?: boolean; toolCalls?: unknown[] }
+        | undefined;
+
+      return {
+        hasApprovedToolCall: Boolean(approvedToolCall),
+        hasHumanInput: Boolean(humanInput),
+        hasRejectionReason: Boolean(rejectionReason),
+        contextLlmResultHasToolCalls: Boolean(
+          context?.phase === 'llm_result' &&
+          (contextPayload?.hasToolCalls ??
+            (Array.isArray(contextPayload?.toolCalls) && contextPayload.toolCalls.length > 0)),
+        ),
+        contextLlmResultToolCallsCount:
+          context?.phase === 'llm_result' && Array.isArray(contextPayload?.toolCalls)
+            ? contextPayload.toolCalls.length
+            : 0,
+        contextPhase: context?.phase ?? null,
+      };
+    });
 
     const serverDB = await getServerDB();
     const agentRuntimeService = new AgentRuntimeService(serverDB, metadata.userId);
@@ -69,7 +109,11 @@ export async function runStep(c: Context): Promise<Response> {
 
     // Step is currently being executed by another instance — tell QStash to retry later
     if (result.locked) {
-      log(`[${operationId}] Step ${stepIndex} locked by another instance, returning 429`);
+      logToolCallPc(operationId, 'rs.return_locked', () => ({
+        retryAfterSeconds: 37,
+        statusCode: 429,
+      }));
+
       return c.json(
         { error: 'Step is currently being executed, retry later', operationId, stepIndex },
         429,
@@ -96,10 +140,6 @@ export async function runStep(c: Context): Promise<Response> {
       totalSteps: result.state.stepCount,
       waitingForHuman: result.state.status === 'waiting_for_human',
     };
-
-    log(
-      `[${operationId}] Step ${stepIndex} completed (${executionTime}ms, status: ${result.state.status})`,
-    );
 
     return c.json(responseData);
   } catch (error: any) {

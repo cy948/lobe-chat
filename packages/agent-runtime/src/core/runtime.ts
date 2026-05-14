@@ -1,4 +1,5 @@
 import type { ChatToolPayload } from '@lobechat/types';
+import debug from 'debug';
 import pMap from 'p-map';
 
 import type {
@@ -17,6 +18,9 @@ import type {
   ToolsCalling,
   Usage,
 } from '../types';
+import { formatFormalObservationLog } from '../utils';
+
+const log = debug('lobe-server:agent-runtime:tool-call-stability');
 
 /**
  * Simplified Agent Runtime - The "Engine" that executes instructions from an "Agent" (Brain).
@@ -80,6 +84,16 @@ export class AgentRuntime {
     state: AgentState,
     context?: AgentRuntimeContext,
   ): Promise<{ events: AgentEvent[]; newState: AgentState; nextContext?: AgentRuntimeContext }> {
+    const operationId = context?.operationId ?? this.operationId ?? state.operationId;
+    const stepIndex = state.stepCount;
+    const logToolCallPc = (pc: string, getObs: () => Record<string, unknown>) => {
+      try {
+        log('%s', formatFormalObservationLog(operationId, stepIndex, pc, getObs()));
+      } catch (error) {
+        console.warn('[tool-call-stability] %s obs error: %O', pc, error);
+      }
+    };
+
     try {
       // Increment step count and check limits
       const newState = structuredClone(state);
@@ -102,7 +116,7 @@ export class AgentRuntime {
       const runtimeContext = context || this.createInitialContext(newState);
 
       // Get instructions from agent runner and normalize to array
-      let rawInstructions: any;
+      let rawInstructions: AgentInstruction | AgentInstruction[];
 
       // Handle human approved tool calls
       if (runtimeContext.phase === 'human_approved_tool') {
@@ -124,6 +138,57 @@ export class AgentRuntime {
       } else {
         // Standard flow: Plan -> Execute
         rawInstructions = await this.agent.runner(runtimeContext, newState);
+      }
+
+      const rawInstructionList = Array.isArray(rawInstructions)
+        ? rawInstructions
+        : [rawInstructions];
+      const firstRawInstruction = rawInstructionList[0];
+      const runtimeContextPayload = runtimeContext.payload as
+        | {
+            hasToolCalls?: boolean;
+            stop?: boolean;
+            toolCalls?: unknown[];
+          }
+        | undefined;
+      const runtimeContextToolCalls = Array.isArray(runtimeContextPayload?.toolCalls)
+        ? runtimeContextPayload.toolCalls
+        : [];
+
+      logToolCallPc('rt.progress', () => ({
+        runnerResult: {
+          isArray: Array.isArray(rawInstructions),
+          itemsKinds: rawInstructionList.map((instruction) => instruction.type),
+          itemsPayloadIsOldToolsArray: rawInstructionList.map(
+            (instruction) =>
+              instruction.type === 'call_tools_batch' && Array.isArray(instruction.payload),
+          ),
+          singleKind: firstRawInstruction?.type ?? null,
+          singlePayloadIsOldToolsArray:
+            firstRawInstruction?.type === 'call_tools_batch' &&
+            Array.isArray(firstRawInstruction.payload),
+        },
+        stateStatus: state.status,
+      }));
+
+      if (!Array.isArray(rawInstructions)) {
+        logToolCallPc('rt.phase', () => ({
+          contextHasQueuedMessages: Boolean(runtimeContext.stepContext?.hasQueuedMessages),
+          contextLlmResultHasToolCalls: Boolean(
+            runtimeContext.phase === 'llm_result' &&
+            (runtimeContextPayload?.hasToolCalls ?? runtimeContextToolCalls.length > 0),
+          ),
+          contextLlmResultToolCallsCount:
+            runtimeContext.phase === 'llm_result' ? runtimeContextToolCalls.length : 0,
+          contextPendingToolsCallingCount: state.pendingToolsCalling?.length ?? 0,
+          contextPhase: runtimeContext.phase,
+          contextToolResultStopRequested: Boolean(
+            (runtimeContext.phase === 'tool_result' ||
+              runtimeContext.phase === 'tools_batch_result') &&
+            runtimeContextPayload?.stop,
+          ),
+          nextKind: firstRawInstruction?.type ?? null,
+        }));
       }
 
       // Normalize to array
@@ -183,6 +248,44 @@ export class AgentRuntime {
           }
           // Pass runtimeContext to executor so it can access stepContext
           result = await executor(instruction, currentState, runtimeContext);
+        }
+
+        if (instruction.type === 'call_tool') {
+          const callToolInstruction = instruction as AgentInstructionCallTool;
+          const toolResultPayload =
+            result.nextContext?.phase === 'tool_result'
+              ? (result.nextContext.payload as
+                  | {
+                      data?: { error?: unknown };
+                      isSuccess?: boolean;
+                      parentMessageId?: string;
+                    }
+                  | undefined)
+              : undefined;
+
+          if (toolResultPayload) {
+            logToolCallPc('rt.call_tool_success', () => ({
+              executor: callToolInstruction.payload.toolCalling.executor ?? null,
+              inputContextLlmResultHasToolCalls: Boolean(
+                runtimeContext.phase === 'llm_result' &&
+                (runtimeContextPayload?.hasToolCalls ?? runtimeContextToolCalls.length > 0),
+              ),
+              inputContextLlmResultToolCallsCount:
+                runtimeContext.phase === 'llm_result' ? runtimeContextToolCalls.length : 0,
+              inputContextPhase: runtimeContext.phase,
+              inputContextPresent: true,
+              resultError: toolResultPayload.data?.error ?? null,
+              resultSuccess: toolResultPayload.isSuccess ?? null,
+              stateStatus: result.newState.status,
+              toolMessageId: toolResultPayload.parentMessageId ?? null,
+              toolSource:
+                currentState.operationToolSet?.sourceMap?.[
+                  callToolInstruction.payload.toolCalling.identifier
+                ] ??
+                currentState.toolSourceMap?.[callToolInstruction.payload.toolCalling.identifier] ??
+                null,
+            }));
+          }
         }
 
         // Accumulate events

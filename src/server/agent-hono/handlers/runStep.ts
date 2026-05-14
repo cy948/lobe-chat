@@ -8,6 +8,18 @@ import { AgentRuntimeService } from '@/server/services/agentRuntime';
 
 const log = debug('lobe-server:agent-runtime:tool-call-stability');
 const MISSING_OPERATION_ID = '_missing';
+const logToolCallPc = (
+  operationId: string,
+  stepIndex: number,
+  pc: string,
+  getObs: () => Record<string, unknown>,
+) => {
+  try {
+    log('%s', formatFormalObservationLog(operationId, stepIndex, pc, getObs()));
+  } catch (error) {
+    console.warn('[tool-call-stability] %s obs error: %O', pc, error);
+  }
+};
 
 /**
  * Execute a single agent step. Invoked by QStash with the body
@@ -38,20 +50,9 @@ export async function runStep(c: Context): Promise<Response> {
       rejectAndContinue,
       toolMessageId,
     } = body;
-    const logToolCallPc = (
-      currentOperationId: string,
-      pc: string,
-      getObs: () => Record<string, unknown>,
-    ) => {
-      try {
-        log('%s', formatFormalObservationLog(currentOperationId, stepIndex, pc, getObs()));
-      } catch (error) {
-        console.warn('[tool-call-stability] %s obs error: %O', pc, error);
-      }
-    };
 
     if (!operationId) {
-      logToolCallPc(MISSING_OPERATION_ID, 'rs.require_operation_id', () => ({
+      logToolCallPc(MISSING_OPERATION_ID, stepIndex, 'rs.require_operation_id', () => ({
         operationIdPresent: false,
       }));
 
@@ -62,7 +63,7 @@ export async function runStep(c: Context): Promise<Response> {
     const coordinator = new AgentRuntimeCoordinator();
     const metadata = await coordinator.getOperationMetadata(operationId);
     if (!metadata?.userId) {
-      logToolCallPc(operationId, 'rs.require_user_id', () => ({
+      logToolCallPc(operationId, stepIndex, 'rs.require_user_id', () => ({
         coordinatorReady: false,
         userIdPresent: false,
       }));
@@ -70,7 +71,7 @@ export async function runStep(c: Context): Promise<Response> {
       return c.json({ error: 'Invalid operation or unauthorized' }, 401);
     }
 
-    logToolCallPc(operationId, 'rs.reach_call_tool', () => {
+    logToolCallPc(operationId, stepIndex, 'rs.reach_call_tool', () => {
       const contextPayload = context?.payload as
         | { hasToolCalls?: boolean; toolCalls?: unknown[] }
         | undefined;
@@ -109,7 +110,7 @@ export async function runStep(c: Context): Promise<Response> {
 
     // Step is currently being executed by another instance — tell QStash to retry later
     if (result.locked) {
-      logToolCallPc(operationId, 'rs.return_locked', () => ({
+      logToolCallPc(operationId, stepIndex, 'rs.return_locked', () => ({
         retryAfterSeconds: 37,
         statusCode: 429,
       }));

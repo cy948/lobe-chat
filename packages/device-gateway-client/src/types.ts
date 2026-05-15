@@ -94,7 +94,7 @@ export interface AgentRunRequestMessage {
   agentType: 'claude-code' | 'codex';
   cwd?: string;
   jwt: string;
-  operationId?: string;
+  operationId: string;
   prompt: string;
   resumeSessionId?: string;
   topicId: string;
@@ -103,7 +103,7 @@ export interface AgentRunRequestMessage {
 
 /** Client → Server: acknowledgement for an agent_run_request. */
 export interface AgentRunAckMessage {
-  operationId?: string;
+  operationId: string;
   reason?: string;
   status: 'accepted' | 'rejected';
   type: 'agent_run_ack';

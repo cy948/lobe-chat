@@ -79,7 +79,7 @@ export class GatewayHttpClient {
     cwd?: string;
     deviceId?: string;
     jwt: string;
-    operationId?: string;
+    operationId: string;
     prompt: string;
     resumeSessionId?: string;
     timeout?: number;

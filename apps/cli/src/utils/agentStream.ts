@@ -185,6 +185,7 @@ export async function streamAgentEventsViaWebSocket(
     const ws = new WebSocket(wsUrl);
     const jsonEvents: AgentStreamEvent[] = [];
     const ctx = createRenderContext();
+    let lastEventId = '';
     let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
     let hasCompleted = false;
     let isSettled = false;
@@ -263,6 +264,7 @@ export async function streamAgentEventsViaWebSocket(
 
       if (msg.type === 'agent_event') {
         const agentEvent: AgentStreamEvent = msg.event;
+        if (msg.id) lastEventId = msg.id;
 
         if (streamOpts.json) {
           jsonEvents.push(agentEvent);

@@ -10,7 +10,6 @@ vi.mock('./logger', () => ({
     info: vi.fn(),
     toolCall: vi.fn(),
     toolResult: vi.fn(),
-    warn: vi.fn(),
   },
 }));
 

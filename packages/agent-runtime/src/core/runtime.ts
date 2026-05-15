@@ -20,7 +20,7 @@ import type {
 } from '../types';
 import { formatFormalObservationLog } from '../utils';
 
-const log = debug('lobe-server:agent-runtime:tool-call-stability');
+const debugLog = debug('lobe-server:agent-runtime:tool-call-stability');
 const logToolCallPc = (
   operationId: string,
   stepIndex: number,
@@ -28,9 +28,12 @@ const logToolCallPc = (
   getObs: () => Record<string, unknown>,
 ) => {
   try {
-    log('%s', formatFormalObservationLog(operationId, stepIndex, pc, getObs()));
+    debugLog('%s', formatFormalObservationLog(operationId, stepIndex, pc, getObs()));
   } catch (error) {
-    console.warn('[tool-call-stability] %s obs error: %O', pc, error);
+    debugLog(
+      '%s',
+      formatFormalObservationLog(operationId, stepIndex, pc, { error: String(error) }),
+    );
   }
 };
 

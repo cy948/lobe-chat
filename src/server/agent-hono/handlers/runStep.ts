@@ -18,7 +18,10 @@ const logToolCallPc = (
   try {
     debugLog('%s', formatFormalObservationLog(operationId, stepIndex, pc, getObs()));
   } catch (error) {
-    console.warn('[tool-call-stability] %s obs error: %O', pc, error);
+    debugLog(
+      '%s',
+      formatFormalObservationLog(operationId, stepIndex, pc, { error: String(error) }),
+    );
   }
 };
 

@@ -10,6 +10,7 @@ vi.mock('./logger', () => ({
     info: vi.fn(),
     toolCall: vi.fn(),
     toolResult: vi.fn(),
+    warn: vi.fn(),
   },
 }));
 
@@ -246,6 +247,15 @@ class MockWebSocket {
   simulateMessage(msg: Record<string, unknown>) {
     this.onmessage?.({ data: JSON.stringify(msg) });
   }
+
+  simulateError(error: Record<string, unknown>) {
+    this.onerror?.(error);
+  }
+
+  simulateClose(event: { code?: number; reason?: string; type?: string } = {}) {
+    this.readyState = MockWebSocket.CLOSED;
+    this.onclose?.({ code: 1006, reason: '', type: 'close', ...event });
+  }
 }
 
 describe('streamAgentEventsViaWebSocket', () => {
@@ -425,6 +435,36 @@ describe('streamAgentEventsViaWebSocket', () => {
         token: 'bad-token',
       }),
     ).rejects.toThrow('Gateway auth failed');
+  });
+
+  it('should reject with a readable error when websocket onerror fires', async () => {
+    const promise = streamAgentEventsViaWebSocket({
+      gatewayUrl: 'https://gw.test.com',
+      operationId: 'op-1',
+      token: 'test-token',
+    });
+
+    await flush();
+    capturedWs!.simulateError({ message: 'socket exploded', type: 'error' });
+
+    await expect(promise).rejects.toThrow(
+      'Agent gateway WebSocket failed: socket exploded (operationId=op-1, gatewayUrl=https://gw.test.com, readyState=3)',
+    );
+  });
+
+  it('should reject when websocket closes before completion', async () => {
+    const promise = streamAgentEventsViaWebSocket({
+      gatewayUrl: 'https://gw.test.com',
+      operationId: 'op-1',
+      token: 'test-token',
+    });
+
+    await flush();
+    capturedWs!.simulateClose({ code: 1011, reason: 'gateway shutdown' });
+
+    await expect(promise).rejects.toThrow(
+      'Agent gateway WebSocket closed before completion: type=close, code=1011, reason=gateway shutdown (operationId=op-1, gatewayUrl=https://gw.test.com, readyState=3)',
+    );
   });
 
   it('should resolve on session_complete', async () => {

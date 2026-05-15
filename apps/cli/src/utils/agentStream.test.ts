@@ -246,15 +246,6 @@ class MockWebSocket {
   simulateMessage(msg: Record<string, unknown>) {
     this.onmessage?.({ data: JSON.stringify(msg) });
   }
-
-  simulateError(error: Record<string, unknown>) {
-    this.onerror?.(error);
-  }
-
-  simulateClose(event: { code?: number; reason?: string; type?: string } = {}) {
-    this.readyState = MockWebSocket.CLOSED;
-    this.onclose?.({ code: 1006, reason: '', type: 'close', ...event });
-  }
 }
 
 describe('streamAgentEventsViaWebSocket', () => {
@@ -436,7 +427,7 @@ describe('streamAgentEventsViaWebSocket', () => {
     ).rejects.toThrow('Gateway auth failed');
   });
 
-  it('should reject with a readable error when websocket onerror fires', async () => {
+  it('should reject when websocket onerror fires', async () => {
     const promise = streamAgentEventsViaWebSocket({
       gatewayUrl: 'https://gw.test.com',
       operationId: 'op-1',
@@ -444,11 +435,9 @@ describe('streamAgentEventsViaWebSocket', () => {
     });
 
     await flush();
-    capturedWs!.simulateError({ message: 'socket exploded', type: 'error' });
+    capturedWs!.onerror?.({ message: 'socket exploded', type: 'error' });
 
-    await expect(promise).rejects.toThrow(
-      'Agent gateway WebSocket failed: socket exploded (operationId=op-1, gatewayUrl=https://gw.test.com, readyState=3)',
-    );
+    await expect(promise).rejects.toThrow('Agent gateway WebSocket failed: [object Object]');
   });
 
   it('should reject when websocket closes before completion', async () => {
@@ -459,10 +448,11 @@ describe('streamAgentEventsViaWebSocket', () => {
     });
 
     await flush();
-    capturedWs!.simulateClose({ code: 1011, reason: 'gateway shutdown' });
+    capturedWs!.readyState = MockWebSocket.CLOSED;
+    capturedWs!.onclose?.({ code: 1011, reason: 'gateway shutdown', type: 'close' });
 
     await expect(promise).rejects.toThrow(
-      'Agent gateway WebSocket closed before completion: type=close, code=1011, reason=gateway shutdown (operationId=op-1, gatewayUrl=https://gw.test.com, readyState=3)',
+      'Agent gateway WebSocket closed before completion: [object Object]',
     );
   });
 

@@ -187,7 +187,6 @@ export async function streamAgentEventsViaWebSocket(
     const ctx = createRenderContext();
     let lastEventId = '';
     let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
-    let hasCompleted = false;
     let isSettled = false;
     let jsonPrinted = false;
 
@@ -196,40 +195,6 @@ export async function streamAgentEventsViaWebSocket(
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
         ws.close();
       }
-    };
-
-    const printJsonEvents = () => {
-      if (streamOpts.json && jsonEvents.length > 0 && !jsonPrinted) {
-        jsonPrinted = true;
-        console.log(JSON.stringify(jsonEvents, null, 2));
-      }
-    };
-
-    const getErrorDetails = (error: unknown) => {
-      if (error instanceof Error && error.message) return error.message;
-      if (!error || typeof error !== 'object') return 'unknown websocket error';
-
-      const record = error as Record<PropertyKey, unknown>;
-      if (typeof record.message === 'string' && record.message) return record.message;
-
-      if (
-        record.error &&
-        typeof record.error === 'object' &&
-        typeof (record.error as { message?: unknown }).message === 'string'
-      ) {
-        return (record.error as { message: string }).message;
-      }
-
-      const parts: string[] = [];
-      if (typeof record.type === 'string' && record.type) parts.push(`type=${record.type}`);
-      if (typeof record.code === 'number' || typeof record.code === 'string') {
-        parts.push(`code=${String(record.code)}`);
-      }
-      if (typeof record.reason === 'string' && record.reason) {
-        parts.push(`reason=${record.reason}`);
-      }
-
-      return parts.length > 0 ? parts.join(', ') : 'unknown websocket error';
     };
 
     ws.onopen = () => {
@@ -273,22 +238,23 @@ export async function streamAgentEventsViaWebSocket(
         }
 
         if (agentEvent.type === 'agent_runtime_end') {
-          hasCompleted = true;
-          if (streamOpts.json) {
-            printJsonEvents();
-          } else {
+          if (streamOpts.json && !jsonPrinted) {
+            jsonPrinted = true;
+            console.log(JSON.stringify(jsonEvents, null, 2));
+          } else if (!streamOpts.json) {
             renderEnd(agentEvent);
           }
-          cleanup();
           if (isSettled) return;
           isSettled = true;
+          cleanup();
           resolve();
           return;
         }
 
         if (agentEvent.type === 'error') {
-          if (streamOpts.json) {
-            printJsonEvents();
+          if (streamOpts.json && !jsonPrinted) {
+            jsonPrinted = true;
+            console.log(JSON.stringify(jsonEvents, null, 2));
           }
           log.error(
             `Agent error: ${agentEvent.data?.message || agentEvent.data?.error || 'Unknown error'}`,
@@ -299,11 +265,13 @@ export async function streamAgentEventsViaWebSocket(
       }
 
       if (msg.type === 'session_complete') {
-        hasCompleted = true;
-        printJsonEvents();
-        cleanup();
+        if (streamOpts.json && jsonEvents.length > 0 && !jsonPrinted) {
+          jsonPrinted = true;
+          console.log(JSON.stringify(jsonEvents, null, 2));
+        }
         if (isSettled) return;
         isSettled = true;
+        cleanup();
         resolve();
       }
     };
@@ -311,32 +279,24 @@ export async function streamAgentEventsViaWebSocket(
     ws.onerror = (err) => {
       cleanup();
       if (isSettled) return;
-      printJsonEvents();
+      if (streamOpts.json && jsonEvents.length > 0 && !jsonPrinted) {
+        jsonPrinted = true;
+        console.log(JSON.stringify(jsonEvents, null, 2));
+      }
       isSettled = true;
-      reject(
-        new Error(
-          `Agent gateway WebSocket failed: ${getErrorDetails(err)} (operationId=${operationId}, gatewayUrl=${gatewayUrl}, readyState=${ws.readyState})`,
-        ),
-      );
+      reject(new Error(`Agent gateway WebSocket failed: ${String(err)}`));
     };
 
     ws.onclose = (event) => {
       if (heartbeatTimer) clearInterval(heartbeatTimer);
       if (isSettled) return;
 
-      if (hasCompleted) {
-        isSettled = true;
-        resolve();
-        return;
+      if (streamOpts.json && jsonEvents.length > 0 && !jsonPrinted) {
+        jsonPrinted = true;
+        console.log(JSON.stringify(jsonEvents, null, 2));
       }
-
-      printJsonEvents();
       isSettled = true;
-      reject(
-        new Error(
-          `Agent gateway WebSocket closed before completion: ${getErrorDetails(event)} (operationId=${operationId}, gatewayUrl=${gatewayUrl}, readyState=${ws.readyState})`,
-        ),
-      );
+      reject(new Error(`Agent gateway WebSocket closed before completion: ${String(event)}`));
     };
   });
 }

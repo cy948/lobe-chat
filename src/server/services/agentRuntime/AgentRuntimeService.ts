@@ -64,6 +64,8 @@ const logToolCallPc = (
   pc: string,
   getObs: () => Record<string, unknown>,
 ) => {
+  if (!debugLog.enabled) return;
+
   try {
     debugLog('%s', formatFormalObservationLog(operationId, stepIndex, pc, getObs()));
   } catch (error) {

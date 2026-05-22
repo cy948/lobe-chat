@@ -19,7 +19,7 @@ export const localSystemRuntime: ServerRuntimeRegistration = {
         return deviceProxy.executeToolCall(
           {
             deviceId: context.activeDeviceId!,
-            operationId: context.operationId!,
+            operationId: context.operationId,
             userId: context.userId!,
           },
           {

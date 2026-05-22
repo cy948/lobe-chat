@@ -90,7 +90,7 @@ export class DeviceProxy {
   }
 
   async executeToolCall(
-    params: { deviceId: string; operationId: string; userId: string },
+    params: { deviceId: string; operationId?: string; userId: string },
     toolCall: { apiName: string; arguments: string; identifier: string },
     timeout = 30_000,
   ): Promise<{ content: string; error?: string; success: boolean }> {
@@ -105,7 +105,7 @@ export class DeviceProxy {
 
     log(
       'executeToolCall: operationId=%s, userId=%s, deviceId=%s, tool=%s/%s',
-      params.operationId,
+      params.operationId ?? 'N/A',
       params.userId,
       params.deviceId,
       toolCall.identifier,

@@ -1,5 +1,6 @@
 'use client';
 
+import type { AgentEvalDatasetListItem } from '@lobechat/types';
 import { Flexbox } from '@lobehub/ui';
 import { Badge, Card, Skeleton } from 'antd';
 import { createStaticStyles, cssVar } from 'antd-style';
@@ -20,6 +21,7 @@ import { memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 
+import BenchmarkExperimentList from '@/features/EvalExperiments/BenchmarkExperimentList';
 import { runSelectors, useEvalStore } from '@/store/eval';
 
 import BenchmarkHeader from './features/BenchmarkHeader';
@@ -75,10 +77,13 @@ const BenchmarkDetail = memo(() => {
   const isLoadingDatasets = useEvalStore((s) => s.isLoadingDatasets);
   const refreshDatasets = useEvalStore((s) => s.refreshDatasets);
   const useFetchRuns = useEvalStore((s) => s.useFetchRuns);
+  const experimentList = useEvalStore((s) => s.experimentList);
+  const useFetchExperiments = useEvalStore((s) => s.useFetchExperiments);
   const runList = useEvalStore(runSelectors.runList);
 
   useFetchBenchmarkDetail(benchmarkId);
   useFetchDatasets(benchmarkId);
+  useFetchExperiments();
 
   const handleRefreshDatasets = useCallback(async () => {
     if (benchmarkId) {
@@ -98,6 +103,9 @@ const BenchmarkDetail = memo(() => {
   const completedRuns = runList.filter((r) => r.status === 'completed');
 
   const totalCases = datasets.reduce((sum, ds) => sum + (ds.testCaseCount || 0), 0);
+  const relatedExperiments = experimentList.filter((experiment) =>
+    experiment.benchmarks.some((benchmark) => benchmark.id === benchmarkId),
+  );
 
   if (!benchmark)
     return (
@@ -184,11 +192,15 @@ const BenchmarkDetail = memo(() => {
       <h3 className={styles.sectionTitle}>{t('benchmark.detail.tabs.datasets')}</h3>
       <DatasetsTab
         benchmarkId={benchmarkId!}
-        datasets={datasets}
+        datasets={datasets.filter(
+          (dataset: AgentEvalDatasetListItem) => !dataset.sourceExperimentId,
+        )}
         loading={isLoadingDatasets}
         onImport={() => {}}
         onRefresh={handleRefreshDatasets}
       />
+
+      {!!relatedExperiments.length && <BenchmarkExperimentList experiments={relatedExperiments} />}
 
       {/* Evaluations Section */}
       <h3 className={styles.sectionTitle}>{t('benchmark.detail.tabs.runs')}</h3>

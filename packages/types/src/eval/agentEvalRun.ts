@@ -30,9 +30,11 @@ export interface AgentEvalRun {
   config?: EvalRunConfig | null;
   createdAt: Date;
   datasetId: string;
+  experimentId?: string | null;
   id: string;
   metrics?: EvalRunMetrics | null;
   name?: string | null;
+  parentRunId?: string | null;
   status: AgentEvalRunStatus;
   targetAgentId?: string | null;
   updatedAt: Date;
@@ -51,10 +53,13 @@ export interface AgentEvalRunListItem {
   datasetId: string;
   datasetName?: string;
   errorCount?: number;
+  experimentId?: string | null;
+  experimentName?: string;
   failCount?: number;
   id: string;
   metrics?: EvalRunMetrics | null;
   name?: string | null;
+  parentRunId?: string | null;
   passCount?: number;
   passRate?: number;
   status: AgentEvalRunStatus;
@@ -69,6 +74,8 @@ export interface AgentEvalRunListItem {
 
 export interface AgentEvalRunDetail extends AgentEvalRun {
   dataset?: AgentEvalDataset | null;
+  experiment?: { id: string; name: string } | null;
+  parentRun?: { id: string; name?: string | null } | null;
   targetAgent?: AgentEvalRunTargetAgent;
   topics?: AgentEvalRunTopicResult[];
 }

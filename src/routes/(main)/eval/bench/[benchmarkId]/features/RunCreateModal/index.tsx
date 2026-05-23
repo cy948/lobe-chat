@@ -57,12 +57,24 @@ interface RunCreateModalProps {
   benchmarkId: string;
   datasetId?: string;
   datasetName?: string;
+  experimentId?: string;
   onClose: () => void;
   open: boolean;
+  parentRunId?: string;
+  parentRunName?: string;
 }
 
 const RunCreateModal = memo<RunCreateModalProps>(
-  ({ open, onClose, benchmarkId, datasetId, datasetName }) => {
+  ({
+    open,
+    onClose,
+    benchmarkId,
+    datasetId,
+    datasetName,
+    experimentId,
+    parentRunId,
+    parentRunName,
+  }) => {
     const { t } = useTranslation('eval');
     const { t: tChat } = useTranslation('chat');
     const navigate = useNavigate();
@@ -74,6 +86,7 @@ const RunCreateModal = memo<RunCreateModalProps>(
     const kValue = Form.useWatch('k', form) ?? 1;
 
     const isDatasetMode = !!datasetId && !!datasetName;
+    const isForkMode = !!parentRunId;
 
     const [agents, setAgents] = useState<AgentOption[]>([]);
     const [loadingAgents, setLoadingAgents] = useState(false);
@@ -142,7 +155,9 @@ const RunCreateModal = memo<RunCreateModalProps>(
           timeout: timeoutMinutes * 60_000,
         },
         datasetId: isDatasetMode ? datasetId : values.datasetId,
+        experimentId,
         name: values.name,
+        parentRunId,
         targetAgentId: values.targetAgentId,
       });
       if (run?.id) {
@@ -187,9 +202,11 @@ const RunCreateModal = memo<RunCreateModalProps>(
           </Space>
         }
         title={
-          isDatasetMode
-            ? t('run.create.titleWithDataset', { dataset: datasetName })
-            : t('run.create.title')
+          parentRunId && parentRunName
+            ? t('run.create.forkTitle', { run: parentRunName })
+            : isDatasetMode
+              ? t('run.create.titleWithDataset', { dataset: datasetName })
+              : t('run.create.title')
         }
         onCancel={handleClose}
       >
@@ -218,7 +235,9 @@ const RunCreateModal = memo<RunCreateModalProps>(
           <Form.Item
             label={t('run.create.agent')}
             name="targetAgentId"
-            rules={[{ message: t('run.create.agent.required'), required: true }]}
+            rules={
+              isForkMode ? undefined : [{ message: t('run.create.agent.required'), required: true }]
+            }
           >
             <Select
               allowClear

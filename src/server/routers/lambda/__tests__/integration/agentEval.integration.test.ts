@@ -3,6 +3,8 @@ import { type LobeChatDatabase } from '@lobechat/database';
 import {
   agentEvalBenchmarks,
   agentEvalDatasets,
+  agentEvalExperimentBenchmarks,
+  agentEvalExperiments,
   agentEvalRuns,
   agentEvalRunTopics,
   agentEvalTestCases,
@@ -279,6 +281,146 @@ describe('Agent Eval Router Integration Tests', () => {
         });
         expect(stillExists).toBeDefined();
       });
+    });
+  });
+
+  describe('Experiment Operations', () => {
+    let benchmarkId: string;
+    let benchmarkId2: string;
+
+    beforeEach(async () => {
+      const [benchmark, benchmark2] = await serverDB
+        .insert(agentEvalBenchmarks)
+        .values([
+          {
+            identifier: 'experiment-benchmark-1',
+            name: 'Experiment Benchmark 1',
+            rubrics: [],
+            isSystem: false,
+          },
+          {
+            identifier: 'experiment-benchmark-2',
+            name: 'Experiment Benchmark 2',
+            rubrics: [],
+            isSystem: false,
+          },
+        ])
+        .returning();
+
+      benchmarkId = benchmark.id;
+      benchmarkId2 = benchmark2.id;
+    });
+
+    it('should create and list experiments with benchmark metadata', async () => {
+      const caller = agentEvalRouter.createCaller(createTestContext(userId));
+
+      const created = await caller.createExperiment({
+        benchmarkIds: [benchmarkId, benchmarkId2],
+        description: 'Experiment description',
+        name: 'Experiment A',
+      });
+
+      expect(created.success).toBe(true);
+      expect(created.data.id).toBeDefined();
+
+      const list = await caller.listExperiments();
+
+      expect(list.success).toBe(true);
+      expect(list.data).toHaveLength(1);
+      expect(list.data[0].name).toBe('Experiment A');
+      expect(list.data[0].benchmarkCount).toBe(2);
+      expect(list.data[0].benchmarks.map((benchmark) => benchmark.id)).toEqual(
+        expect.arrayContaining([benchmarkId, benchmarkId2]),
+      );
+    });
+
+    it('should return experiment detail with scoped datasets and scoped runs', async () => {
+      const caller = agentEvalRouter.createCaller(createTestContext(userId));
+
+      const experiment = await caller.createExperiment({
+        benchmarkIds: [benchmarkId],
+        name: 'Detail Experiment',
+      });
+
+      const scopedDataset = await caller.createDataset({
+        benchmarkId,
+        identifier: 'scoped-dataset',
+        name: 'Scoped Dataset',
+        sourceExperimentId: experiment.data.id,
+      });
+
+      const unscopedDataset = await caller.createDataset({
+        benchmarkId,
+        identifier: 'shared-dataset',
+        name: 'Shared Dataset',
+      });
+
+      const scopedRun = await caller.createRun({
+        datasetId: scopedDataset.id,
+        experimentId: experiment.data.id,
+        name: 'Scoped Run',
+      });
+
+      await caller.createRun({
+        datasetId: unscopedDataset.id,
+        name: 'Shared Run',
+      });
+
+      const detail = await caller.getExperiment({ id: experiment.data.id });
+
+      expect(detail.success).toBe(true);
+      expect(detail.data.id).toBe(experiment.data.id);
+      expect(detail.data.benchmarks[0].id).toBe(benchmarkId);
+      expect(detail.data.datasets).toHaveLength(1);
+      expect(detail.data.datasets[0].id).toBe(scopedDataset.id);
+      expect(detail.data.runs).toHaveLength(1);
+      expect(detail.data.runs[0].id).toBe(scopedRun.id);
+      expect(detail.data.runs[0].experimentId).toBe(experiment.data.id);
+    });
+
+    it('should detach runs and datasets before deleting an experiment', async () => {
+      const caller = agentEvalRouter.createCaller(createTestContext(userId));
+
+      const experiment = await caller.createExperiment({
+        benchmarkIds: [benchmarkId],
+        name: 'Delete Experiment',
+      });
+
+      const dataset = await caller.createDataset({
+        benchmarkId,
+        identifier: 'delete-scoped-dataset',
+        name: 'Delete Scoped Dataset',
+        sourceExperimentId: experiment.data.id,
+      });
+
+      const run = await caller.createRun({
+        datasetId: dataset.id,
+        experimentId: experiment.data.id,
+        name: 'Delete Scoped Run',
+      });
+
+      const deleted = await caller.deleteExperiment({ id: experiment.data.id });
+
+      expect(deleted.success).toBe(true);
+
+      const experimentInDb = await serverDB.query.agentEvalExperiments.findFirst({
+        where: eq(agentEvalExperiments.id, experiment.data.id),
+      });
+      const datasetInDb = await serverDB.query.agentEvalDatasets.findFirst({
+        where: eq(agentEvalDatasets.id, dataset.id),
+      });
+      const runInDb = await serverDB.query.agentEvalRuns.findFirst({
+        where: eq(agentEvalRuns.id, run.id),
+      });
+      const relations = await serverDB
+        .select()
+        .from(agentEvalExperimentBenchmarks)
+        .where(eq(agentEvalExperimentBenchmarks.experimentId, experiment.data.id));
+
+      expect(experimentInDb).toBeUndefined();
+      expect(datasetInDb?.sourceExperimentId).toBeNull();
+      expect(runInDb?.experimentId).toBeNull();
+      expect(relations).toHaveLength(0);
     });
   });
 
@@ -814,7 +956,9 @@ describe('Agent Eval Router Integration Tests', () => {
   });
 
   describe('Run Operations', () => {
+    let benchmarkId: string;
     let datasetId: string;
+    let experimentId: string;
 
     beforeEach(async () => {
       const [benchmark] = await serverDB
@@ -827,6 +971,7 @@ describe('Agent Eval Router Integration Tests', () => {
           isSystem: false,
         })
         .returning();
+      benchmarkId = benchmark.id;
 
       const [dataset] = await serverDB
         .insert(agentEvalDatasets)
@@ -838,6 +983,21 @@ describe('Agent Eval Router Integration Tests', () => {
         })
         .returning();
       datasetId = dataset.id;
+
+      const [experiment] = await serverDB
+        .insert(agentEvalExperiments)
+        .values({
+          name: 'Run Experiment',
+          userId,
+        })
+        .returning();
+      experimentId = experiment.id;
+
+      await serverDB.insert(agentEvalExperimentBenchmarks).values({
+        benchmarkId,
+        experimentId,
+        userId,
+      });
     });
 
     describe('createRun', () => {
@@ -877,6 +1037,50 @@ describe('Agent Eval Router Integration Tests', () => {
 
         expect(result.name).toBe('Test Run');
         expect(result.config).toEqual({ maxConcurrency: 5, timeout: 300000 });
+      });
+
+      it('should create a run scoped to an experiment', async () => {
+        const caller = agentEvalRouter.createCaller(createTestContext(userId));
+
+        const result = await caller.createRun({
+          datasetId,
+          experimentId,
+          name: 'Experiment Run',
+        });
+
+        expect(result.experimentId).toBe(experimentId);
+      });
+
+      it('should fork a run by inheriting config and target agent', async () => {
+        const caller = agentEvalRouter.createCaller(createTestContext(userId));
+
+        const parent = await caller.createRun({
+          config: {
+            k: 3,
+            maxConcurrency: 2,
+            maxSteps: 40,
+            timeout: 120000,
+          },
+          datasetId,
+          experimentId,
+          name: 'Parent Run',
+        });
+
+        const forked = await caller.createRun({
+          datasetId,
+          experimentId,
+          name: 'Forked Run',
+          parentRunId: parent.id,
+        });
+
+        expect(forked.parentRunId).toBe(parent.id);
+        expect(forked.targetAgentId).toBeNull();
+        expect(forked.config).toMatchObject({
+          k: 3,
+          maxConcurrency: 2,
+          maxSteps: 40,
+          timeout: 120000,
+        });
       });
 
       it('should default status to idle', async () => {
@@ -951,6 +1155,21 @@ describe('Agent Eval Router Integration Tests', () => {
         expect(result.data[0].status).toBe('pending');
       });
 
+      it('should filter by experimentId', async () => {
+        const caller = agentEvalRouter.createCaller(createTestContext(userId));
+
+        await caller.createRun({
+          datasetId,
+          experimentId,
+          name: 'Experiment Scoped Run',
+        });
+
+        const result = await caller.listRuns({ experimentId });
+
+        expect(result.data).toHaveLength(1);
+        expect(result.data[0].experimentId).toBe(experimentId);
+      });
+
       it('should support limit parameter', async () => {
         const caller = agentEvalRouter.createCaller(createTestContext(userId));
 
@@ -976,6 +1195,7 @@ describe('Agent Eval Router Integration Tests', () => {
         // Create run
         const run = await caller.createRun({
           datasetId,
+          experimentId,
           name: 'Details Test Run',
         });
 
@@ -1017,6 +1237,7 @@ describe('Agent Eval Router Integration Tests', () => {
         expect(result.name).toBe('Details Test Run');
         expect(result.dataset).toBeDefined();
         expect(result.dataset?.id).toBe(datasetId);
+        expect(result.experiment?.id).toBe(experimentId);
         expect(result.topics).toHaveLength(1);
         expect((result.topics[0].topic as any).id).toBe(topic.id);
         expect((result.topics[0].testCase as any).id).toBe(testCase.id);

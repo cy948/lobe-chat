@@ -37,7 +37,9 @@ export class RunActionImpl {
   createRun = async (params: {
     config?: EvalRunInputConfig;
     datasetId: string;
+    experimentId?: string;
     name?: string;
+    parentRunId?: string;
     targetAgentId?: string;
   }): Promise<any> => {
     this.#set({ isCreatingRun: true }, false, 'createRun/start');
@@ -103,9 +105,9 @@ export class RunActionImpl {
     await mutate([FETCH_RUN_DETAIL_KEY, id]);
   };
 
-  refreshRuns = async (benchmarkId?: string): Promise<void> => {
-    if (benchmarkId) {
-      await mutate([FETCH_RUNS_KEY, benchmarkId]);
+  refreshRuns = async (scopeId?: string): Promise<void> => {
+    if (scopeId) {
+      await mutate([FETCH_RUNS_KEY, scopeId]);
     } else {
       await mutate((key) => Array.isArray(key) && key[0] === FETCH_RUNS_KEY);
     }
@@ -208,10 +210,14 @@ export class RunActionImpl {
       },
     );
 
-  useFetchRuns = (benchmarkId?: string): SWRResponse =>
+  useFetchRuns = (benchmarkId?: string, experimentId?: string): SWRResponse =>
     useClientDataSWR(
-      benchmarkId ? [FETCH_RUNS_KEY, benchmarkId] : null,
-      () => agentEvalService.listRuns({ benchmarkId: benchmarkId! }),
+      benchmarkId || experimentId ? [FETCH_RUNS_KEY, benchmarkId || experimentId] : null,
+      () =>
+        agentEvalService.listRuns({
+          benchmarkId: benchmarkId || undefined,
+          experimentId: experimentId || undefined,
+        }),
       {
         onSuccess: (data: any) => {
           this.#set({ isLoadingRuns: false, runList: data.data }, false, 'useFetchRuns/success');

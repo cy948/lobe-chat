@@ -6,6 +6,7 @@ import { z } from 'zod';
 import {
   AgentEvalBenchmarkModel,
   AgentEvalDatasetModel,
+  AgentEvalExperimentModel,
   AgentEvalRunModel,
   AgentEvalRunTopicModel,
   AgentEvalTestCaseModel,
@@ -59,6 +60,7 @@ const agentEvalProcedure = authedProcedure.use(serverDatabase).use(async (opts) 
     ctx: {
       benchmarkModel: new AgentEvalBenchmarkModel(ctx.serverDB, ctx.userId),
       datasetModel: new AgentEvalDatasetModel(ctx.serverDB, ctx.userId),
+      experimentModel: new AgentEvalExperimentModel(ctx.serverDB, ctx.userId),
       runModel: new AgentEvalRunModel(ctx.serverDB, ctx.userId),
       runService: new AgentEvalRunService(ctx.serverDB, ctx.userId),
       runTopicModel: new AgentEvalRunTopicModel(ctx.serverDB, ctx.userId),
@@ -69,6 +71,29 @@ const agentEvalProcedure = authedProcedure.use(serverDatabase).use(async (opts) 
 });
 
 export const agentEvalRouter = router({
+  createExperiment: agentEvalProcedure
+    .input(
+      z.object({
+        benchmarkIds: z.array(z.string()).min(1),
+        description: z.string().optional(),
+        metadata: z.record(z.unknown()).optional(),
+        name: z.string(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const result = await ctx.experimentModel.create(input);
+        return { data: result, success: true };
+      } catch (error) {
+        console.error('[agentEval:createExperiment]', error);
+        throw new TRPCError({
+          cause: error,
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to create experiment',
+        });
+      }
+    }),
+
   // ============================================
   // Benchmark Operations
   // ============================================
@@ -115,6 +140,20 @@ export const agentEvalRouter = router({
       return ctx.benchmarkModel.query(input?.includeSystem);
     }),
 
+  listExperiments: agentEvalProcedure.query(async ({ ctx }) => {
+    try {
+      const result = await ctx.experimentModel.query();
+      return { data: result, success: true };
+    } catch (error) {
+      console.error('[agentEval:listExperiments]', error);
+      throw new TRPCError({
+        cause: error,
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Failed to list experiments',
+      });
+    }
+  }),
+
   getBenchmark: agentEvalProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
@@ -123,6 +162,41 @@ export const agentEvalRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Benchmark not found' });
       }
       return benchmark;
+    }),
+
+  getExperiment: agentEvalProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      try {
+        const experiment = await ctx.experimentModel.findById(input.id);
+        if (!experiment) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Experiment not found' });
+        }
+
+        const [datasets, runs] = await Promise.all([
+          ctx.datasetModel
+            .query()
+            .then((items) => items.filter((item) => item.sourceExperimentId === experiment.id)),
+          ctx.runModel.query({ experimentId: experiment.id }),
+        ]);
+
+        return {
+          data: {
+            ...experiment,
+            datasets,
+            runs,
+          },
+          success: true,
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error('[agentEval:getExperiment]', error);
+        throw new TRPCError({
+          cause: error,
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to get experiment',
+        });
+      }
     }),
 
   updateBenchmark: agentEvalProcedure
@@ -148,6 +222,39 @@ export const agentEvalRouter = router({
       return result;
     }),
 
+  updateExperiment: agentEvalProcedure
+    .input(
+      z.object({
+        benchmarkIds: z.array(z.string()).optional(),
+        description: z.string().optional(),
+        id: z.string(),
+        metadata: z.record(z.unknown()).optional(),
+        name: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const { id, ...data } = input;
+        const result = await ctx.experimentModel.update(id, data);
+        if (!result) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Experiment not found or cannot be updated',
+          });
+        }
+
+        return { data: result, success: true };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error('[agentEval:updateExperiment]', error);
+        throw new TRPCError({
+          cause: error,
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to update experiment',
+        });
+      }
+    }),
+
   deleteBenchmark: agentEvalProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
@@ -169,6 +276,26 @@ export const agentEvalRouter = router({
       }
     }),
 
+  deleteExperiment: agentEvalProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const result = await ctx.experimentModel.delete(input.id);
+        if (result.rowCount === 0) {
+          return { error: 'Experiment not found or cannot be deleted', success: false };
+        }
+
+        return { success: true };
+      } catch (error) {
+        console.error('[agentEval:deleteExperiment]', error);
+        throw new TRPCError({
+          cause: error,
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to delete experiment',
+        });
+      }
+    }),
+
   // ============================================
   // Dataset Operations
   // ============================================
@@ -182,6 +309,7 @@ export const agentEvalRouter = router({
         evalMode: rubricTypeSchema.optional(),
         evalConfig: evalConfigSchema.optional(),
         metadata: z.record(z.unknown()).optional(),
+        sourceExperimentId: z.string().optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -595,9 +723,11 @@ export const agentEvalRouter = router({
     .input(
       z.object({
         datasetId: z.string(),
+        experimentId: z.string().optional(),
         targetAgentId: z.string().optional(),
         name: z.string().optional(),
         config: evalRunInputConfigSchema.optional(),
+        parentRunId: z.string().optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -629,6 +759,7 @@ export const agentEvalRouter = router({
       z.object({
         benchmarkId: z.string().optional(),
         datasetId: z.string().optional(),
+        experimentId: z.string().optional(),
         status: z
           .enum(['idle', 'pending', 'running', 'completed', 'failed', 'aborted', 'external'])
           .optional(),
@@ -640,6 +771,7 @@ export const agentEvalRouter = router({
       const data = await ctx.runModel.query({
         benchmarkId: input.benchmarkId,
         datasetId: input.datasetId,
+        experimentId: input.experimentId,
         status: input.status,
         limit: input.limit,
         offset: input.offset,
@@ -659,7 +791,7 @@ export const agentEvalRouter = router({
 
       const enriched = data.map((run) => ({
         ...run,
-        datasetName: datasetMap[run.datasetId] || undefined,
+        datasetName: run.datasetName || datasetMap[run.datasetId] || undefined,
         targetAgent: run.targetAgentId ? agentMap[run.targetAgentId] : undefined,
       }));
 

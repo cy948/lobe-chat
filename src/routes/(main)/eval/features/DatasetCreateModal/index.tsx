@@ -18,10 +18,12 @@ const toIdentifier = (name: string) =>
     .replaceAll(/[^\da-z-]/g, '');
 
 interface DatasetCreateModalProps {
-  benchmarkId: string;
+  benchmarkId?: string;
+  benchmarkOptions?: { id: string; name: string }[];
   onClose: () => void;
   onSuccess?: (dataset: { id: string; name: string; preset: string }) => void;
   open: boolean;
+  sourceExperimentId?: string;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -33,7 +35,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 const DatasetCreateModal = memo<DatasetCreateModalProps>(
-  ({ open, onClose, benchmarkId, onSuccess }) => {
+  ({ open, onClose, benchmarkId, benchmarkOptions, onSuccess, sourceExperimentId }) => {
     const { t } = useTranslation('eval');
     const { message } = App.useApp();
     const [form] = Form.useForm();
@@ -64,7 +66,7 @@ const DatasetCreateModal = memo<DatasetCreateModalProps>(
         setLoading(true);
 
         const result = await agentEvalService.createDataset({
-          benchmarkId,
+          benchmarkId: benchmarkId || values.benchmarkId,
           identifier: values.identifier.trim(),
           name: values.name,
           description: values.description,
@@ -73,6 +75,7 @@ const DatasetCreateModal = memo<DatasetCreateModalProps>(
           metadata: {
             preset: selectedPreset,
           },
+          sourceExperimentId,
         });
 
         handleClose();
@@ -118,6 +121,22 @@ const DatasetCreateModal = memo<DatasetCreateModalProps>(
         onOk={handleCreate}
       >
         <Form form={form} layout="vertical" style={{ paddingBlock: 16 }}>
+          {!benchmarkId && benchmarkOptions && benchmarkOptions.length > 0 && (
+            <Form.Item
+              label={t('dataset.create.benchmark.label')}
+              name="benchmarkId"
+              rules={[{ message: t('dataset.create.benchmarkRequired'), required: true }]}
+            >
+              <Select
+                placeholder={t('dataset.create.benchmark.placeholder')}
+                options={benchmarkOptions.map((benchmark) => ({
+                  label: benchmark.name,
+                  value: benchmark.id,
+                }))}
+              />
+            </Form.Item>
+          )}
+
           <Form.Item
             label={t('dataset.create.name.label')}
             name="name"

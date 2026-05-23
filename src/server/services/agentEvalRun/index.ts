@@ -17,6 +17,7 @@ import debug from 'debug';
 import {
   AgentEvalBenchmarkModel,
   AgentEvalDatasetModel,
+  AgentEvalExperimentModel,
   AgentEvalRunModel,
   AgentEvalRunTopicModel,
   AgentEvalTestCaseModel,
@@ -79,6 +80,7 @@ export class AgentEvalRunService {
   private readonly runModel: AgentEvalRunModel;
   private readonly benchmarkModel: AgentEvalBenchmarkModel;
   private readonly datasetModel: AgentEvalDatasetModel;
+  private readonly experimentModel: AgentEvalExperimentModel;
   private readonly runTopicModel: AgentEvalRunTopicModel;
   private readonly testCaseModel: AgentEvalTestCaseModel;
   private readonly messageModel: MessageModel;
@@ -92,6 +94,7 @@ export class AgentEvalRunService {
     this.runModel = new AgentEvalRunModel(db, userId);
     this.benchmarkModel = new AgentEvalBenchmarkModel(db, userId);
     this.datasetModel = new AgentEvalDatasetModel(db, userId);
+    this.experimentModel = new AgentEvalExperimentModel(db, userId);
     this.runTopicModel = new AgentEvalRunTopicModel(db, userId);
     this.testCaseModel = new AgentEvalTestCaseModel(db, userId);
     this.messageModel = new MessageModel(db, userId);
@@ -103,16 +106,38 @@ export class AgentEvalRunService {
   async createRun(params: {
     config?: EvalRunInputConfig;
     datasetId: string;
+    experimentId?: string;
     name?: string;
+    parentRunId?: string;
     targetAgentId?: string;
   }) {
-    const agentSnapshot = params.targetAgentId
-      ? await this.snapshotAgentConfig(params.targetAgentId)
-      : undefined;
+    let inheritedConfig: EvalRunConfig | undefined;
+    let targetAgentId = params.targetAgentId;
 
-    const config = { ...params.config, agentSnapshot };
+    if (params.parentRunId) {
+      const parentRun = await this.runModel.findById(params.parentRunId);
+      if (!parentRun) throw new Error('Parent run not found');
 
-    const run = await this.runModel.create({ ...params, config });
+      inheritedConfig = parentRun.config || undefined;
+      targetAgentId = params.targetAgentId ?? parentRun.targetAgentId ?? undefined;
+    }
+
+    const agentSnapshot = targetAgentId ? await this.snapshotAgentConfig(targetAgentId) : undefined;
+
+    const config = { ...inheritedConfig, ...params.config, agentSnapshot };
+
+    const run = await this.runModel.create({
+      config,
+      datasetId: params.datasetId,
+      experimentId: params.experimentId,
+      name: params.name,
+      parentRunId: params.parentRunId,
+      targetAgentId,
+    });
+
+    if (params.experimentId) {
+      await this.experimentModel.touch(params.experimentId);
+    }
 
     // Pre-create Topics and RunTopics for all test cases (status='pending')
     const testCases = await this.testCaseModel.findByDatasetId(params.datasetId);
@@ -1616,9 +1641,13 @@ export class AgentEvalRunService {
     }
 
     // Get dataset and run topics in parallel
-    const [dataset, runTopics] = await Promise.all([
+    const [dataset, runTopics, experiment, parentRun] = await Promise.all([
       this.datasetModel.findById(run.datasetId),
       this.runTopicModel.findByRunId(id),
+      run.experimentId
+        ? this.experimentModel.findById(run.experimentId)
+        : Promise.resolve(undefined),
+      run.parentRunId ? this.runModel.findById(run.parentRunId) : Promise.resolve(undefined),
     ]);
 
     // Get target agent display info via AgentService (fallback for runs without snapshot)
@@ -1641,6 +1670,8 @@ export class AgentEvalRunService {
     return {
       ...run,
       dataset,
+      experiment: experiment ? { id: experiment.id, name: experiment.name } : null,
+      parentRun: parentRun ? { id: parentRun.id, name: parentRun.name } : null,
       targetAgent,
       topics: runTopics.map((rt) => ({
         createdAt: rt.createdAt,

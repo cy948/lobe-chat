@@ -1,6 +1,11 @@
 import { and, count, desc, eq, inArray } from 'drizzle-orm';
 
-import { agentEvalDatasets, agentEvalRuns, type NewAgentEvalRun } from '../../schemas';
+import {
+  agentEvalDatasets,
+  agentEvalExperiments,
+  agentEvalRuns,
+  type NewAgentEvalRun,
+} from '../../schemas';
 import { type LobeChatDatabase } from '../../type';
 
 export class AgentEvalRunModel {
@@ -29,6 +34,7 @@ export class AgentEvalRunModel {
   query = async (filter?: {
     benchmarkId?: string;
     datasetId?: string;
+    experimentId?: string;
     limit?: number;
     offset?: number;
     status?: 'idle' | 'pending' | 'running' | 'completed' | 'failed' | 'aborted' | 'external';
@@ -52,9 +58,19 @@ export class AgentEvalRunModel {
       conditions.push(eq(agentEvalRuns.status, filter.status));
     }
 
+    if (filter?.experimentId) {
+      conditions.push(eq(agentEvalRuns.experimentId, filter.experimentId));
+    }
+
     const query = this.db
-      .select()
+      .select({
+        datasetName: agentEvalDatasets.name,
+        experimentName: agentEvalExperiments.name,
+        run: agentEvalRuns,
+      })
       .from(agentEvalRuns)
+      .leftJoin(agentEvalDatasets, eq(agentEvalRuns.datasetId, agentEvalDatasets.id))
+      .leftJoin(agentEvalExperiments, eq(agentEvalRuns.experimentId, agentEvalExperiments.id))
       .where(and(...conditions))
       .orderBy(desc(agentEvalRuns.createdAt))
       .$dynamic();
@@ -67,7 +83,13 @@ export class AgentEvalRunModel {
       query.offset(filter.offset);
     }
 
-    return query;
+    const rows = await query;
+
+    return rows.map((row) => ({
+      ...row.run,
+      datasetName: row.datasetName || undefined,
+      experimentName: row.experimentName || undefined,
+    }));
   };
 
   /**

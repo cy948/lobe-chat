@@ -56,6 +56,7 @@ export class AgentEvalDatasetModel {
         identifier: agentEvalDatasets.identifier,
         metadata: agentEvalDatasets.metadata,
         name: agentEvalDatasets.name,
+        sourceExperimentId: agentEvalDatasets.sourceExperimentId,
         testCaseCount: count(agentEvalTestCases.id).as('testCaseCount'),
         updatedAt: agentEvalDatasets.updatedAt,
         userId: agentEvalDatasets.userId,

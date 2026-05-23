@@ -229,6 +229,17 @@ const RunHeader = memo<RunHeaderProps>(({ run, benchmarkId, hideStart }) => {
                   {run.dataset.name}
                 </Link>
               )}
+              {run.experiment && (
+                <>
+                  <span className={styles.separator}>|</span>
+                  <Link
+                    className={styles.datasetLink}
+                    to={`/eval/experiments/${run.experiment.id}`}
+                  >
+                    {run.experiment.name}
+                  </Link>
+                </>
+              )}
               {run.targetAgentId && (
                 <>
                   <span className={styles.separator}>|</span>

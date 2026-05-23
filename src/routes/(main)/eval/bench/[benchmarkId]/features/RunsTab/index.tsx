@@ -21,6 +21,7 @@ interface RunsTabProps {
 const RunsTab = memo<RunsTabProps>(({ benchmarkId }) => {
   const { t } = useTranslation('eval');
   const [createRunOpen, setCreateRunOpen] = useState(false);
+  const [forkRun, setForkRun] = useState<AgentEvalRunListItem | null>(null);
   const [editingRun, setEditingRun] = useState<AgentEvalRunListItem | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const useFetchRuns = useEvalStore((s) => s.useFetchRuns);
@@ -90,6 +91,7 @@ const RunsTab = memo<RunsTabProps>(({ benchmarkId }) => {
                 key={run.id}
                 run={run}
                 onEdit={setEditingRun}
+                onFork={setForkRun}
                 onRefresh={refreshRuns}
               />
             ))}
@@ -102,6 +104,18 @@ const RunsTab = memo<RunsTabProps>(({ benchmarkId }) => {
         open={createRunOpen}
         onClose={() => setCreateRunOpen(false)}
       />
+
+      {forkRun && (
+        <RunCreateModal
+          benchmarkId={benchmarkId}
+          datasetId={forkRun.datasetId}
+          datasetName={forkRun.datasetName}
+          open={!!forkRun}
+          parentRunId={forkRun.id}
+          parentRunName={forkRun.name || forkRun.id}
+          onClose={() => setForkRun(null)}
+        />
+      )}
 
       {editingRun && (
         <RunEditModal open={!!editingRun} run={editingRun} onClose={() => setEditingRun(null)} />

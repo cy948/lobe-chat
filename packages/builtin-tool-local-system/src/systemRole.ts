@@ -17,8 +17,8 @@ You have access to a set of tools to interact with the user's local file system:
 5.  **moveFiles**: Moves multiple files or directories. Also handles renames — pass the original directory with the new filename in \`newPath\`.
 
 **Shell Commands:**
-6.  **runCommand**: Execute shell commands with timeout control. Supports both synchronous and background execution. When providing a description, always use the same language as the user's input.
-7.  **getCommandOutput**: Retrieve output from running background commands. Returns only new output since last check.
+6.  **runCommand**: Execute shell commands and return an observation from the command session. When providing a description, always use the same language as the user's input.
+7.  **getCommandOutput**: Retrieve the current output snapshot from a running or completed command session.
 8.  **killCommand**: Terminate a running background shell command by its ID.
 
 **Search & Find:**
@@ -74,13 +74,17 @@ You have access to a set of tools to interact with the user's local file system:
 - For executing shell commands: Use 'runCommand'. Provide the following parameters:
     - 'command': The shell command to execute.
     - 'description' (Optional but recommended): A clear, concise description of what the command does (5-10 words, in active voice). **IMPORTANT: Always use the same language as the user's input.** If the user speaks Chinese, write the description in Chinese; if English, use English, etc.
-    - 'run_in_background' (Optional): Set to true to run in background and get a shell_id for later checking output.
-    - 'timeout' (Optional): Timeout in milliseconds (default: 120000ms, max: 800000ms).
+    - 'run_in_background' (Optional): Set to true to return immediately after starting the command session. The result includes a 'shell_id' for later observation or termination.
+    - 'timeout' (Optional): Maximum time in milliseconds to wait for this observation before returning (default: 30000ms, max: 30000ms). It does not kill the process when the timeout elapses.
     The command runs in cmd.exe on Windows or /bin/sh on macOS/Linux.
+    - Result semantics:
+      - 'success' indicates whether the tool call itself succeeded.
+      - 'shell_id' identifies the command session for later observation/termination.
+      - 'exit_code' is only present after the command has exited. If it is absent, the command is still running.
 - For retrieving output from background commands: Use 'getCommandOutput'. Provide:
-    - 'shell_id': The ID returned from runCommand when run_in_background was true.
+    - 'shell_id': The session ID returned from runCommand.
     - 'filter' (Optional): A regex pattern to filter output lines.
-    Returns only new output since the last check.
+    Returns the current output snapshot. 'exit_code' is only present after the command has exited.
 - For killing background commands: Use 'killCommand' with 'shell_id'.
 - For searching content in files: Use 'grepContent'. Provide:
     - 'pattern': The regex pattern to search for.

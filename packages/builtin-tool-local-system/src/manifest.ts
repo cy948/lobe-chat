@@ -1,5 +1,6 @@
 import { type BuiltinToolManifest } from '@lobechat/types';
 
+import { LOCAL_SYSTEM_OBSERVATION_TIMEOUT_MS } from './constants';
 import { systemPrompt } from './systemRole';
 import { LocalSystemApiName, LocalSystemIdentifier } from './types';
 
@@ -263,9 +264,9 @@ export const LocalSystemManifest: BuiltinToolManifest = {
       },
     },
     {
-      defaultTimeoutMs: 120_000,
+      defaultTimeoutMs: LOCAL_SYSTEM_OBSERVATION_TIMEOUT_MS,
       description:
-        'Execute a shell command and return its output. Supports both synchronous and background execution with timeout control.',
+        'Execute a shell command and return an observation from its session. The result includes `success`, optional `shell_id`, stdout/stderr/output snapshots, and `exit_code` when the command has exited. `timeout` controls how long to wait for this observation, not whether the process is killed.',
       humanIntervention: 'required',
       name: LocalSystemApiName.runCommand,
       parameters: {
@@ -286,12 +287,13 @@ export const LocalSystemManifest: BuiltinToolManifest = {
             type: 'object',
           },
           run_in_background: {
-            description: 'Set to true to run command in background and return shell_id',
+            description:
+              'Set to true to return immediately after starting the command session. The result will include a `shell_id` for later observation or termination.',
             type: 'boolean',
           },
           timeout: {
             description:
-              'Timeout in milliseconds for this command. Default 120000ms. Server clamps to [1000, 800000]; raise this for long-running tasks (builds, large searches) instead of letting them hit the default and fail.',
+              'Maximum time in milliseconds to wait for this observation before returning. Does not kill the process when the timeout elapses. Default 30000ms; shell observation clamps to [0, 30000].',
             type: 'number',
           },
         },
@@ -302,7 +304,7 @@ export const LocalSystemManifest: BuiltinToolManifest = {
     {
       defaultTimeoutMs: 30_000,
       description:
-        'Retrieve output from a running or completed background shell command. Returns only new output since the last check.',
+        'Retrieve the current output snapshot from a running or completed shell command session. The result includes `success`, stdout/stderr/output snapshots, and `exit_code` when the command has exited.',
       name: LocalSystemApiName.getCommandOutput,
       parameters: {
         properties: {
@@ -312,7 +314,7 @@ export const LocalSystemManifest: BuiltinToolManifest = {
             type: 'string',
           },
           shell_id: {
-            description: 'The ID of the background shell to retrieve output from',
+            description: 'The session ID returned by runCommand',
             type: 'string',
           },
         },

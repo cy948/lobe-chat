@@ -1,7 +1,22 @@
-import { LocalSystemIdentifier, LocalSystemManifest } from '@lobechat/builtin-tool-local-system';
+import {
+  LOCAL_SYSTEM_GATEWAY_CALLER_TIMEOUT_BUFFER_MS,
+  LOCAL_SYSTEM_OBSERVATION_TIMEOUT_MS,
+  LOCAL_SYSTEM_SERVER_CALLER_TIMEOUT_BUFFER_MS,
+  LocalSystemApiName,
+  LocalSystemIdentifier,
+  LocalSystemManifest,
+} from '@lobechat/builtin-tool-local-system';
 
 import { deviceProxy } from '../deviceProxy';
 import { type ServerRuntimeRegistration } from './types';
+
+const normalizeObservationTimeout = (timeout: unknown): number => {
+  if (typeof timeout !== 'number' || !Number.isFinite(timeout)) {
+    return LOCAL_SYSTEM_OBSERVATION_TIMEOUT_MS;
+  }
+
+  return Math.min(Math.max(Math.trunc(timeout), 0), LOCAL_SYSTEM_OBSERVATION_TIMEOUT_MS);
+};
 
 export const localSystemRuntime: ServerRuntimeRegistration = {
   factory: (context) => {
@@ -16,13 +31,37 @@ export const localSystemRuntime: ServerRuntimeRegistration = {
 
     for (const api of LocalSystemManifest.api) {
       proxy[api.name] = async (args: any) => {
+        const observationTimeout =
+          api.name === LocalSystemApiName.runCommand
+            ? normalizeObservationTimeout(args?.timeout)
+            : undefined;
+        const gatewayCallerTimeout =
+          observationTimeout === undefined
+            ? undefined
+            : observationTimeout + LOCAL_SYSTEM_GATEWAY_CALLER_TIMEOUT_BUFFER_MS;
+        const serverCallerTimeout =
+          observationTimeout === undefined
+            ? undefined
+            : observationTimeout + LOCAL_SYSTEM_SERVER_CALLER_TIMEOUT_BUFFER_MS;
+
+        const toolCall = {
+          apiName: api.name,
+          arguments: JSON.stringify(args),
+          identifier: LocalSystemIdentifier,
+        };
+
+        if (gatewayCallerTimeout === undefined || serverCallerTimeout === undefined) {
+          return deviceProxy.executeToolCall(
+            { deviceId: context.activeDeviceId!, userId: context.userId! },
+            toolCall,
+          );
+        }
+
         return deviceProxy.executeToolCall(
           { deviceId: context.activeDeviceId!, userId: context.userId! },
-          {
-            apiName: api.name,
-            arguments: JSON.stringify(args),
-            identifier: LocalSystemIdentifier,
-          },
+          toolCall,
+          gatewayCallerTimeout,
+          serverCallerTimeout,
         );
       };
     }

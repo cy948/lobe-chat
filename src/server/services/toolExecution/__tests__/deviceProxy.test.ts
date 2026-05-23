@@ -225,6 +225,46 @@ describe('DeviceProxy', () => {
       );
     });
 
+    it('should separate gateway wait timeout from server caller timeout', async () => {
+      mockEnv.DEVICE_GATEWAY_URL = 'https://gateway.example.com';
+      mockEnv.DEVICE_GATEWAY_SERVICE_TOKEN = 'token';
+      mockClient.executeToolCall.mockResolvedValue({ content: 'ok', success: true });
+
+      const proxy = new DeviceProxy();
+      await proxy.executeToolCall(params, toolCall, 45_000, 60_000);
+
+      expect(mockClient.executeToolCall).toHaveBeenCalledWith(
+        { deviceId: 'dev-1', timeout: 45_000, userId: 'user-1' },
+        toolCall,
+      );
+    });
+
+    it('should return a server-side timeout result when caller timeout elapses first', async () => {
+      vi.useFakeTimers();
+      try {
+        mockEnv.DEVICE_GATEWAY_URL = 'https://gateway.example.com';
+        mockEnv.DEVICE_GATEWAY_SERVICE_TOKEN = 'token';
+        mockClient.executeToolCall.mockImplementation(() => new Promise(() => {}));
+
+        const proxy = new DeviceProxy();
+        const resultPromise = proxy.executeToolCall(params, toolCall, 45_000, 60_000);
+
+        await vi.advanceTimersByTimeAsync(60_000);
+
+        await expect(resultPromise).resolves.toEqual({
+          content: 'Device tool call timed out (60s)',
+          error: 'TIMEOUT',
+          success: false,
+        });
+        expect(mockClient.executeToolCall).toHaveBeenCalledWith(
+          { deviceId: 'dev-1', timeout: 45_000, userId: 'user-1' },
+          toolCall,
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('should return error result on Error exception', async () => {
       mockEnv.DEVICE_GATEWAY_URL = 'https://gateway.example.com';
       mockEnv.DEVICE_GATEWAY_SERVICE_TOKEN = 'token';

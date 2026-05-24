@@ -12,8 +12,7 @@ interface ShellProcessManagerOptions {
 }
 
 interface Waiter {
-  filter?: string;
-  resolve: (result: GetCommandOutputResult) => void;
+  resolve: () => void;
   timer?: ReturnType<typeof setTimeout>;
 }
 
@@ -27,15 +26,6 @@ export interface ShellProcess {
   stdout: string[];
   waiter?: Waiter;
 }
-
-const clampObservationTimeout = (timeout?: number): number => {
-  if (typeof timeout !== 'number' || !Number.isFinite(timeout)) return MAX_OBSERVATION_TIMEOUT_MS;
-
-  return Math.min(
-    Math.max(Math.trunc(timeout), MIN_OBSERVATION_TIMEOUT_MS),
-    MAX_OBSERVATION_TIMEOUT_MS,
-  );
-};
 
 export class ShellProcessManager {
   private processes = new Map<string, ShellProcess>();
@@ -55,8 +45,12 @@ export class ShellProcessManager {
     if (!shellProcess) return;
 
     shellProcess.exitCode = exitCode ?? 0;
-    this.flushWaiter(shellProcess);
-    this.scheduleCleanup(shellId, shellProcess);
+    shellProcess.waiter?.resolve();
+    if (shellProcess.cleanupTimer) clearTimeout(shellProcess.cleanupTimer);
+    shellProcess.cleanupTimer = setTimeout(() => {
+      this.processes.delete(shellId);
+      shellProcess.cleanupTimer = undefined;
+    }, this.completedProcessRetentionMs);
   }
 
   async getOutput({
@@ -75,32 +69,65 @@ export class ShellProcessManager {
       };
     }
 
-    if (shellProcess.exitCode !== null) {
-      return this.readOutput(shellProcess, filter);
+    if (shellProcess.exitCode === null) {
+      const waitTimeout =
+        typeof timeout === 'number' && Number.isFinite(timeout)
+          ? Math.min(
+              Math.max(Math.trunc(timeout), MIN_OBSERVATION_TIMEOUT_MS),
+              MAX_OBSERVATION_TIMEOUT_MS,
+            )
+          : MAX_OBSERVATION_TIMEOUT_MS;
+
+      if (waitTimeout > 0) {
+        await new Promise<void>((resolve) => {
+          if (shellProcess.waiter?.timer) clearTimeout(shellProcess.waiter.timer);
+          shellProcess.waiter = undefined;
+
+          const waiter: Waiter = {
+            resolve: () => {
+              if (waiter.timer) clearTimeout(waiter.timer);
+              if (shellProcess.waiter === waiter) shellProcess.waiter = undefined;
+              resolve();
+            },
+          };
+
+          waiter.timer = setTimeout(() => {
+            waiter.resolve();
+          }, waitTimeout);
+
+          shellProcess.waiter = waiter;
+        });
+      }
     }
 
-    const waitTimeout = clampObservationTimeout(timeout);
-    if (waitTimeout === 0) {
-      return this.readOutput(shellProcess, filter);
+    const { lastReadStderr, lastReadStdout, stderr, stdout } = shellProcess;
+
+    const newStdout = stdout.slice(lastReadStdout).join('');
+    const newStderr = stderr.slice(lastReadStderr).join('');
+    let output = newStdout + newStderr;
+
+    if (filter) {
+      try {
+        const regex = new RegExp(filter, 'gm');
+        const lines = output.split('\n');
+        output = lines.filter((line) => regex.test(line)).join('\n');
+      } catch {
+        // Invalid filter regex, use unfiltered output
+      }
     }
 
-    return new Promise<GetCommandOutputResult>((resolve) => {
-      this.clearWaiter(shellProcess);
+    shellProcess.lastReadStdout = stdout.length;
+    shellProcess.lastReadStderr = stderr.length;
 
-      const waiter: Waiter = {
-        filter,
-        resolve: (result) => {
-          this.clearWaiter(shellProcess);
-          resolve(result);
-        },
-      };
+    const done = shellProcess.exitCode !== null;
 
-      waiter.timer = setTimeout(() => {
-        waiter.resolve(this.readOutput(shellProcess, filter));
-      }, waitTimeout);
-
-      shellProcess.waiter = waiter;
-    });
+    return {
+      exit_code: done ? (shellProcess.exitCode ?? 0) : undefined,
+      output: truncateOutput(output),
+      stderr: truncateOutput(newStderr),
+      stdout: truncateOutput(newStdout),
+      success: true,
+    };
   }
 
   kill(shell_id: string): KillCommandResult {
@@ -111,8 +138,8 @@ export class ShellProcessManager {
 
     try {
       shellProcess.process.kill();
-      this.clearWaiter(shellProcess);
-      this.clearCleanupTimer(shellProcess);
+      if (shellProcess.waiter?.timer) clearTimeout(shellProcess.waiter.timer);
+      if (shellProcess.cleanupTimer) clearTimeout(shellProcess.cleanupTimer);
       this.processes.delete(shell_id);
       return { success: true };
     } catch (error) {
@@ -121,76 +148,15 @@ export class ShellProcessManager {
   }
 
   cleanupAll(): void {
-    for (const [id, shellProcess] of this.processes) {
+    for (const [id, sp] of this.processes) {
       try {
-        shellProcess.process.kill();
+        sp.process.kill();
       } catch {
         // Ignore
       }
-
-      this.clearWaiter(shellProcess);
-      this.clearCleanupTimer(shellProcess);
+      if (sp.waiter?.timer) clearTimeout(sp.waiter.timer);
+      if (sp.cleanupTimer) clearTimeout(sp.cleanupTimer);
       this.processes.delete(id);
     }
-  }
-
-  private clearWaiter(shellProcess: ShellProcess): void {
-    if (!shellProcess.waiter) return;
-    if (shellProcess.waiter.timer) {
-      clearTimeout(shellProcess.waiter.timer);
-    }
-    shellProcess.waiter = undefined;
-  }
-
-  private clearCleanupTimer(shellProcess: ShellProcess): void {
-    if (!shellProcess.cleanupTimer) return;
-    clearTimeout(shellProcess.cleanupTimer);
-    shellProcess.cleanupTimer = undefined;
-  }
-
-  private flushWaiter(shellProcess: ShellProcess, filter?: string): void {
-    const waiter = shellProcess.waiter;
-    if (!waiter) return;
-
-    waiter.resolve(this.readOutput(shellProcess, filter ?? waiter.filter));
-  }
-
-  private scheduleCleanup(shellId: string, shellProcess: ShellProcess): void {
-    this.clearCleanupTimer(shellProcess);
-    shellProcess.cleanupTimer = setTimeout(() => {
-      this.processes.delete(shellId);
-      shellProcess.cleanupTimer = undefined;
-    }, this.completedProcessRetentionMs);
-  }
-
-  private readOutput(shellProcess: ShellProcess, filter?: string): GetCommandOutputResult {
-    const stdout = shellProcess.stdout.slice(shellProcess.lastReadStdout).join('');
-    const stderr = shellProcess.stderr.slice(shellProcess.lastReadStderr).join('');
-    let output = stdout + stderr;
-
-    if (filter) {
-      try {
-        const regex = new RegExp(filter, 'gm');
-        output = output
-          .split('\n')
-          .filter((line) => regex.test(line))
-          .join('\n');
-      } catch {
-        // Invalid filter regex, use unfiltered output
-      }
-    }
-
-    shellProcess.lastReadStdout = shellProcess.stdout.length;
-    shellProcess.lastReadStderr = shellProcess.stderr.length;
-
-    const done = shellProcess.exitCode !== null;
-
-    return {
-      exit_code: done ? (shellProcess.exitCode ?? 0) : undefined,
-      output: truncateOutput(output),
-      stderr: truncateOutput(stderr),
-      stdout: truncateOutput(stdout),
-      success: true,
-    };
   }
 }

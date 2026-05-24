@@ -86,7 +86,6 @@ export async function runCommand(
     return {
       ...observation,
       shell_id: shellId,
-      success: observation.success,
     };
   } catch (error) {
     return { error: (error as Error).message, success: false };

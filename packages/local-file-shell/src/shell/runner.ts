@@ -62,13 +62,13 @@ export async function runCommand(
 
     childProcess.on('exit', (code) => {
       logger?.debug(`${logPrefix} Process exited`, { code, shellId });
-      processManager.complete(shellId, code);
+      shellProcess.exitCode = code ?? 0;
     });
 
     childProcess.on('error', (error) => {
       logger?.error(`${logPrefix} Command failed:`, error);
       shellProcess.stderr.push(error.message);
-      processManager.complete(shellId, 1);
+      shellProcess.exitCode = 1;
     });
 
     processManager.register(shellId, shellProcess);

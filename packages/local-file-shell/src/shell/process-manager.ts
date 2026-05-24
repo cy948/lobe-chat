@@ -6,11 +6,6 @@ import { truncateOutput } from './utils';
 const MAX_OBSERVATION_TIMEOUT_MS = 30_000;
 const MIN_OBSERVATION_TIMEOUT_MS = 0;
 
-interface Waiter {
-  resolve: () => void;
-  timer?: ReturnType<typeof setTimeout>;
-}
-
 export interface ShellProcess {
   exitCode: number | null;
   lastReadStderr: number;
@@ -18,7 +13,6 @@ export interface ShellProcess {
   process: ChildProcess;
   stderr: string[];
   stdout: string[];
-  waiter?: Waiter;
 }
 
 export class ShellProcessManager {
@@ -26,15 +20,6 @@ export class ShellProcessManager {
 
   register(shellId: string, shellProcess: ShellProcess): void {
     this.processes.set(shellId, shellProcess);
-  }
-
-  complete(shellId: string, exitCode: number | null): void {
-    const shellProcess = this.processes.get(shellId);
-    if (!shellProcess) return;
-
-    shellProcess.exitCode = exitCode ?? 0;
-    shellProcess.waiter?.resolve();
-    // TODO: Decide completed shell session cleanup policy separately.
   }
 
   async getOutput({
@@ -53,6 +38,10 @@ export class ShellProcessManager {
       };
     }
 
+    if (shellProcess.process.exitCode !== null) {
+      shellProcess.exitCode = shellProcess.process.exitCode;
+    }
+
     if (shellProcess.exitCode === null) {
       const waitTimeout =
         typeof timeout === 'number' && Number.isFinite(timeout)
@@ -64,24 +53,22 @@ export class ShellProcessManager {
 
       if (waitTimeout > 0) {
         await new Promise<void>((resolve) => {
-          if (shellProcess.waiter?.timer) clearTimeout(shellProcess.waiter.timer);
-          shellProcess.waiter = undefined;
-
-          const waiter: Waiter = {
-            resolve: () => {
-              if (waiter.timer) clearTimeout(waiter.timer);
-              if (shellProcess.waiter === waiter) shellProcess.waiter = undefined;
-              resolve();
-            },
+          const done = () => {
+            clearTimeout(timer);
+            shellProcess.process.off('error', done);
+            shellProcess.process.off('exit', done);
+            resolve();
           };
 
-          waiter.timer = setTimeout(() => {
-            waiter.resolve();
-          }, waitTimeout);
-
-          shellProcess.waiter = waiter;
+          const timer = setTimeout(done, waitTimeout);
+          shellProcess.process.once('error', done);
+          shellProcess.process.once('exit', done);
         });
       }
+    }
+
+    if (shellProcess.process.exitCode !== null) {
+      shellProcess.exitCode = shellProcess.process.exitCode;
     }
 
     const { lastReadStderr, lastReadStdout, stderr, stdout } = shellProcess;
@@ -122,7 +109,6 @@ export class ShellProcessManager {
 
     try {
       shellProcess.process.kill();
-      if (shellProcess.waiter?.timer) clearTimeout(shellProcess.waiter.timer);
       this.processes.delete(shell_id);
       return { success: true };
     } catch (error) {
@@ -137,7 +123,6 @@ export class ShellProcessManager {
       } catch {
         // Ignore
       }
-      if (sp.waiter?.timer) clearTimeout(sp.waiter.timer);
       this.processes.delete(id);
     }
   }

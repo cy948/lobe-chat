@@ -1,14 +1,15 @@
 import type { ChildProcess } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { type ShellProcess, ShellProcessManager } from '../process-manager';
 
 function createMockProcess(exitCode: number | null = null): ChildProcess {
-  return {
-    exitCode,
-    kill: vi.fn(),
-  } as unknown as ChildProcess;
+  const process = new EventEmitter() as ChildProcess;
+  process.exitCode = exitCode;
+  process.kill = vi.fn() as unknown as ChildProcess['kill'];
+  return process;
 }
 
 function createShellProcess(process: ChildProcess): ShellProcess {
@@ -135,7 +136,7 @@ describe('ShellProcessManager', () => {
 
       setTimeout(() => {
         (process as { exitCode: number | null }).exitCode = 0;
-        manager.complete('test-1', 0);
+        process.emit('exit', 0);
       }, 20);
 
       const result = await pending;
@@ -178,7 +179,6 @@ describe('ShellProcessManager', () => {
       expect(result.exit_code).toBeUndefined();
 
       (process as { exitCode: number | null }).exitCode = 0;
-      manager.complete('test-1', 0);
 
       result = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
       expect(result.exit_code).toBe(0);
@@ -191,7 +191,7 @@ describe('ShellProcessManager', () => {
         stdout: ['done\n'],
       });
 
-      manager.complete('test-1', 0);
+      (process as { exitCode: number | null }).exitCode = 0;
 
       const result = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
       expect(result.success).toBe(true);

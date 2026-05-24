@@ -265,7 +265,7 @@ export const LocalSystemManifest: BuiltinToolManifest = {
     {
       defaultTimeoutMs: 30_000,
       description:
-        'Execute a shell command and return console output collected during the wait window. If the command exits during that window, the result includes `exit_code`; if it is still running, the result includes `shell_id` for later output retrieval or termination.',
+        'Start a terminal session to execute a shell command and return console output collected during the wait window. If the command exits during that window, the result includes `exit_code`; if it is still running, the result includes `shell_id` for later output retrieval or termination.',
       humanIntervention: 'required',
       name: LocalSystemApiName.runCommand,
       parameters: {
@@ -287,7 +287,7 @@ export const LocalSystemManifest: BuiltinToolManifest = {
           },
           run_in_background: {
             description:
-              'Set to true to return immediately after starting the command session. The result will include a `shell_id` for later observation or termination.',
+              'Set to true to return immediately after starting the terminal session. The result will include a `shell_id` for later observation or termination.',
             type: 'boolean',
           },
         },

@@ -163,6 +163,32 @@ describe('localSystemRuntime', () => {
       );
     });
 
+    it('should use the default observation timeout for getCommandOutput when timeout is omitted', async () => {
+      const context: ToolExecutionContext = {
+        activeDeviceId: 'device-6',
+        toolManifestMap: {},
+        userId: 'user-6',
+      };
+
+      mockExecuteToolCall.mockResolvedValue({ content: '', success: true });
+
+      const proxy = localSystemRuntime.factory(context);
+      const args = { shell_id: 'shell-1' };
+
+      await proxy[LocalSystemApiName.getCommandOutput](args);
+
+      expect(mockExecuteToolCall).toHaveBeenCalledWith(
+        { deviceId: 'device-6', userId: 'user-6' },
+        {
+          apiName: LocalSystemApiName.getCommandOutput,
+          arguments: JSON.stringify(args),
+          identifier: LocalSystemIdentifier,
+        },
+        45_000,
+        60_000,
+      );
+    });
+
     it('should clamp runCommand observation timeout before adding caller buffers', async () => {
       const context: ToolExecutionContext = {
         activeDeviceId: 'device-4',

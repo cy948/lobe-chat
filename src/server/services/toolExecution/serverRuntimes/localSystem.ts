@@ -10,6 +10,10 @@ import { type ServerRuntimeRegistration } from './types';
 const LOCAL_SYSTEM_OBSERVATION_TIMEOUT_MS = 30_000;
 const LOCAL_SYSTEM_GATEWAY_CALLER_TIMEOUT_BUFFER_MS = 15_000;
 const LOCAL_SYSTEM_SERVER_CALLER_TIMEOUT_BUFFER_MS = 30_000;
+const LOCAL_SYSTEM_OBSERVATION_APIS = new Set([
+  LocalSystemApiName.getCommandOutput,
+  LocalSystemApiName.runCommand,
+]);
 
 const normalizeObservationTimeout = (timeout: unknown): number => {
   if (typeof timeout !== 'number' || !Number.isFinite(timeout)) {
@@ -32,10 +36,9 @@ export const localSystemRuntime: ServerRuntimeRegistration = {
 
     for (const api of LocalSystemManifest.api) {
       proxy[api.name] = async (args: any) => {
-        const observationTimeout =
-          api.name === LocalSystemApiName.runCommand
-            ? normalizeObservationTimeout(args?.timeout)
-            : undefined;
+        const observationTimeout = LOCAL_SYSTEM_OBSERVATION_APIS.has(api.name)
+          ? normalizeObservationTimeout(args?.timeout)
+          : undefined;
         const gatewayCallerTimeout =
           observationTimeout === undefined
             ? undefined

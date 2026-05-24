@@ -29,7 +29,7 @@ You have access to a set of tools to interact with the user's local file system:
 
 **Shell Commands:**
 6.  **runCommand**: Execute shell commands and return console output collected during the wait window. When providing a description, always use the same language as the user's input.
-7.  **getCommandOutput**: Retrieve console output from a running or completed command session.
+7.  **getCommandOutput**: Retrieve output from running background commands. Returns only new output since last check.
 8.  **killCommand**: Terminate a running background shell command by its ID.
 
 **Search & Find:**
@@ -92,9 +92,9 @@ You have access to a set of tools to interact with the user's local file system:
       - 'shell_id' identifies the command session for later observation/termination.
       - 'exit_code' is only present after the command has exited. If it is absent, the command is still running.
 - For retrieving output from background commands: Use 'getCommandOutput'. Provide:
-    - 'shell_id': The session ID returned from runCommand.
+    - 'shell_id': The ID returned from runCommand when run_in_background was true.
     - 'filter' (Optional): A regex pattern to filter output lines.
-    Returns only new console output since the last check. 'exit_code' is only present after the command has exited; if it is absent, use the same 'shell_id' to retrieve more output later.
+    Returns only new output since the last check.
 - For killing background commands: Use 'killCommand' with 'shell_id'.
 - For searching content in files: Use 'grepContent'. Provide:
     - 'pattern': The regex pattern to search for.

@@ -45,18 +45,29 @@ export class ShellProcessManager {
           : 30_000;
 
       if (waitTimeout > 0) {
-        await new Promise<void>((resolve) => {
-          const done = () => {
-            clearTimeout(timer);
-            shellProcess.process.off('error', done);
-            shellProcess.process.off('exit', done);
-            resolve();
-          };
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let onError: (() => void) | undefined;
+        let onExit: (() => void) | undefined;
 
-          const timer = setTimeout(done, waitTimeout);
-          shellProcess.process.once('error', done);
-          shellProcess.process.once('exit', done);
-        });
+        try {
+          await Promise.race([
+            new Promise<void>((resolve) => {
+              onError = resolve;
+              childProcess.once('error', onError);
+            }),
+            new Promise<void>((resolve) => {
+              onExit = resolve;
+              childProcess.once('exit', onExit);
+            }),
+            new Promise<void>((resolve) => {
+              timer = setTimeout(resolve, waitTimeout);
+            }),
+          ]);
+        } finally {
+          if (timer) clearTimeout(timer);
+          if (onError) childProcess.off('error', onError);
+          if (onExit) childProcess.off('exit', onExit);
+        }
       }
     }
 

@@ -3,9 +3,6 @@ import type { ChildProcess } from 'node:child_process';
 import type { GetCommandOutputParams, GetCommandOutputResult, KillCommandResult } from '../types';
 import { truncateOutput } from './utils';
 
-const MAX_OBSERVATION_TIMEOUT_MS = 30_000;
-const MIN_OBSERVATION_TIMEOUT_MS = 0;
-
 export interface ShellProcess {
   exitCode: number | null;
   lastReadStderr: number;
@@ -38,18 +35,14 @@ export class ShellProcessManager {
       };
     }
 
-    if (shellProcess.process.exitCode !== null) {
-      shellProcess.exitCode = shellProcess.process.exitCode;
-    }
+    const { lastReadStderr, lastReadStdout, process: childProcess, stderr, stdout } = shellProcess;
 
-    if (shellProcess.exitCode === null) {
+    let exitCode = childProcess.exitCode ?? shellProcess.exitCode;
+    if (exitCode === null) {
       const waitTimeout =
         typeof timeout === 'number' && Number.isFinite(timeout)
-          ? Math.min(
-              Math.max(Math.trunc(timeout), MIN_OBSERVATION_TIMEOUT_MS),
-              MAX_OBSERVATION_TIMEOUT_MS,
-            )
-          : MAX_OBSERVATION_TIMEOUT_MS;
+          ? Math.min(Math.max(Math.trunc(timeout), 0), 30_000)
+          : 30_000;
 
       if (waitTimeout > 0) {
         await new Promise<void>((resolve) => {
@@ -67,11 +60,7 @@ export class ShellProcessManager {
       }
     }
 
-    if (shellProcess.process.exitCode !== null) {
-      shellProcess.exitCode = shellProcess.process.exitCode;
-    }
-
-    const { lastReadStderr, lastReadStdout, process: childProcess, stderr, stdout } = shellProcess;
+    exitCode = childProcess.exitCode ?? shellProcess.exitCode;
 
     const newStdout = stdout.slice(lastReadStdout).join('');
     const newStderr = stderr.slice(lastReadStderr).join('');
@@ -90,11 +79,8 @@ export class ShellProcessManager {
     shellProcess.lastReadStdout = stdout.length;
     shellProcess.lastReadStderr = stderr.length;
 
-    const exitCode = childProcess.exitCode ?? shellProcess.exitCode;
-    const done = exitCode !== null;
-
     return {
-      exit_code: done ? exitCode : undefined,
+      exit_code: exitCode ?? undefined,
       output: truncateOutput(output),
       stderr: truncateOutput(newStderr),
       stdout: truncateOutput(newStdout),

@@ -1,8 +1,4 @@
-import {
-  LocalSystemApiName,
-  LocalSystemIdentifier,
-  LocalSystemManifest,
-} from '@lobechat/builtin-tool-local-system';
+import { LocalSystemIdentifier, LocalSystemManifest } from '@lobechat/builtin-tool-local-system';
 import { describe, expect, it, vi } from 'vitest';
 
 import { type ToolExecutionContext } from '../../types';
@@ -108,108 +104,6 @@ describe('localSystemRuntime', () => {
         expect.objectContaining({
           arguments: JSON.stringify(complexArgs),
         }),
-      );
-    });
-
-    it('should pass runCommand gateway and server caller timeouts based on observation timeout', async () => {
-      const context: ToolExecutionContext = {
-        activeDeviceId: 'device-3',
-        toolManifestMap: {},
-        userId: 'user-3',
-      };
-
-      mockExecuteToolCall.mockResolvedValue({ content: '', success: true });
-
-      const proxy = localSystemRuntime.factory(context);
-      const args = { command: 'sleep 1', timeout: 5000 };
-
-      await proxy[LocalSystemApiName.runCommand](args);
-
-      expect(mockExecuteToolCall).toHaveBeenCalledWith(
-        { deviceId: 'device-3', userId: 'user-3' },
-        {
-          apiName: LocalSystemApiName.runCommand,
-          arguments: JSON.stringify(args),
-          identifier: LocalSystemIdentifier,
-        },
-        20_000,
-        35_000,
-      );
-    });
-
-    it('should use the default observation timeout for runCommand when timeout is omitted', async () => {
-      const context: ToolExecutionContext = {
-        activeDeviceId: 'device-5',
-        toolManifestMap: {},
-        userId: 'user-5',
-      };
-
-      mockExecuteToolCall.mockResolvedValue({ content: '', success: true });
-
-      const proxy = localSystemRuntime.factory(context);
-      const args = { command: 'echo ok' };
-
-      await proxy[LocalSystemApiName.runCommand](args);
-
-      expect(mockExecuteToolCall).toHaveBeenCalledWith(
-        { deviceId: 'device-5', userId: 'user-5' },
-        {
-          apiName: LocalSystemApiName.runCommand,
-          arguments: JSON.stringify(args),
-          identifier: LocalSystemIdentifier,
-        },
-        45_000,
-        60_000,
-      );
-    });
-
-    it('should use the default observation timeout for getCommandOutput when timeout is omitted', async () => {
-      const context: ToolExecutionContext = {
-        activeDeviceId: 'device-6',
-        toolManifestMap: {},
-        userId: 'user-6',
-      };
-
-      mockExecuteToolCall.mockResolvedValue({ content: '', success: true });
-
-      const proxy = localSystemRuntime.factory(context);
-      const args = { shell_id: 'shell-1' };
-
-      await proxy[LocalSystemApiName.getCommandOutput](args);
-
-      expect(mockExecuteToolCall).toHaveBeenCalledWith(
-        { deviceId: 'device-6', userId: 'user-6' },
-        {
-          apiName: LocalSystemApiName.getCommandOutput,
-          arguments: JSON.stringify(args),
-          identifier: LocalSystemIdentifier,
-        },
-        45_000,
-        60_000,
-      );
-    });
-
-    it('should clamp runCommand observation timeout before adding caller buffers', async () => {
-      const context: ToolExecutionContext = {
-        activeDeviceId: 'device-4',
-        toolManifestMap: {},
-        userId: 'user-4',
-      };
-
-      mockExecuteToolCall.mockResolvedValue({ content: '', success: true });
-
-      const proxy = localSystemRuntime.factory(context);
-      const args = { command: 'sleep 60', timeout: 120_000 };
-
-      await proxy[LocalSystemApiName.runCommand](args);
-
-      expect(mockExecuteToolCall).toHaveBeenCalledWith(
-        { deviceId: 'device-4', userId: 'user-4' },
-        expect.objectContaining({
-          apiName: LocalSystemApiName.runCommand,
-        }),
-        45_000,
-        60_000,
       );
     });
   });

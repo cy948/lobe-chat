@@ -121,19 +121,18 @@ describe('runCommand', () => {
       expect(output.stdout).toContain('hello');
     });
 
-    it('should return the full buffered output on subsequent reads', async () => {
+    it('should return only new buffered output on subsequent reads', async () => {
       const bgResult = await runCommand(
         { command: 'echo first && sleep 0.2 && echo second', run_in_background: true },
         { processManager },
       );
 
       await new Promise((r) => setTimeout(r, 100));
-      const first = await processManager.getOutput({ shell_id: bgResult.shell_id! });
+      const first = await processManager.getOutput({ shell_id: bgResult.shell_id!, timeout: 0 });
       expect(first.stdout).toContain('first');
 
       await new Promise((r) => setTimeout(r, 300));
-      const second = await processManager.getOutput({ shell_id: bgResult.shell_id! });
-      expect(second.stdout).toContain('first');
+      const second = await processManager.getOutput({ shell_id: bgResult.shell_id!, timeout: 0 });
       expect(second.stdout).toContain('second');
     });
   });

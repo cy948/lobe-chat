@@ -14,6 +14,8 @@ function createMockProcess(exitCode: number | null = null): ChildProcess {
 function createShellProcess(process: ChildProcess): ShellProcess {
   return {
     exitCode: process.exitCode,
+    lastReadStderr: 0,
+    lastReadStdout: 0,
     process,
     stderr: [],
     stdout: [],
@@ -52,7 +54,7 @@ describe('ShellProcessManager', () => {
       expect(result.exit_code).toBeUndefined();
     });
 
-    it('should return the full buffered output on repeated reads', async () => {
+    it('should return only new buffered output on repeated reads', async () => {
       const process = createMockProcess();
       const shellProcess = {
         ...createShellProcess(process),
@@ -64,12 +66,11 @@ describe('ShellProcessManager', () => {
       expect(first.stdout).toContain('first');
 
       const second = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
-      expect(second.stdout).toContain('first');
+      expect(second.stdout).toBe('');
 
       shellProcess.stdout.push('second\n');
       const third = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
-      expect(third.stdout).toContain('first');
-      expect(third.stdout).toContain('second');
+      expect(third.stdout).toBe('second\n');
     });
 
     it('should return the current output snapshot when observation timeout elapses', async () => {

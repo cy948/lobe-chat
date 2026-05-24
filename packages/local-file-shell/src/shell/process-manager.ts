@@ -20,6 +20,8 @@ interface Waiter {
 export interface ShellProcess {
   cleanupTimer?: ReturnType<typeof setTimeout>;
   exitCode: number | null;
+  lastReadStderr: number;
+  lastReadStdout: number;
   process: ChildProcess;
   stderr: string[];
   stdout: string[];
@@ -162,8 +164,8 @@ export class ShellProcessManager {
   }
 
   private readOutput(shellProcess: ShellProcess, filter?: string): GetCommandOutputResult {
-    const stdout = shellProcess.stdout.join('');
-    const stderr = shellProcess.stderr.join('');
+    const stdout = shellProcess.stdout.slice(shellProcess.lastReadStdout).join('');
+    const stderr = shellProcess.stderr.slice(shellProcess.lastReadStderr).join('');
     let output = stdout + stderr;
 
     if (filter) {
@@ -177,6 +179,9 @@ export class ShellProcessManager {
         // Invalid filter regex, use unfiltered output
       }
     }
+
+    shellProcess.lastReadStdout = shellProcess.stdout.length;
+    shellProcess.lastReadStderr = shellProcess.stderr.length;
 
     const done = shellProcess.exitCode !== null;
 

@@ -183,15 +183,12 @@ export class LocalSystemExecutionRuntime extends ComputerRuntime {
       }
 
       case 'getCommandOutput': {
-        const exitCode = raw.exit_code;
         return {
           result: {
-            exitCode,
+            exitCode: raw.exit_code,
             error: raw.error,
             newOutput: raw.output,
-            running: exitCode === undefined,
-            stderr: raw.stderr,
-            stdout: raw.stdout,
+            running: raw.exit_code === undefined,
             success: raw.success,
           },
           success: raw.success,

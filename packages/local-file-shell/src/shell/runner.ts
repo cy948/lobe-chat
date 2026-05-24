@@ -45,6 +45,8 @@ export async function runCommand(
 
     const shellProcess: ShellProcess = {
       exitCode: null,
+      lastReadStderr: 0,
+      lastReadStdout: 0,
       process: childProcess,
       stderr: [],
       stdout: [],

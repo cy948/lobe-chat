@@ -83,7 +83,7 @@ You have access to a set of tools to interact with the user's local file system:
 - For retrieving output from background commands: Use 'getCommandOutput'. Provide:
     - 'shell_id': The session ID returned from runCommand.
     - 'filter' (Optional): A regex pattern to filter output lines.
-    Returns console output from the command session. 'exit_code' is only present after the command has exited; if it is absent, use the same 'shell_id' to retrieve output again later.
+    Returns only new console output since the last check. 'exit_code' is only present after the command has exited; if it is absent, use the same 'shell_id' to retrieve more output later.
 - For killing background commands: Use 'killCommand' with 'shell_id'.
 - For searching content in files: Use 'grepContent'. Provide:
     - 'pattern': The regex pattern to search for.

@@ -71,7 +71,7 @@ export class ShellProcessManager {
       shellProcess.exitCode = shellProcess.process.exitCode;
     }
 
-    const { lastReadStderr, lastReadStdout, stderr, stdout } = shellProcess;
+    const { lastReadStderr, lastReadStdout, process: childProcess, stderr, stdout } = shellProcess;
 
     const newStdout = stdout.slice(lastReadStdout).join('');
     const newStderr = stderr.slice(lastReadStderr).join('');
@@ -90,10 +90,11 @@ export class ShellProcessManager {
     shellProcess.lastReadStdout = stdout.length;
     shellProcess.lastReadStderr = stderr.length;
 
-    const done = shellProcess.exitCode !== null;
+    const exitCode = childProcess.exitCode ?? shellProcess.exitCode;
+    const done = exitCode !== null;
 
     return {
-      exit_code: done ? (shellProcess.exitCode ?? 0) : undefined,
+      exit_code: done ? exitCode : undefined,
       output: truncateOutput(output),
       stderr: truncateOutput(newStderr),
       stdout: truncateOutput(newStdout),

@@ -148,7 +148,7 @@ describe('localSystemExecutor.getCommandOutput — filter forwarding', () => {
     };
     const spy = vi.spyOn(runtime, 'getCommandOutput').mockResolvedValue({
       content: '',
-      state: { newOutput: '', running: false, success: true },
+      state: { exitCode: 0, newOutput: '', success: true },
       success: true,
     });
 

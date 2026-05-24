@@ -43,7 +43,7 @@ describe('ShellProcessManager', () => {
         stdout: ['line 1\n', 'line 2\n'],
       });
 
-      const result = await manager.getOutput({ shell_id: 'test-1' });
+      const result = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
 
       expect(result.success).toBe(true);
       expect(result.stdout).toContain('line 1');
@@ -60,14 +60,14 @@ describe('ShellProcessManager', () => {
       };
       manager.register('test-1', shellProcess);
 
-      const first = await manager.getOutput({ shell_id: 'test-1' });
+      const first = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
       expect(first.stdout).toContain('first');
 
       const second = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
       expect(second.stdout).toContain('first');
 
       shellProcess.stdout.push('second\n');
-      const third = await manager.getOutput({ shell_id: 'test-1' });
+      const third = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
       expect(third.stdout).toContain('first');
       expect(third.stdout).toContain('second');
     });
@@ -101,6 +101,31 @@ describe('ShellProcessManager', () => {
       }
     });
 
+    it('should wait up to the default observation timeout when timeout is omitted', async () => {
+      vi.useFakeTimers();
+      try {
+        const process = createMockProcess();
+        const shellProcess = createShellProcess(process);
+        manager.register('test-1', shellProcess);
+        let resolved = false;
+
+        const pending = manager.getOutput({ shell_id: 'test-1' }).then((result) => {
+          resolved = true;
+          return result;
+        });
+
+        await vi.advanceTimersByTimeAsync(29_999);
+        expect(resolved).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(1);
+        const result = await pending;
+        expect(result.success).toBe(true);
+        expect(result.exit_code).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('should return done when process exits before new output', async () => {
       const process = createMockProcess();
       manager.register('test-1', createShellProcess(process));
@@ -123,7 +148,7 @@ describe('ShellProcessManager', () => {
         stdout: ['line 1\nline 2\nline 3\n'],
       });
 
-      const result = await manager.getOutput({ filter: 'line 1', shell_id: 'test-1' });
+      const result = await manager.getOutput({ filter: 'line 1', shell_id: 'test-1', timeout: 0 });
 
       expect(result.success).toBe(true);
       expect(result.output).toContain('line 1');
@@ -134,7 +159,11 @@ describe('ShellProcessManager', () => {
       const process = createMockProcess();
       manager.register('test-1', { ...createShellProcess(process), stdout: ['output\n'] });
 
-      const result = await manager.getOutput({ filter: '[invalid(regex', shell_id: 'test-1' });
+      const result = await manager.getOutput({
+        filter: '[invalid(regex',
+        shell_id: 'test-1',
+        timeout: 0,
+      });
 
       expect(result.success).toBe(true);
       expect(result.output).toContain('output');

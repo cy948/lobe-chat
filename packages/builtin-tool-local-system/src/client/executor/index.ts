@@ -179,8 +179,12 @@ class LocalSystemExecutor extends BaseExecutor<typeof LocalSystemApiEnum> {
       // the UI/state would always say foreground even for background commands.
       // The IPC handler reads `run_in_background` itself, so we keep that field too.
       const result = await this.runtime.runCommand({
-        ...params,
         background: params.run_in_background,
+        command: params.command,
+        cwd: params.cwd,
+        description: params.description,
+        env: params.env,
+        run_in_background: params.run_in_background,
       } as any);
       return this.toResult(result);
     } catch (error) {

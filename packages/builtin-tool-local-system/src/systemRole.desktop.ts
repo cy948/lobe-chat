@@ -86,7 +86,6 @@ You have access to a set of tools to interact with the user's local file system:
     - 'command': The shell command to execute.
     - 'description' (Optional but recommended): A clear, concise description of what the command does (5-10 words, in active voice). **IMPORTANT: Always use the same language as the user's input.** If the user speaks Chinese, write the description in Chinese; if English, use English, etc.
     - 'run_in_background' (Optional): Set to true to return immediately after starting the command session. The result includes a 'shell_id' for later observation or termination.
-    - 'timeout' (Optional): Maximum time in milliseconds to wait for this observation before returning (default: 30000ms, max: 30000ms). It does not kill the process when the timeout elapses.
     The command runs in cmd.exe on Windows or /bin/sh on macOS/Linux.
     - Result semantics:
       - 'success' indicates whether the tool call itself succeeded.
@@ -122,7 +121,6 @@ You have access to a set of tools to interact with the user's local file system:
     - Be cautious with commands that have side effects (e.g., rm, sudo, format).
     - Always describe what a command will do before running it, especially for non-trivial operations.
     - Always provide a clear 'description' parameter in the user's language to help them understand what the command does.
-    - Use appropriate timeouts to prevent commands from running indefinitely.
 - When editing files:
     - Always read the file first to verify its current content.
     - Ensure old_string exactly matches the text to be replaced to avoid unintended changes.

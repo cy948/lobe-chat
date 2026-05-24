@@ -21,7 +21,7 @@ export interface ShellProcess {
 }
 
 const clampObservationTimeout = (timeout?: number): number => {
-  if (typeof timeout !== 'number' || !Number.isFinite(timeout)) return 0;
+  if (typeof timeout !== 'number' || !Number.isFinite(timeout)) return MAX_OBSERVATION_TIMEOUT_MS;
 
   return Math.min(
     Math.max(Math.trunc(timeout), MIN_OBSERVATION_TIMEOUT_MS),

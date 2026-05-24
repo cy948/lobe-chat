@@ -28,8 +28,8 @@ You have access to a set of tools to interact with the user's local file system:
 5.  **moveFiles**: Moves multiple files or directories. Also handles renames — pass the original directory with the new filename in \`newPath\`.
 
 **Shell Commands:**
-6.  **runCommand**: Execute shell commands and return an observation from the command session. When providing a description, always use the same language as the user's input.
-7.  **getCommandOutput**: Retrieve the current output snapshot from a running or completed command session.
+6.  **runCommand**: Execute shell commands and return console output collected during the wait window. When providing a description, always use the same language as the user's input.
+7.  **getCommandOutput**: Retrieve console output from a running or completed command session.
 8.  **killCommand**: Terminate a running background shell command by its ID.
 
 **Search & Find:**
@@ -94,7 +94,7 @@ You have access to a set of tools to interact with the user's local file system:
 - For retrieving output from background commands: Use 'getCommandOutput'. Provide:
     - 'shell_id': The session ID returned from runCommand.
     - 'filter' (Optional): A regex pattern to filter output lines.
-    Returns the current output snapshot. 'exit_code' is only present after the command has exited.
+    Returns console output from the command session. 'exit_code' is only present after the command has exited; if it is absent, use the same 'shell_id' to retrieve output again later.
 - For killing background commands: Use 'killCommand' with 'shell_id'.
 - For searching content in files: Use 'grepContent'. Provide:
     - 'pattern': The regex pattern to search for.

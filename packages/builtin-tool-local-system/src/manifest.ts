@@ -265,7 +265,7 @@ export const LocalSystemManifest: BuiltinToolManifest = {
     {
       defaultTimeoutMs: 60_000,
       description:
-        'Execute a shell command and return the current observation from its session. The result includes `success`, optional `shell_id`, stdout/stderr/output snapshots, and `exit_code` when the command has exited.',
+        'Execute a shell command and return console output collected during the wait window. If the command exits during that window, the result includes `exit_code`; if it is still running, the result includes `shell_id` for later output retrieval or termination.',
       humanIntervention: 'required',
       name: LocalSystemApiName.runCommand,
       parameters: {
@@ -298,7 +298,7 @@ export const LocalSystemManifest: BuiltinToolManifest = {
     {
       defaultTimeoutMs: 60_000,
       description:
-        'Retrieve the current output snapshot from a running or completed shell command session. The result includes `success`, stdout/stderr/output snapshots, and `exit_code` when the command has exited.',
+        'Retrieve console output from a running or completed shell command session. If the command has exited, the result includes `exit_code`; otherwise, use the same `shell_id` to retrieve output again later.',
       name: LocalSystemApiName.getCommandOutput,
       parameters: {
         properties: {

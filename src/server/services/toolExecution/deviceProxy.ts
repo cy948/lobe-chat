@@ -120,17 +120,21 @@ export class DeviceProxy {
     );
 
     try {
+      let callerTimeoutId: ReturnType<typeof setTimeout> | undefined;
+
       return await Promise.race([
         client.executeToolCall(
           { deviceId: params.deviceId, timeout, userId: params.userId },
           toolCall,
         ),
         new Promise<{ content: string; error?: string; success: boolean }>((resolve) => {
-          setTimeout(() => {
+          callerTimeoutId = setTimeout(() => {
             resolve(buildTimeoutResult(callerTimeout));
           }, callerTimeout);
         }),
-      ]);
+      ]).finally(() => {
+        if (callerTimeoutId) clearTimeout(callerTimeoutId);
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       log('executeToolCall: error — %s', message);

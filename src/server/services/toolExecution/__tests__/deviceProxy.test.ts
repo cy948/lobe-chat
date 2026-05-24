@@ -239,6 +239,24 @@ describe('DeviceProxy', () => {
       );
     });
 
+    it('should clear the caller timeout timer when the gateway returns first', async () => {
+      vi.useFakeTimers();
+      try {
+        mockEnv.DEVICE_GATEWAY_URL = 'https://gateway.example.com';
+        mockEnv.DEVICE_GATEWAY_SERVICE_TOKEN = 'token';
+        mockClient.executeToolCall.mockResolvedValue({ content: 'ok', success: true });
+
+        const proxy = new DeviceProxy();
+        const resultPromise = proxy.executeToolCall(params, toolCall, 45_000, 60_000);
+
+        await Promise.resolve();
+        await expect(resultPromise).resolves.toEqual({ content: 'ok', success: true });
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('should return a server-side timeout result when caller timeout elapses first', async () => {
       vi.useFakeTimers();
       try {

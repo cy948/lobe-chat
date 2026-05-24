@@ -188,7 +188,6 @@ export class LocalSystemExecutionRuntime extends ComputerRuntime {
             exitCode: raw.exit_code,
             error: raw.error,
             newOutput: raw.output,
-            running: raw.exit_code === undefined,
             success: raw.success,
           },
           success: raw.success,

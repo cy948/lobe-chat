@@ -162,7 +162,7 @@ describe('localSystemExecutor.getCommandOutput — filter forwarding', () => {
     spy.mockRestore();
   });
 
-  it('derives compatibility `running` state from `exitCode`', async () => {
+  it('preserves `exitCode` state from getCommandOutput', async () => {
     const runtime = (localSystemExecutor as any).runtime as {
       getCommandOutput: (args: any) => Promise<unknown>;
     };
@@ -170,21 +170,21 @@ describe('localSystemExecutor.getCommandOutput — filter forwarding', () => {
 
     spy.mockResolvedValueOnce({
       content: '',
-      state: { exitCode: undefined, newOutput: '', running: true, success: true },
+      state: { exitCode: undefined, newOutput: '', success: true },
       success: true,
     });
 
     const runningResult = await localSystemExecutor.getCommandOutput({ shell_id: 'sh-running' });
-    expect(runningResult.state).toMatchObject({ running: true });
+    expect(runningResult.state).toMatchObject({ exitCode: undefined });
 
     spy.mockResolvedValueOnce({
       content: '',
-      state: { exitCode: 0, newOutput: 'done', running: false, success: true },
+      state: { exitCode: 0, newOutput: 'done', success: true },
       success: true,
     });
 
     const doneResult = await localSystemExecutor.getCommandOutput({ shell_id: 'sh-done' });
-    expect(doneResult.state).toMatchObject({ running: false });
+    expect(doneResult.state).toMatchObject({ exitCode: 0 });
 
     spy.mockRestore();
   });

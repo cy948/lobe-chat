@@ -298,7 +298,7 @@ export const LocalSystemManifest: BuiltinToolManifest = {
     {
       defaultTimeoutMs: 30_000,
       description:
-        'Retrieve new console output from a running or completed shell command session. If the command has exited, the result includes `exit_code`; otherwise, use the same `shell_id` to retrieve more output later.',
+        'Retrieve output from a running or completed background shell command. Returns only new output since the last check.',
       name: LocalSystemApiName.getCommandOutput,
       parameters: {
         properties: {
@@ -308,7 +308,7 @@ export const LocalSystemManifest: BuiltinToolManifest = {
             type: 'string',
           },
           shell_id: {
-            description: 'The session ID returned by runCommand',
+            description: 'The ID of the background shell to retrieve output from',
             type: 'string',
           },
         },

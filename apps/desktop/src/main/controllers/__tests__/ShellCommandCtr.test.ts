@@ -89,7 +89,10 @@ describe('ShellCommandCtr (thin wrapper)', () => {
   });
 
   it('should delegate handleGetCommandOutput to processManager', async () => {
-    mockChildProcess.on.mockImplementation(() => mockChildProcess);
+    mockChildProcess.on.mockImplementation((event: string, callback: any) => {
+      if (event === 'exit') setTimeout(() => callback(0), 10);
+      return mockChildProcess;
+    });
     mockChildProcess.stdout.on.mockImplementation((event: string, callback: any) => {
       if (event === 'data') setTimeout(() => callback(Buffer.from('bg output\n')), 5);
       return mockChildProcess.stdout;

@@ -1,7 +1,4 @@
 import {
-  LOCAL_SYSTEM_GATEWAY_CALLER_TIMEOUT_BUFFER_MS,
-  LOCAL_SYSTEM_OBSERVATION_TIMEOUT_MS,
-  LOCAL_SYSTEM_SERVER_CALLER_TIMEOUT_BUFFER_MS,
   LocalSystemApiName,
   LocalSystemIdentifier,
   LocalSystemManifest,
@@ -9,6 +6,10 @@ import {
 
 import { deviceProxy } from '../deviceProxy';
 import { type ServerRuntimeRegistration } from './types';
+
+const LOCAL_SYSTEM_OBSERVATION_TIMEOUT_MS = 30_000;
+const LOCAL_SYSTEM_GATEWAY_CALLER_TIMEOUT_BUFFER_MS = 15_000;
+const LOCAL_SYSTEM_SERVER_CALLER_TIMEOUT_BUFFER_MS = 30_000;
 
 const normalizeObservationTimeout = (timeout: unknown): number => {
   if (typeof timeout !== 'number' || !Number.isFinite(timeout)) {

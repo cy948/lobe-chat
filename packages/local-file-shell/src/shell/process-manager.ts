@@ -5,6 +5,11 @@ import { truncateOutput } from './utils';
 
 const MAX_OBSERVATION_TIMEOUT_MS = 30_000;
 const MIN_OBSERVATION_TIMEOUT_MS = 0;
+const COMPLETED_PROCESS_RETENTION_MS = 43_200_000;
+
+interface ShellProcessManagerOptions {
+  completedProcessRetentionMs?: number;
+}
 
 interface Waiter {
   filter?: string;
@@ -13,6 +18,7 @@ interface Waiter {
 }
 
 export interface ShellProcess {
+  cleanupTimer?: ReturnType<typeof setTimeout>;
   exitCode: number | null;
   process: ChildProcess;
   stderr: string[];
@@ -31,6 +37,12 @@ const clampObservationTimeout = (timeout?: number): number => {
 
 export class ShellProcessManager {
   private processes = new Map<string, ShellProcess>();
+  private completedProcessRetentionMs: number;
+
+  constructor(options: ShellProcessManagerOptions = {}) {
+    this.completedProcessRetentionMs =
+      options.completedProcessRetentionMs ?? COMPLETED_PROCESS_RETENTION_MS;
+  }
 
   register(shellId: string, shellProcess: ShellProcess): void {
     this.processes.set(shellId, shellProcess);
@@ -42,6 +54,7 @@ export class ShellProcessManager {
 
     shellProcess.exitCode = exitCode ?? 0;
     this.flushWaiter(shellProcess);
+    this.scheduleCleanup(shellId, shellProcess);
   }
 
   async getOutput({
@@ -97,6 +110,7 @@ export class ShellProcessManager {
     try {
       shellProcess.process.kill();
       this.clearWaiter(shellProcess);
+      this.clearCleanupTimer(shellProcess);
       this.processes.delete(shell_id);
       return { success: true };
     } catch (error) {
@@ -113,6 +127,7 @@ export class ShellProcessManager {
       }
 
       this.clearWaiter(shellProcess);
+      this.clearCleanupTimer(shellProcess);
       this.processes.delete(id);
     }
   }
@@ -125,11 +140,25 @@ export class ShellProcessManager {
     shellProcess.waiter = undefined;
   }
 
+  private clearCleanupTimer(shellProcess: ShellProcess): void {
+    if (!shellProcess.cleanupTimer) return;
+    clearTimeout(shellProcess.cleanupTimer);
+    shellProcess.cleanupTimer = undefined;
+  }
+
   private flushWaiter(shellProcess: ShellProcess, filter?: string): void {
     const waiter = shellProcess.waiter;
     if (!waiter) return;
 
     waiter.resolve(this.readOutput(shellProcess, filter ?? waiter.filter));
+  }
+
+  private scheduleCleanup(shellId: string, shellProcess: ShellProcess): void {
+    this.clearCleanupTimer(shellProcess);
+    shellProcess.cleanupTimer = setTimeout(() => {
+      this.processes.delete(shellId);
+      shellProcess.cleanupTimer = undefined;
+    }, this.completedProcessRetentionMs);
   }
 
   private readOutput(shellProcess: ShellProcess, filter?: string): GetCommandOutputResult {

@@ -1,6 +1,5 @@
 import { type BuiltinToolManifest } from '@lobechat/types';
 
-import { LOCAL_SYSTEM_OBSERVATION_TIMEOUT_MS } from './constants';
 import { systemPrompt } from './systemRole';
 import { LocalSystemApiName, LocalSystemIdentifier } from './types';
 
@@ -264,7 +263,7 @@ export const LocalSystemManifest: BuiltinToolManifest = {
       },
     },
     {
-      defaultTimeoutMs: LOCAL_SYSTEM_OBSERVATION_TIMEOUT_MS,
+      defaultTimeoutMs: 30_000,
       description:
         'Execute a shell command and return the current observation from its session. The result includes `success`, optional `shell_id`, stdout/stderr/output snapshots, and `exit_code` when the command has exited.',
       humanIntervention: 'required',

@@ -161,6 +161,33 @@ describe('localSystemExecutor.getCommandOutput — filter forwarding', () => {
 
     spy.mockRestore();
   });
+
+  it('derives compatibility `running` state from `exitCode`', async () => {
+    const runtime = (localSystemExecutor as any).runtime as {
+      getCommandOutput: (args: any) => Promise<unknown>;
+    };
+    const spy = vi.spyOn(runtime, 'getCommandOutput');
+
+    spy.mockResolvedValueOnce({
+      content: '',
+      state: { exitCode: undefined, newOutput: '', running: true, success: true },
+      success: true,
+    });
+
+    const runningResult = await localSystemExecutor.getCommandOutput({ shell_id: 'sh-running' });
+    expect(runningResult.state).toMatchObject({ running: true });
+
+    spy.mockResolvedValueOnce({
+      content: '',
+      state: { exitCode: 0, newOutput: 'done', running: false, success: true },
+      success: true,
+    });
+
+    const doneResult = await localSystemExecutor.getCommandOutput({ shell_id: 'sh-done' });
+    expect(doneResult.state).toMatchObject({ running: false });
+
+    spy.mockRestore();
+  });
 });
 
 describe('localSystemExecutor.runCommand — background field normalization', () => {

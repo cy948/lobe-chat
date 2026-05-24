@@ -184,31 +184,19 @@ describe('ShellProcessManager', () => {
       expect(result.exit_code).toBe(0);
     });
 
-    it('should retain completed output until the cleanup window elapses', async () => {
-      vi.useFakeTimers();
-      try {
-        const shortRetentionManager = new ShellProcessManager({ completedProcessRetentionMs: 100 });
-        const process = createMockProcess();
-        shortRetentionManager.register('test-1', {
-          ...createShellProcess(process),
-          stdout: ['done\n'],
-        });
+    it('should retain completed output after the process exits', async () => {
+      const process = createMockProcess();
+      manager.register('test-1', {
+        ...createShellProcess(process),
+        stdout: ['done\n'],
+      });
 
-        shortRetentionManager.complete('test-1', 0);
+      manager.complete('test-1', 0);
 
-        await vi.advanceTimersByTimeAsync(99);
-        let result = await shortRetentionManager.getOutput({ shell_id: 'test-1', timeout: 0 });
-        expect(result.success).toBe(true);
-        expect(result.exit_code).toBe(0);
-        expect(result.stdout).toContain('done');
-
-        await vi.advanceTimersByTimeAsync(1);
-        result = await shortRetentionManager.getOutput({ shell_id: 'test-1', timeout: 0 });
-        expect(result.success).toBe(false);
-        expect(result.error).toContain('not found');
-      } finally {
-        vi.useRealTimers();
-      }
+      const result = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
+      expect(result.success).toBe(true);
+      expect(result.exit_code).toBe(0);
+      expect(result.stdout).toContain('done');
     });
   });
 

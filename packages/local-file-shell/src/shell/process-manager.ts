@@ -5,11 +5,6 @@ import { truncateOutput } from './utils';
 
 const MAX_OBSERVATION_TIMEOUT_MS = 30_000;
 const MIN_OBSERVATION_TIMEOUT_MS = 0;
-const COMPLETED_PROCESS_RETENTION_MS = 43_200_000;
-
-interface ShellProcessManagerOptions {
-  completedProcessRetentionMs?: number;
-}
 
 interface Waiter {
   resolve: () => void;
@@ -17,7 +12,6 @@ interface Waiter {
 }
 
 export interface ShellProcess {
-  cleanupTimer?: ReturnType<typeof setTimeout>;
   exitCode: number | null;
   lastReadStderr: number;
   lastReadStdout: number;
@@ -29,12 +23,6 @@ export interface ShellProcess {
 
 export class ShellProcessManager {
   private processes = new Map<string, ShellProcess>();
-  private completedProcessRetentionMs: number;
-
-  constructor(options: ShellProcessManagerOptions = {}) {
-    this.completedProcessRetentionMs =
-      options.completedProcessRetentionMs ?? COMPLETED_PROCESS_RETENTION_MS;
-  }
 
   register(shellId: string, shellProcess: ShellProcess): void {
     this.processes.set(shellId, shellProcess);
@@ -46,11 +34,7 @@ export class ShellProcessManager {
 
     shellProcess.exitCode = exitCode ?? 0;
     shellProcess.waiter?.resolve();
-    if (shellProcess.cleanupTimer) clearTimeout(shellProcess.cleanupTimer);
-    shellProcess.cleanupTimer = setTimeout(() => {
-      this.processes.delete(shellId);
-      shellProcess.cleanupTimer = undefined;
-    }, this.completedProcessRetentionMs);
+    // TODO: Decide completed shell session cleanup policy separately.
   }
 
   async getOutput({
@@ -139,7 +123,6 @@ export class ShellProcessManager {
     try {
       shellProcess.process.kill();
       if (shellProcess.waiter?.timer) clearTimeout(shellProcess.waiter.timer);
-      if (shellProcess.cleanupTimer) clearTimeout(shellProcess.cleanupTimer);
       this.processes.delete(shell_id);
       return { success: true };
     } catch (error) {
@@ -155,7 +138,6 @@ export class ShellProcessManager {
         // Ignore
       }
       if (sp.waiter?.timer) clearTimeout(sp.waiter.timer);
-      if (sp.cleanupTimer) clearTimeout(sp.cleanupTimer);
       this.processes.delete(id);
     }
   }

@@ -13,12 +13,6 @@ const log = debug('lobe-server:device-proxy');
 
 export type { DeviceAttachment, DeviceStatusResult, DeviceSystemInfo };
 
-const buildTimeoutResult = (timeout: number) => ({
-  content: `Device tool call timed out (${timeout / 1000}s)`,
-  error: 'TIMEOUT',
-  success: false,
-});
-
 export class DeviceProxy {
   private client: GatewayHttpClient | null = null;
 
@@ -100,7 +94,6 @@ export class DeviceProxy {
     params: { deviceId: string; userId: string },
     toolCall: { apiName: string; arguments: string; identifier: string },
     timeout = 30_000,
-    callerTimeout = timeout,
   ): Promise<{ content: string; error?: string; success: boolean }> {
     const client = this.getClient();
     if (!client) {
@@ -120,21 +113,10 @@ export class DeviceProxy {
     );
 
     try {
-      let callerTimeoutId: ReturnType<typeof setTimeout> | undefined;
-
-      return await Promise.race([
-        client.executeToolCall(
-          { deviceId: params.deviceId, timeout, userId: params.userId },
-          toolCall,
-        ),
-        new Promise<{ content: string; error?: string; success: boolean }>((resolve) => {
-          callerTimeoutId = setTimeout(() => {
-            resolve(buildTimeoutResult(callerTimeout));
-          }, callerTimeout);
-        }),
-      ]).finally(() => {
-        if (callerTimeoutId) clearTimeout(callerTimeoutId);
-      });
+      return await client.executeToolCall(
+        { deviceId: params.deviceId, timeout, userId: params.userId },
+        toolCall,
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       log('executeToolCall: error — %s', message);

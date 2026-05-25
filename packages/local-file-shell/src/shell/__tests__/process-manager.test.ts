@@ -7,7 +7,13 @@ import { type ShellProcess, ShellProcessManager } from '../process-manager';
 
 function createMockProcess(exitCode: number | null = null): ChildProcess {
   const process = new EventEmitter() as ChildProcess;
-  process.exitCode = exitCode;
+  // Node types expose `exitCode` as readonly; make the test double writable so
+  // we can simulate the child process exiting.
+  Object.defineProperty(process, 'exitCode', {
+    configurable: true,
+    value: exitCode,
+    writable: true,
+  });
   process.kill = vi.fn() as unknown as ChildProcess['kill'];
   return process;
 }

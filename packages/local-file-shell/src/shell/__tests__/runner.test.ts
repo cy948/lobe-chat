@@ -20,6 +20,17 @@ describe('runCommand', () => {
       expect(result.shell_id).toBeDefined();
     });
 
+    it('should assign readable incremental shell IDs within a manager', async () => {
+      const localManager = new ShellProcessManager();
+
+      const first = await runCommand({ command: 'echo first' }, { processManager: localManager });
+      const second = await runCommand({ command: 'echo second' }, { processManager: localManager });
+
+      expect(first.shell_id).toBe('sh-1');
+      expect(second.shell_id).toBe('sh-2');
+      localManager.cleanupAll();
+    });
+
     it('should capture stderr', async () => {
       const result = await runCommand({ command: 'echo error >&2' }, { processManager });
 

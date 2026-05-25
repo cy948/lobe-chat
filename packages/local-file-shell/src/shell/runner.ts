@@ -1,5 +1,4 @@
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
 
 import type { RunCommandParams, RunCommandResult } from '../types';
 import type { ShellProcess, ShellProcessManager } from './process-manager';
@@ -36,7 +35,7 @@ export async function runCommand(
   const childEnv = extraEnv ? { ...process.env, ...extraEnv } : process.env;
 
   try {
-    const shellId = randomUUID();
+    const shellId = processManager.createShellId();
     const childProcess = spawn(shellConfig.cmd, shellConfig.args, {
       cwd,
       env: childEnv,

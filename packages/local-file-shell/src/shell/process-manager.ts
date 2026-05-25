@@ -13,7 +13,13 @@ export interface ShellProcess {
 }
 
 export class ShellProcessManager {
+  private nextShellId = 1;
+
   private processes = new Map<string, ShellProcess>();
+
+  createShellId(): string {
+    return `sh-${this.nextShellId++}`;
+  }
 
   register(shellId: string, shellProcess: ShellProcess): void {
     this.processes.set(shellId, shellProcess);

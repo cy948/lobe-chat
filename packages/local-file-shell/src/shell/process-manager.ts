@@ -3,6 +3,9 @@ import type { ChildProcess } from 'node:child_process';
 import type { GetCommandOutputParams, GetCommandOutputResult, KillCommandResult } from '../types';
 import { truncateOutput } from './utils';
 
+const DEFAULT_OBSERVATION_TIMEOUT_MS = 30_000;
+const MAX_OBSERVATION_TIMEOUT_MS = 120_000;
+
 export interface ShellProcess {
   exitCode: number | null;
   lastReadStderr: number;
@@ -47,8 +50,8 @@ export class ShellProcessManager {
     if (exitCode === null) {
       const waitTimeout =
         typeof timeout === 'number' && Number.isFinite(timeout)
-          ? Math.min(Math.max(Math.trunc(timeout), 0), 30_000)
-          : 30_000;
+          ? Math.min(Math.max(Math.trunc(timeout), 0), MAX_OBSERVATION_TIMEOUT_MS)
+          : DEFAULT_OBSERVATION_TIMEOUT_MS;
 
       if (waitTimeout > 0) {
         let timer: ReturnType<typeof setTimeout> | undefined;

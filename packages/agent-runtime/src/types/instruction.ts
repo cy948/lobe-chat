@@ -277,8 +277,6 @@ export interface AgentInstructionResolveBlockedTools extends AgentInstructionBas
   payload: {
     /** Parent message ID (assistant message) */
     parentMessageId: string;
-    /** Reason for the block */
-    reason?: string;
     /** Tool calls that were blocked and need tool results */
     toolsCalling: ChatToolPayload[];
   };

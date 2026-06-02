@@ -2666,7 +2666,6 @@ describe('GeneralChatAgent', () => {
         {
           payload: {
             parentMessageId: 'msg-1',
-            reason: 'blocked_by_security_policy',
             toolsCalling: [blockedTool],
           },
           type: 'resolve_blocked_tools',
@@ -2715,7 +2714,6 @@ describe('GeneralChatAgent', () => {
         {
           payload: {
             parentMessageId: 'msg-1',
-            reason: 'blocked_by_security_policy',
             toolsCalling: [toolCall],
           },
           type: 'resolve_blocked_tools',
@@ -2951,7 +2949,6 @@ describe('GeneralChatAgent', () => {
         {
           payload: {
             parentMessageId: 'msg-1',
-            reason: 'blocked_by_security_policy',
             toolsCalling: [toolCall],
           },
           type: 'resolve_blocked_tools',
@@ -3003,7 +3000,6 @@ describe('GeneralChatAgent', () => {
         {
           payload: {
             parentMessageId: 'msg-1',
-            reason: 'blocked_by_security_policy',
             toolsCalling: [alwaysTool],
           },
           type: 'resolve_blocked_tools',
@@ -3051,7 +3047,6 @@ describe('GeneralChatAgent', () => {
         {
           payload: {
             parentMessageId: 'msg-1',
-            reason: 'blocked_by_security_policy',
             toolsCalling: [blacklistedTool],
           },
           type: 'resolve_blocked_tools',
@@ -3126,7 +3121,6 @@ describe('GeneralChatAgent', () => {
         {
           payload: {
             parentMessageId: 'msg-1',
-            reason: 'blocked_by_security_policy',
             toolsCalling: [safeTool, blacklistedTool, alwaysTool],
           },
           type: 'resolve_blocked_tools',
@@ -3179,7 +3173,6 @@ describe('GeneralChatAgent', () => {
         {
           payload: {
             parentMessageId: 'msg-1',
-            reason: 'blocked_by_security_policy',
             toolsCalling: [tool1, tool2],
           },
           type: 'resolve_blocked_tools',

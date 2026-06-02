@@ -3269,7 +3269,6 @@ describe('RuntimeExecutors', () => {
       const instruction = {
         payload: {
           parentMessageId: 'assistant-msg-123',
-          reason: 'blocked_by_security_policy',
           toolsCalling: [
             {
               apiName: 'bash',
@@ -3289,11 +3288,11 @@ describe('RuntimeExecutors', () => {
       expect(mockMessageModel.create).toHaveBeenCalledWith(
         expect.objectContaining({
           agentId: 'agent-123',
-          content: 'Tool call was blocked: blocked_by_security_policy',
+          content: 'Blocked by security/privacy.',
           parentId: 'assistant-msg-123',
-          pluginError: 'blocked_by_security_policy',
+          pluginError: 'blocked_by_security_privacy',
           pluginIntervention: {
-            rejectedReason: 'blocked_by_security_policy',
+            rejectedReason: 'blocked_by_security_privacy',
             status: 'rejected',
           },
           role: 'tool',

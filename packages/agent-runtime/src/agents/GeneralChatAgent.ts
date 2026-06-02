@@ -510,7 +510,6 @@ export class GeneralChatAgent implements Agent {
               instructions.push({
                 payload: {
                   parentMessageId,
-                  reason: 'blocked_by_security_policy',
                   toolsCalling: toolsNeedingIntervention,
                 },
                 type: 'resolve_blocked_tools',

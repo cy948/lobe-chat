@@ -42,6 +42,7 @@ export class AgentRuntime {
       request_human_approve: this.createHumanApproveExecutor(),
       request_human_prompt: this.createHumanPromptExecutor(),
       request_human_select: this.createHumanSelectExecutor(),
+      resolve_blocked_tools: this.createResolveBlockedToolsExecutor(),
       // Config executors override built-in
       ...config.executors,
       // Agent provided executors have highest priority
@@ -568,6 +569,50 @@ export class AgentRuntime {
       };
 
       return { events, newState, nextContext };
+    };
+  }
+
+  /** Create blocked tools executor */
+  private createResolveBlockedToolsExecutor(): InstructionExecutor {
+    return async (instruction, state) => {
+      const { payload } = instruction as Extract<
+        AgentInstruction,
+        { type: 'resolve_blocked_tools' }
+      >;
+      const reason = payload.reason ?? 'blocked_by_security_policy';
+      const newState = structuredClone(state);
+      const events: AgentEvent[] = [];
+
+      for (const toolCalling of payload.toolsCalling) {
+        const result = {
+          content: `Tool call was blocked: ${reason}`,
+          success: false,
+        };
+
+        newState.messages.push({
+          content: result.content,
+          role: 'tool',
+          tool_call_id: toolCalling.id,
+        });
+        events.push({ id: toolCalling.id, result, type: 'tool_result' });
+      }
+
+      newState.lastModified = new Date().toISOString();
+      newState.status = 'running';
+
+      return {
+        events,
+        newState,
+        nextContext: {
+          operationId: this.operationId,
+          payload: {
+            parentMessageId: payload.parentMessageId,
+            toolCount: payload.toolsCalling.length,
+          },
+          phase: 'tools_batch_result',
+          session: this.createSessionContext(newState),
+        },
+      };
     };
   }
 

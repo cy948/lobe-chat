@@ -20,7 +20,6 @@ export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
-    riskLevel: 'high',
   },
   {
     description: 'securityBlacklist.rmRootDir',
@@ -30,7 +29,6 @@ export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
-    riskLevel: 'high',
   },
   {
     description: 'securityBlacklist.rmForceRecursive',
@@ -40,7 +38,6 @@ export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
-    riskLevel: 'high',
   },
 
   // ==================== System Configuration Dangers ====================
@@ -72,7 +69,6 @@ export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
-    riskLevel: 'high',
   },
   {
     description: 'securityBlacklist.ddDiskWrite',
@@ -82,7 +78,6 @@ export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
-    riskLevel: 'high',
   },
   {
     description: 'securityBlacklist.formatPartition',
@@ -92,7 +87,6 @@ export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
-    riskLevel: 'high',
   },
 
   // ==================== Network & Remote Access Dangers ====================
@@ -104,7 +98,6 @@ export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
-    riskLevel: 'high',
   },
   {
     description: 'securityBlacklist.sshConfig',
@@ -125,7 +118,6 @@ export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
-    riskLevel: 'high',
   },
 
   // ==================== Kernel & System Core Dangers ====================
@@ -137,7 +129,6 @@ export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
-    riskLevel: 'high',
   },
   {
     description: 'securityBlacklist.directMemoryAccess',
@@ -147,7 +138,6 @@ export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
-    riskLevel: 'high',
   },
 
   // ==================== Privilege Escalation Dangers ====================
@@ -159,7 +149,6 @@ export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
-    riskLevel: 'high',
   },
   {
     description: 'securityBlacklist.suidShells',
@@ -169,7 +158,6 @@ export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
-    riskLevel: 'high',
   },
 
   // ==================== Sensitive Information Leakage ====================

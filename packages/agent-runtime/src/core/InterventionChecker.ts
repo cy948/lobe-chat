@@ -21,11 +21,6 @@ export interface SecurityCheckResult {
    * Reason for blocking (if blocked)
    */
   reason?: string;
-
-  /**
-   * Risk level of the matched rule. Defaults to 'medium' when omitted.
-   */
-  riskLevel?: SecurityBlacklistRule['riskLevel'];
 }
 
 /**
@@ -46,13 +41,10 @@ export class InterventionChecker {
     toolArgs: Record<string, any> = {},
   ): SecurityCheckResult {
     for (const rule of securityBlacklist) {
-      const riskLevel = rule.riskLevel ?? 'medium';
-
       if (this.matchesSecurityRule(rule, toolArgs)) {
         return {
           blocked: true,
           reason: rule.description,
-          riskLevel,
         };
       }
     }

@@ -1179,7 +1179,6 @@ describe('AgentRuntime', () => {
             return {
               payload: {
                 parentMessageId: 'assistant-1',
-                reason: 'blocked_by_security_policy',
                 toolsCalling: [
                   {
                     apiName: 'bash',
@@ -1211,7 +1210,7 @@ describe('AgentRuntime', () => {
         {
           id: 'call_blocked',
           result: {
-            content: 'Tool call was blocked: blocked_by_security_policy',
+            content: 'Blocked by security/privacy.',
             success: false,
           },
           type: 'tool_result',

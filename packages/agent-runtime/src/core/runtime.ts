@@ -579,13 +579,12 @@ export class AgentRuntime {
         AgentInstruction,
         { type: 'resolve_blocked_tools' }
       >;
-      const reason = payload.reason ?? 'blocked_by_security_policy';
       const newState = structuredClone(state);
       const events: AgentEvent[] = [];
 
       for (const toolCalling of payload.toolsCalling) {
         const result = {
-          content: `Tool call was blocked: ${reason}`,
+          content: 'Blocked by security/privacy.',
           success: false,
         };
 

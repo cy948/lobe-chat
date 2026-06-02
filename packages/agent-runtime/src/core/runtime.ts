@@ -1,7 +1,6 @@
 import type { ChatToolPayload } from '@lobechat/types';
 import pMap from 'p-map';
 
-import { DEFAULT_SECURITY_BLACKLIST } from '../audit';
 import type {
   Agent,
   AgentEvent,
@@ -18,7 +17,6 @@ import type {
   ToolsCalling,
   Usage,
 } from '../types';
-import { InterventionChecker } from './InterventionChecker';
 
 /**
  * Simplified Agent Runtime - The "Engine" that executes instructions from an "Agent" (Brain).
@@ -521,25 +519,10 @@ export class AgentRuntime {
       const toolArgs = toolCall.arguments;
       const toolId = toolCall.id;
 
-      const parsedArgs = JSON.parse(toolArgs);
-      const securityCheck = InterventionChecker.checkSecurityBlacklist(
-        state.securityBlacklist ?? DEFAULT_SECURITY_BLACKLIST,
-        parsedArgs,
-      );
+      const toolResult = payload.result;
 
-      if (
-        state.userInterventionConfig?.approvalMode === 'headless' &&
-        securityCheck.blocked &&
-        securityCheck.riskLevel === 'high'
-      ) {
-        const result = {
-          content: 'Blocked by security privacy.',
-          error: {
-            kind: 'replan',
-            message: 'Blocked by security privacy.',
-          },
-          success: false,
-        };
+      if (toolResult) {
+        const result = toolResult;
 
         newState.messages.push({
           content: JSON.stringify(result),
@@ -566,7 +549,8 @@ export class AgentRuntime {
       const handler = tools[toolName];
       if (!handler) throw new Error(`Tool not found: ${toolName}`);
 
-      const result = await handler(parsedArgs);
+      const args = JSON.parse(toolArgs);
+      const result = await handler(args);
 
       newState.messages.push({
         content: JSON.stringify(result),

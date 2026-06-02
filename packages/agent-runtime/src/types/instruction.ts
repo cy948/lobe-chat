@@ -247,6 +247,7 @@ export interface AgentInstructionCallTool extends AgentInstructionBase {
      * new tool message; instead it updates the existing one referenced by
      * `parentMessageId` with the tool result.
      */
+    result?: { content: string; error?: unknown; success: false };
     skipCreateToolMessage?: boolean;
     toolCalling: ChatToolPayload;
   };

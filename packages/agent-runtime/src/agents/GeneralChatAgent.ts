@@ -154,13 +154,6 @@ export class GeneralChatAgent implements Agent {
         // Invalid JSON, treat as empty args
       }
 
-      // Headless mode is fully automated for async tasks and CLI usage.
-      // Skip intervention audits entirely and execute tool calls directly.
-      if (approvalMode === 'headless') {
-        toolsToExecute.push(toolCalling);
-        continue;
-      }
-
       // Phase 1: Run global resolvers (e.g., security blacklist)
       let globalBlocked = false;
       let globalPolicy: HumanInterventionPolicy = 'always';
@@ -217,8 +210,8 @@ export class GeneralChatAgent implements Agent {
         continue;
       }
 
-      // Phase 5.5: Unknown tool guard — require intervention for tools not in manifest
-      // Only applies to manual/allow-list modes; auto-run users accept the risk
+      // Phase 5.5: Unknown tool guard — require intervention for tools not in manifest.
+      // Auto-run users accept the risk; headless mode converts this to a blocked tool result.
       if (!manifest) {
         console.warn(
           `[InterventionGuard] Unknown tool "${identifier}/${apiName}" not found in toolManifestMap (keys: ${Object.keys(state.toolManifestMap ?? {}).join(', ')}), requiring intervention`,
@@ -510,14 +503,25 @@ export class GeneralChatAgent implements Agent {
             }
           }
 
-          // Request approval for tools that need intervention
-          // Runtime will execute this after safe tools and pause with status='waiting_for_human'
+          // Request approval for tools that need intervention.
+          // Headless mode cannot wait for approval, so it turns them into blocked tool results.
           if (toolsNeedingIntervention.length > 0) {
-            instructions.push({
-              pendingToolsCalling: toolsNeedingIntervention,
-              reason: 'human_intervention_required',
-              type: 'request_human_approve',
-            });
+            if (state.userInterventionConfig?.approvalMode === 'headless') {
+              instructions.push({
+                payload: {
+                  parentMessageId,
+                  reason: 'blocked_by_security_policy',
+                  toolsCalling: toolsNeedingIntervention,
+                },
+                type: 'resolve_blocked_tools',
+              });
+            } else {
+              instructions.push({
+                pendingToolsCalling: toolsNeedingIntervention,
+                reason: 'human_intervention_required',
+                type: 'request_human_approve',
+              });
+            }
           }
 
           return instructions;

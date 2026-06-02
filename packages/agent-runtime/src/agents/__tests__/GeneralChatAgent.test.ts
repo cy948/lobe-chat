@@ -2625,7 +2625,7 @@ describe('GeneralChatAgent', () => {
       ]);
     });
 
-    it('should execute tool in headless mode when global resolver with policy always triggers', async () => {
+    it('should resolve blocked tool in headless mode when global resolver with policy always triggers', async () => {
       const customResolver: GlobalInterventionAuditConfig = {
         type: 'customBlocker',
         policy: 'always',
@@ -2664,13 +2664,17 @@ describe('GeneralChatAgent', () => {
 
       expect(result).toEqual([
         {
-          type: 'call_tool',
-          payload: { parentMessageId: 'msg-1', toolCalling: blockedTool },
+          payload: {
+            parentMessageId: 'msg-1',
+            reason: 'blocked_by_security_policy',
+            toolsCalling: [blockedTool],
+          },
+          type: 'resolve_blocked_tools',
         },
       ]);
     });
 
-    it('should execute tool in headless mode when global resolver with policy required triggers', async () => {
+    it('should resolve tool in headless mode when global resolver with policy required triggers', async () => {
       const customResolver: GlobalInterventionAuditConfig = {
         type: 'softBlocker',
         policy: 'required',
@@ -2707,11 +2711,14 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      // 'required' policy is overridable → headless mode executes directly
       expect(result).toEqual([
         {
-          type: 'call_tool',
-          payload: { parentMessageId: 'msg-1', toolCalling: toolCall },
+          payload: {
+            parentMessageId: 'msg-1',
+            reason: 'blocked_by_security_policy',
+            toolsCalling: [toolCall],
+          },
+          type: 'resolve_blocked_tools',
         },
       ]);
     });
@@ -2905,7 +2912,7 @@ describe('GeneralChatAgent', () => {
   });
 
   describe('headless mode (for async tasks)', () => {
-    it('should execute all tools directly in headless mode including those requiring approval', async () => {
+    it('should resolve tools requiring approval in headless mode', async () => {
       const agent = new GeneralChatAgent({
         agentConfig: { maxSteps: 100 },
         operationId: 'test-session',
@@ -2940,19 +2947,19 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      // Should execute directly in headless mode
       expect(result).toEqual([
         {
-          type: 'call_tool',
           payload: {
             parentMessageId: 'msg-1',
-            toolCalling: toolCall,
+            reason: 'blocked_by_security_policy',
+            toolsCalling: [toolCall],
           },
+          type: 'resolve_blocked_tools',
         },
       ]);
     });
 
-    it('should execute tools with "always" policy in headless mode', async () => {
+    it('should resolve tools with "always" policy in headless mode', async () => {
       const agent = new GeneralChatAgent({
         agentConfig: { maxSteps: 100 },
         operationId: 'test-session',
@@ -2992,19 +2999,19 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      // Should execute directly in headless mode, even for 'always' policy
       expect(result).toEqual([
         {
-          type: 'call_tool',
           payload: {
             parentMessageId: 'msg-1',
-            toolCalling: alwaysTool,
+            reason: 'blocked_by_security_policy',
+            toolsCalling: [alwaysTool],
           },
+          type: 'resolve_blocked_tools',
         },
       ]);
     });
 
-    it('should execute security blacklisted tools in headless mode', async () => {
+    it('should resolve security blacklisted tools in headless mode', async () => {
       const agent = new GeneralChatAgent({
         agentConfig: { maxSteps: 100 },
         operationId: 'test-session',
@@ -3042,16 +3049,17 @@ describe('GeneralChatAgent', () => {
 
       expect(result).toEqual([
         {
-          type: 'call_tool',
           payload: {
             parentMessageId: 'msg-1',
-            toolCalling: blacklistedTool,
+            reason: 'blocked_by_security_policy',
+            toolsCalling: [blacklistedTool],
           },
+          type: 'resolve_blocked_tools',
         },
       ]);
     });
 
-    it('should handle mixed tools in headless mode - execute all tools', async () => {
+    it('should resolve all tools needing approval in headless mode', async () => {
       const agent = new GeneralChatAgent({
         agentConfig: { maxSteps: 100 },
         operationId: 'test-session',
@@ -3116,16 +3124,17 @@ describe('GeneralChatAgent', () => {
 
       expect(result).toEqual([
         {
-          type: 'call_tools_batch',
           payload: {
             parentMessageId: 'msg-1',
+            reason: 'blocked_by_security_policy',
             toolsCalling: [safeTool, blacklistedTool, alwaysTool],
           },
+          type: 'resolve_blocked_tools',
         },
       ]);
     });
 
-    it('should execute multiple tools as batch in headless mode', async () => {
+    it('should resolve multiple tools requiring approval in headless mode', async () => {
       const agent = new GeneralChatAgent({
         agentConfig: { maxSteps: 100 },
         operationId: 'test-session',
@@ -3166,14 +3175,14 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      // Should execute both tools as batch in headless mode
       expect(result).toEqual([
         {
-          type: 'call_tools_batch',
           payload: {
             parentMessageId: 'msg-1',
+            reason: 'blocked_by_security_policy',
             toolsCalling: [tool1, tool2],
           },
+          type: 'resolve_blocked_tools',
         },
       ]);
     });

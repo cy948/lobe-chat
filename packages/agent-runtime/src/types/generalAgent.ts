@@ -25,6 +25,7 @@ export interface GeneralAgentCallLLMResultPayload {
 
 export interface GeneralAgentCallingToolInstructionPayload {
   parentMessageId: string;
+  result?: { content: string; error?: unknown; success: false };
   skipCreateToolMessage?: boolean;
   toolCalling: ChatToolPayload;
 }

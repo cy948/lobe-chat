@@ -7,11 +7,9 @@ import {
   type AgentRuntimeContext,
   type AgentState,
   type CallLLMPayload,
-  DEFAULT_SECURITY_BLACKLIST,
   type GeneralAgentCallLLMResultPayload,
   type GeneralAgentCompressionResultPayload,
   type InstructionExecutor,
-  InterventionChecker,
   UsageCounter,
 } from '@lobechat/agent-runtime';
 import { LobeActivatorIdentifier } from '@lobechat/builtin-tool-activator';
@@ -119,15 +117,6 @@ const TOOL_MAX_RETRIES = 2;
 const LLM_MAX_RETRIES = 5;
 const LLM_RETRY_BASE_DELAY_MS = 1000;
 const LLM_RETRY_MAX_DELAY_MS = 30_000;
-const HEADLESS_SECURITY_BLOCK_RESULT = {
-  content: 'Blocked by security privacy.',
-  error: {
-    kind: 'replan',
-    message: 'Blocked by security privacy.',
-  },
-  executionTime: 0,
-  success: false,
-} as const satisfies ToolExecutionResultResponse;
 
 /**
  * Retry budget for empty completions, applied independently of
@@ -1923,17 +1912,9 @@ export const createRuntimeExecutors = (
 
     try {
       try {
-        const securityCheck = InterventionChecker.checkSecurityBlacklist(
-          state.securityBlacklist ?? DEFAULT_SECURITY_BLACKLIST,
-          parsedArgs,
-        );
+        const toolResult = payload.result;
 
-        const shouldBlockHighRiskHeadless =
-          state.userInterventionConfig?.approvalMode === 'headless' &&
-          securityCheck.blocked &&
-          securityCheck.riskLevel === 'high';
-
-        if (toolSource === 'client' && !shouldBlockHighRiskHeadless) {
+        if (toolSource === 'client' && !toolResult) {
           log(`[${operationLogId}] Client function tool detected: ${toolName}, pausing for client`);
 
           // Publish tool call info so streaming can emit function_call events
@@ -2042,10 +2023,15 @@ export const createRuntimeExecutors = (
           });
         }
 
-        if (shouldBlockHighRiskHeadless) {
+        if (toolResult) {
           execution = {
             attempts: 0,
-            result: HEADLESS_SECURITY_BLOCK_RESULT,
+            result: {
+              content: toolResult.content,
+              error: toolResult.error,
+              executionTime: 0,
+              success: false,
+            },
           };
         } else if (hookResult?.isMocked) {
           log(`[${operationLogId}] Tool ${toolName} mocked by beforeToolCall hook`);
@@ -2577,21 +2563,7 @@ export const createRuntimeExecutors = (
             }
 
             let execution: { result: ToolExecutionResultResponse; attempts: number };
-            const batchSecurityCheck = InterventionChecker.checkSecurityBlacklist(
-              state.securityBlacklist ?? DEFAULT_SECURITY_BLACKLIST,
-              batchParsedArgs,
-            );
-
-            if (
-              state.userInterventionConfig?.approvalMode === 'headless' &&
-              batchSecurityCheck.blocked &&
-              batchSecurityCheck.riskLevel === 'high'
-            ) {
-              execution = {
-                attempts: 0,
-                result: HEADLESS_SECURITY_BLOCK_RESULT,
-              };
-            } else if (batchHookResult?.isMocked) {
+            if (batchHookResult?.isMocked) {
               log(`[${operationLogId}] Tool ${toolName} mocked by beforeToolCall hook`);
               batchToolCallMocked = true;
               execution = {

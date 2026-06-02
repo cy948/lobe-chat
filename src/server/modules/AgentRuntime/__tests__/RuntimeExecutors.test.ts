@@ -1759,6 +1759,47 @@ describe('RuntimeExecutors', () => {
       expect(result.nextContext!.phase).toBe('tool_result');
     });
 
+    it('should persist mocked rejected tool result without executing the tool', async () => {
+      const toolMessageId = 'tool-msg-rejected';
+      mockMessageModel.create.mockResolvedValue({ id: toolMessageId });
+
+      const executors = createRuntimeExecutors(ctx);
+      const state = createMockState();
+
+      const instruction = {
+        payload: {
+          result: {
+            content: 'Blocked by security privacy.',
+            error: { kind: 'replan', message: 'Blocked by security privacy.' },
+            success: false,
+          },
+          parentMessageId: 'assistant-msg-123',
+          toolCalling: {
+            apiName: 'bash',
+            arguments: '{"command":"rm -rf /"}',
+            id: 'tool-call-rejected',
+            identifier: 'bash',
+            type: 'builtin' as const,
+          },
+        },
+        type: 'call_tool' as const,
+      };
+
+      const result = await executors.call_tool!(instruction, state);
+
+      expect(mockToolExecutionService.executeTool).not.toHaveBeenCalled();
+      expect(mockMessageModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: 'Blocked by security privacy.',
+          pluginError: { kind: 'replan', message: 'Blocked by security privacy.' },
+          tool_call_id: 'tool-call-rejected',
+        }),
+      );
+      expect(result.nextContext!.phase).toBe('tool_result');
+      expect((result.nextContext!.payload as any).parentMessageId).toBe(toolMessageId);
+      expect((result.nextContext!.payload as any).data.error.kind).toBe('replan');
+    });
+
     it('should re-throw when messageModel.create fails (no silent swallow)', async () => {
       // Before we silently swallowed this error and returned
       // `parentMessageId: undefined`, which let the operation continue into

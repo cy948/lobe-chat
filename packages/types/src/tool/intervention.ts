@@ -164,11 +164,22 @@ export interface SecurityBlacklistRule {
    * Same format as HumanInterventionRule.match
    */
   match: Record<string, ArgumentMatcher>;
+
+  /**
+   * Risk level for headless enforcement.
+   * Defaults to 'medium' when omitted.
+   */
+  riskLevel?: SecurityBlacklistRiskLevel;
 }
+
+export const SecurityBlacklistRiskLevelSchema = z.enum(['low', 'medium', 'high']);
+
+export type SecurityBlacklistRiskLevel = z.infer<typeof SecurityBlacklistRiskLevelSchema>;
 
 export const SecurityBlacklistRuleSchema = z.object({
   description: z.string(),
   match: z.record(z.string(), ArgumentMatcherSchema),
+  riskLevel: SecurityBlacklistRiskLevelSchema.optional(),
 });
 
 /**

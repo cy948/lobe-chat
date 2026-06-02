@@ -1912,7 +1912,9 @@ export const createRuntimeExecutors = (
 
     try {
       try {
-        if (toolSource === 'client') {
+        const toolResult = payload.result;
+
+        if (toolSource === 'client' && !toolResult) {
           log(`[${operationLogId}] Client function tool detected: ${toolName}, pausing for client`);
 
           // Publish tool call info so streaming can emit function_call events
@@ -2021,7 +2023,17 @@ export const createRuntimeExecutors = (
           });
         }
 
-        if (hookResult?.isMocked) {
+        if (toolResult) {
+          execution = {
+            attempts: 0,
+            result: {
+              content: toolResult.content,
+              error: toolResult.error,
+              executionTime: 0,
+              success: false,
+            },
+          };
+        } else if (hookResult?.isMocked) {
           log(`[${operationLogId}] Tool ${toolName} mocked by beforeToolCall hook`);
           toolCallMocked = true;
           execution = {

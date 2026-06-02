@@ -120,14 +120,15 @@ export class GeneralChatAgent implements Agent {
   /**
    * Check if tool calls need human intervention
    * Combines user's global config with tool's own config
-   * Returns [toolsNeedingIntervention, toolsToExecute]
+   * Returns [toolsNeedingIntervention, toolsToExecute, toolsRejectedForReplan]
    */
   private async checkInterventionNeeded(
     toolsCalling: ChatToolPayload[],
     state: AgentState,
-  ): Promise<[ChatToolPayload[], ChatToolPayload[]]> {
+  ): Promise<[ChatToolPayload[], ChatToolPayload[], ChatToolPayload[]]> {
     const toolsNeedingIntervention: ChatToolPayload[] = [];
     const toolsToExecute: ChatToolPayload[] = [];
+    const toolsRejectedForReplan: ChatToolPayload[] = [];
 
     // Get security blacklist for resolver metadata
     const securityBlacklist = state.securityBlacklist ?? DEFAULT_SECURITY_BLACKLIST;
@@ -154,6 +155,23 @@ export class GeneralChatAgent implements Agent {
         // Invalid JSON, treat as empty args
       }
 
+      // Headless mode is fully automated for async tasks and CLI usage.
+      // It bypasses regular audit checks, but still enforces high-risk
+      // blacklist rules as a last-line guard for destructive operations.
+      if (approvalMode === 'headless') {
+        const securityCheck = InterventionChecker.checkSecurityBlacklist(
+          securityBlacklist,
+          toolArgs,
+        );
+
+        if (securityCheck.blocked && securityCheck.riskLevel === 'high') {
+          toolsRejectedForReplan.push(toolCalling);
+        } else {
+          toolsToExecute.push(toolCalling);
+        }
+        continue;
+      }
+
       // Phase 1: Run global resolvers (e.g., security blacklist)
       let globalBlocked = false;
       let globalPolicy: HumanInterventionPolicy = 'always';
@@ -164,17 +182,6 @@ export class GeneralChatAgent implements Agent {
           globalPolicy = globalResolver.policy ?? 'always';
           break;
         }
-      }
-
-      // Phase 2: Headless mode - fully automated for async tasks
-      if (approvalMode === 'headless') {
-        if (globalBlocked && globalPolicy === 'always') {
-          // Skip 'always' blocked tools entirely (don't execute, don't wait for approval)
-          continue;
-        }
-        // All other tools execute directly (including overridable global blocks)
-        toolsToExecute.push(toolCalling);
-        continue;
       }
 
       // For non-headless modes: 'always' global block requires intervention unconditionally
@@ -255,7 +262,7 @@ export class GeneralChatAgent implements Agent {
       }
     }
 
-    return [toolsNeedingIntervention, toolsToExecute];
+    return [toolsNeedingIntervention, toolsToExecute, toolsRejectedForReplan];
   }
 
   /**
@@ -485,10 +492,8 @@ export class GeneralChatAgent implements Agent {
 
         if (hasToolsCalling && toolsCalling && toolsCalling.length > 0) {
           // Check which tools need human intervention
-          const [toolsNeedingIntervention, toolsToExecute] = await this.checkInterventionNeeded(
-            toolsCalling,
-            state,
-          );
+          const [toolsNeedingIntervention, toolsToExecute, toolsRejectedForReplan] =
+            await this.checkInterventionNeeded(toolsCalling, state);
 
           const instructions: AgentInstruction[] = [];
 
@@ -522,6 +527,26 @@ export class GeneralChatAgent implements Agent {
               reason: 'human_intervention_required',
               type: 'request_human_approve',
             });
+          }
+
+          if (toolsRejectedForReplan.length > 0) {
+            for (const toolCalling of toolsRejectedForReplan) {
+              instructions.push({
+                payload: {
+                  result: {
+                    content: 'Blocked by security privacy.',
+                    error: {
+                      kind: 'replan',
+                      message: 'Blocked by security privacy.',
+                    },
+                    success: false,
+                  },
+                  parentMessageId,
+                  toolCalling,
+                } as GeneralAgentCallingToolInstructionPayload,
+                type: 'call_tool',
+              });
+            }
           }
 
           return instructions;

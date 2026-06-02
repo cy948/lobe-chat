@@ -1759,20 +1759,17 @@ describe('RuntimeExecutors', () => {
       expect(result.nextContext!.phase).toBe('tool_result');
     });
 
-    it('should persist mocked rejected tool result without executing the tool', async () => {
+    it('should block high-risk headless tool calls without executing the tool', async () => {
       const toolMessageId = 'tool-msg-rejected';
       mockMessageModel.create.mockResolvedValue({ id: toolMessageId });
 
       const executors = createRuntimeExecutors(ctx);
-      const state = createMockState();
+      const state = createMockState({
+        userInterventionConfig: { approvalMode: 'headless' },
+      });
 
       const instruction = {
         payload: {
-          result: {
-            content: 'Blocked by security privacy.',
-            error: { kind: 'replan', message: 'Blocked by security privacy.' },
-            success: false,
-          },
           parentMessageId: 'assistant-msg-123',
           toolCalling: {
             apiName: 'bash',
@@ -2421,6 +2418,51 @@ describe('RuntimeExecutors', () => {
           parentId: 'assistant-msg-123',
           role: 'tool',
           tool_call_id: 'tool-call-2',
+        }),
+      );
+    });
+
+    it('should block high-risk headless tool calls in batch without executing them', async () => {
+      const executors = createRuntimeExecutors(ctx);
+      const state = createMockState({
+        userInterventionConfig: { approvalMode: 'headless' },
+      });
+
+      const instruction = {
+        payload: {
+          parentMessageId: 'assistant-msg-123',
+          toolsCalling: [
+            {
+              apiName: 'search',
+              arguments: '{"query": "test"}',
+              id: 'tool-call-safe',
+              identifier: 'web-search',
+              type: 'default' as const,
+            },
+            {
+              apiName: 'bash',
+              arguments: '{"command":"rm -rf /"}',
+              id: 'tool-call-rejected',
+              identifier: 'bash',
+              type: 'builtin' as const,
+            },
+          ],
+        },
+        type: 'call_tools_batch' as const,
+      };
+
+      await executors.call_tools_batch!(instruction, state);
+
+      expect(mockToolExecutionService.executeTool).toHaveBeenCalledTimes(1);
+      expect(mockToolExecutionService.executeTool).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'tool-call-safe' }),
+        expect.any(Object),
+      );
+      expect(mockMessageModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: 'Blocked by security privacy.',
+          pluginError: { kind: 'replan', message: 'Blocked by security privacy.' },
+          tool_call_id: 'tool-call-rejected',
         }),
       );
     });

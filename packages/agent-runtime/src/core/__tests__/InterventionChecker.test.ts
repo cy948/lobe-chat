@@ -460,38 +460,6 @@ describe('InterventionChecker', () => {
           }).blocked,
         ).toBe(false);
       });
-
-      it('should return matched risk level and default to medium', () => {
-        const blacklist: SecurityBlacklistConfig = [
-          {
-            description: 'Medium risk command',
-            match: { command: { pattern: 'cat.*secret.*', type: 'regex' } },
-            riskLevel: 'medium',
-          },
-          {
-            description: 'Legacy dangerous command',
-            match: { command: { pattern: 'legacy-danger.*', type: 'regex' } },
-          },
-        ];
-
-        expect(
-          InterventionChecker.checkSecurityBlacklist(blacklist, { command: 'cat secret.txt' }),
-        ).toEqual({
-          blocked: true,
-          reason: 'Medium risk command',
-          riskLevel: 'medium',
-        });
-
-        expect(
-          InterventionChecker.checkSecurityBlacklist(blacklist, {
-            command: 'legacy-danger --force',
-          }),
-        ).toEqual({
-          blocked: true,
-          reason: 'Legacy dangerous command',
-          riskLevel: 'medium',
-        });
-      });
     });
   });
 

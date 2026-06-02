@@ -2662,7 +2662,6 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      // Headless mode bypasses global audits, including 'always' policy.
       expect(result).toEqual([
         {
           type: 'call_tool',
@@ -3005,7 +3004,7 @@ describe('GeneralChatAgent', () => {
       ]);
     });
 
-    it('should require intervention for high-risk security blacklisted tools in headless mode', async () => {
+    it('should execute security blacklisted tools in headless mode', async () => {
       const agent = new GeneralChatAgent({
         agentConfig: { maxSteps: 100 },
         operationId: 'test-session',
@@ -3041,19 +3040,10 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      // High-risk blacklist rules are rejected with a synthetic tool result for replanning.
       expect(result).toEqual([
         {
           type: 'call_tool',
           payload: {
-            result: {
-              content: 'Blocked by security privacy.',
-              error: {
-                kind: 'replan',
-                message: 'Blocked by security privacy.',
-              },
-              success: false,
-            },
             parentMessageId: 'msg-1',
             toolCalling: blacklistedTool,
           },
@@ -3061,7 +3051,7 @@ describe('GeneralChatAgent', () => {
       ]);
     });
 
-    it('should handle mixed tools in headless mode - execute safe ones and reject high-risk blacklisted', async () => {
+    it('should handle mixed tools in headless mode - execute all tools', async () => {
       const agent = new GeneralChatAgent({
         agentConfig: { maxSteps: 100 },
         operationId: 'test-session',
@@ -3080,7 +3070,7 @@ describe('GeneralChatAgent', () => {
         id: 'call-2',
         identifier: 'bash',
         apiName: 'bash',
-        arguments: '{"command":"rm -rf /"}', // Matches high-risk security blacklist
+        arguments: '{"command":"rm -rf /"}', // Matches security blacklist
         type: 'builtin',
       };
 
@@ -3129,68 +3119,7 @@ describe('GeneralChatAgent', () => {
           type: 'call_tools_batch',
           payload: {
             parentMessageId: 'msg-1',
-            toolsCalling: [safeTool, alwaysTool],
-          },
-        },
-        {
-          type: 'call_tool',
-          payload: {
-            result: {
-              content: 'Blocked by security privacy.',
-              error: {
-                kind: 'replan',
-                message: 'Blocked by security privacy.',
-              },
-              success: false,
-            },
-            parentMessageId: 'msg-1',
-            toolCalling: blacklistedTool,
-          },
-        },
-      ]);
-    });
-
-    it('should execute medium-risk security blacklisted tools in headless mode', async () => {
-      const agent = new GeneralChatAgent({
-        agentConfig: { maxSteps: 100 },
-        operationId: 'test-session',
-        modelRuntimeConfig: mockModelRuntimeConfig,
-      });
-
-      const mediumRiskTool: ChatToolPayload = {
-        id: 'call-1',
-        identifier: 'bash',
-        apiName: 'bash',
-        arguments: '{"command":"cat /etc/ssh/sshd_config"}',
-        type: 'builtin',
-      };
-
-      const state = createMockState({
-        toolManifestMap: {
-          bash: {
-            identifier: 'bash',
-            humanIntervention: 'never',
-          },
-        },
-        userInterventionConfig: {
-          approvalMode: 'headless',
-        },
-      });
-
-      const context = createMockContext('llm_result', {
-        hasToolsCalling: true,
-        toolsCalling: [mediumRiskTool],
-        parentMessageId: 'msg-1',
-      });
-
-      const result = await agent.runner(context, state);
-
-      expect(result).toEqual([
-        {
-          type: 'call_tool',
-          payload: {
-            parentMessageId: 'msg-1',
-            toolCalling: mediumRiskTool,
+            toolsCalling: [safeTool, blacklistedTool, alwaysTool],
           },
         },
       ]);

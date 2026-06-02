@@ -519,33 +519,6 @@ export class AgentRuntime {
       const toolArgs = toolCall.arguments;
       const toolId = toolCall.id;
 
-      const toolResult = payload.result;
-
-      if (toolResult) {
-        const result = toolResult;
-
-        newState.messages.push({
-          content: JSON.stringify(result),
-          role: 'tool',
-          tool_call_id: toolId,
-        });
-
-        events.push({ id: toolId, result, type: 'tool_result' });
-
-        const nextContext: AgentRuntimeContext = {
-          operationId: this.operationId,
-          payload: {
-            result,
-            toolCall,
-            toolCallId: toolCall.id,
-          },
-          phase: 'tool_result',
-          session: this.createSessionContext(newState),
-        };
-
-        return { events, newState, nextContext };
-      }
-
       const handler = tools[toolName];
       if (!handler) throw new Error(`Tool not found: ${toolName}`);
 

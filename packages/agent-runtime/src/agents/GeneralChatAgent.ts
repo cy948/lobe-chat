@@ -217,7 +217,7 @@ export class GeneralChatAgent implements Agent {
       }
 
       // Phase 5.5: Unknown tool guard — require intervention for tools not in manifest
-      // Auto-run users accept the risk; headless mode converts this to a blocked tool result.
+      // Only applies to manual/allow-list modes; auto-run users accept the risk
       if (!manifest) {
         console.warn(
           `[InterventionGuard] Unknown tool "${identifier}/${apiName}" not found in toolManifestMap (keys: ${Object.keys(state.toolManifestMap ?? {}).join(', ')}), requiring intervention`,
@@ -510,7 +510,7 @@ export class GeneralChatAgent implements Agent {
           }
 
           // Request approval for tools that need intervention
-          // Headless mode cannot wait for approval, so it turns them into blocked tool results.
+          // Non-headless mode waits for human approval; headless mode returns blocked tool results.
           if (toolsNeedingIntervention.length > 0) {
             if (state.userInterventionConfig?.approvalMode === 'headless') {
               instructions.push({

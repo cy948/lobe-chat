@@ -155,19 +155,19 @@ export class GeneralChatAgent implements Agent {
       }
 
       // Phase 1: Run global resolvers (e.g., security blacklist)
-      let globalBlocked = false;
-      let globalPolicy: HumanInterventionPolicy = 'always';
+      let hasMatchedGlobalPolicy = false;
+      let matchedGlobalPolicy: HumanInterventionPolicy = 'always';
 
       for (const globalResolver of globalResolvers) {
         if (await globalResolver.resolver(toolArgs, resolverMetadata)) {
-          globalBlocked = true;
-          globalPolicy = globalResolver.policy ?? 'always';
+          hasMatchedGlobalPolicy = true;
+          matchedGlobalPolicy = globalResolver.policy ?? 'always';
           break;
         }
       }
 
       // For non-headless modes: 'always' global block requires intervention unconditionally
-      if (globalBlocked && globalPolicy === 'always') {
+      if (hasMatchedGlobalPolicy && matchedGlobalPolicy === 'always') {
         toolsNeedingIntervention.push(toolCalling);
         continue;
       }
@@ -193,7 +193,7 @@ export class GeneralChatAgent implements Agent {
       }
 
       // Phase 3.5: Handle overridable global block (policy !== 'always')
-      if (globalBlocked && globalPolicy !== 'always') {
+      if (hasMatchedGlobalPolicy && matchedGlobalPolicy !== 'always') {
         toolsNeedingIntervention.push(toolCalling);
         continue;
       }

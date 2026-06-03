@@ -7,6 +7,7 @@ import type {
   AgentInstruction,
   AgentInstructionCallTool,
   AgentInstructionCallToolsBatch,
+  AgentInstructionResolveBlockedTools,
   AgentRuntimeContext,
   AgentState,
   Cost,
@@ -575,10 +576,7 @@ export class AgentRuntime {
   /** Create blocked tools executor */
   private createResolveBlockedToolsExecutor(): InstructionExecutor {
     return async (instruction, state) => {
-      const { payload } = instruction as Extract<
-        AgentInstruction,
-        { type: 'resolve_blocked_tools' }
-      >;
+      const { payload } = instruction as AgentInstructionResolveBlockedTools;
       const newState = structuredClone(state);
       const events: AgentEvent[] = [];
 

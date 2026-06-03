@@ -92,7 +92,7 @@ export interface GeneralAgentConfig {
   /**
    * Global intervention resolvers that run for EVERY tool call
    * Evaluated in array order, before per-tool dynamic resolvers.
-   * When not provided, defaults to [createSecurityBlacklistGlobalAudit()]
+   * When not provided, defaults to createDefaultGlobalAudits().
    */
   globalInterventionAudits?: GlobalInterventionAuditConfig[];
   modelRuntimeConfig?: {

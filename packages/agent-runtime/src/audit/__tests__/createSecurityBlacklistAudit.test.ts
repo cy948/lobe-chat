@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  createRequiredSecurityBlacklistGlobalAudit,
   createSecurityBlacklistAudit,
   createSecurityBlacklistGlobalAudit,
   SECURITY_BLACKLIST_AUDIT_TYPE,
@@ -76,7 +77,26 @@ describe('createSecurityBlacklistAudit', () => {
       const config = createSecurityBlacklistGlobalAudit();
 
       await expect(config.resolver({ command: 'rm -rf /' })).resolves.toBe(true);
+      await expect(config.resolver({ command: 'cat .env' })).resolves.toBe(false);
       await expect(config.resolver({ command: 'ls -la' })).resolves.toBe(false);
+    });
+  });
+
+  describe('createRequiredSecurityBlacklistGlobalAudit', () => {
+    it('should return a required GlobalInterventionAuditConfig', () => {
+      const config = createRequiredSecurityBlacklistGlobalAudit();
+
+      expect(config.type).toBe(SECURITY_BLACKLIST_AUDIT_TYPE);
+      expect(config.policy).toBe('required');
+      expect(typeof config.resolver).toBe('function');
+    });
+
+    it('should block overridable sensitive commands only', async () => {
+      const config = createRequiredSecurityBlacklistGlobalAudit();
+
+      await expect(config.resolver({ command: 'cat .env' })).resolves.toBe(true);
+      await expect(config.resolver({ command: 'cat /etc/ssh/sshd_config' })).resolves.toBe(true);
+      await expect(config.resolver({ command: 'rm -rf /' })).resolves.toBe(false);
     });
   });
 

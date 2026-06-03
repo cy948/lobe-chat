@@ -2,15 +2,15 @@ import { type SecurityBlacklistConfig } from '@lobechat/types';
 
 /**
  * Default Security Blacklist
- * These rules will ALWAYS block execution and require human intervention,
- * regardless of user settings (even in auto-run mode)
+ * Always rules block execution regardless of user settings (even in auto-run mode).
+ * Required rules still require intervention in manual flows, but auto-run can bypass them.
  *
  * This is the last line of defense against dangerous operations
  *
  * Note: `description` values are i18n keys (namespace: 'tool', prefix: 'securityBlacklist.')
  * and are translated in the intervention UI via `t(description)`.
  */
-export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
+export const DEFAULT_SECURITY_BLACKLIST_ALWAYS: SecurityBlacklistConfig = [
   // ==================== File System Dangers ====================
   {
     description: 'securityBlacklist.rmHomeDir',
@@ -89,37 +89,6 @@ export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
     },
   },
 
-  // ==================== Network & Remote Access Dangers ====================
-  {
-    description: 'securityBlacklist.disableFirewall',
-    match: {
-      command: {
-        pattern: '(ufw\\s+disable|iptables\\s+-F|systemctl\\s+stop\\s+firewalld)',
-        type: 'regex',
-      },
-    },
-  },
-  {
-    description: 'securityBlacklist.sshConfig',
-    match: {
-      command: {
-        pattern: '.*(/etc/ssh/sshd_config).*',
-        type: 'regex',
-      },
-    },
-  },
-
-  // ==================== Package Manager Dangers ====================
-  {
-    description: 'securityBlacklist.removeSystemPackages',
-    match: {
-      command: {
-        pattern: '(apt|yum|dnf|pacman)\\s+(remove|purge|erase).*(systemd|kernel|glibc|bash|sudo)',
-        type: 'regex',
-      },
-    },
-  },
-
   // ==================== Kernel & System Core Dangers ====================
   {
     description: 'securityBlacklist.kernelParams',
@@ -155,6 +124,39 @@ export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
     match: {
       command: {
         pattern: 'chmod.*(4755|u\\+s).*(sh|bash|python|perl|ruby|node)',
+        type: 'regex',
+      },
+    },
+  },
+];
+
+export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
+  // ==================== Network & Remote Access Dangers ====================
+  {
+    description: 'securityBlacklist.disableFirewall',
+    match: {
+      command: {
+        pattern: '(ufw\\s+disable|iptables\\s+-F|systemctl\\s+stop\\s+firewalld)',
+        type: 'regex',
+      },
+    },
+  },
+  {
+    description: 'securityBlacklist.sshConfig',
+    match: {
+      command: {
+        pattern: '.*(/etc/ssh/sshd_config).*',
+        type: 'regex',
+      },
+    },
+  },
+
+  // ==================== Package Manager Dangers ====================
+  {
+    description: 'securityBlacklist.removeSystemPackages',
+    match: {
+      command: {
+        pattern: '(apt|yum|dnf|pacman)\\s+(remove|purge|erase).*(systemd|kernel|glibc|bash|sudo)',
         type: 'regex',
       },
     },
@@ -335,4 +337,9 @@ export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
       },
     },
   },
+];
+
+export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
+  ...DEFAULT_SECURITY_BLACKLIST_ALWAYS,
+  ...DEFAULT_SECURITY_BLACKLIST_REQUIRED,
 ];

@@ -2,15 +2,14 @@ import { type SecurityBlacklistConfig } from '@lobechat/types';
 
 /**
  * Default Security Blacklist
- * Always rules block execution regardless of user settings (even in auto-run mode).
- * Required rules still require intervention in manual flows, but auto-run can bypass them.
  *
- * This is the last line of defense against dangerous operations
+ * This is the last line of defense against dangerous operations.
+ * Rules default to 'always' unless explicitly marked as 'required'.
  *
  * Note: `description` values are i18n keys (namespace: 'tool', prefix: 'securityBlacklist.')
  * and are translated in the intervention UI via `t(description)`.
  */
-export const DEFAULT_SECURITY_BLACKLIST_ALWAYS: SecurityBlacklistConfig = [
+export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
   // ==================== File System Dangers ====================
   {
     description: 'securityBlacklist.rmHomeDir',
@@ -128,9 +127,7 @@ export const DEFAULT_SECURITY_BLACKLIST_ALWAYS: SecurityBlacklistConfig = [
       },
     },
   },
-];
 
-export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
   // ==================== Network & Remote Access Dangers ====================
   {
     description: 'securityBlacklist.disableFirewall',
@@ -140,6 +137,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
   {
     description: 'securityBlacklist.sshConfig',
@@ -149,6 +147,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
 
   // ==================== Package Manager Dangers ====================
@@ -160,6 +159,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
 
   // ==================== Sensitive Information Leakage ====================
@@ -171,6 +171,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
   {
     description: 'securityBlacklist.envFiles',
@@ -180,6 +181,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
   {
     description: 'securityBlacklist.sshPrivateKeys',
@@ -190,6 +192,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
   {
     description: 'securityBlacklist.sshPrivateKeys',
@@ -199,6 +202,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
   {
     description: 'securityBlacklist.awsCredentials',
@@ -208,6 +212,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
   {
     description: 'securityBlacklist.awsCredentials',
@@ -217,6 +222,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
   {
     description: 'securityBlacklist.dockerConfig',
@@ -226,6 +232,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
   {
     description: 'securityBlacklist.dockerConfig',
@@ -235,6 +242,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
   {
     description: 'securityBlacklist.kubeConfig',
@@ -244,6 +252,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
   {
     description: 'securityBlacklist.kubeConfig',
@@ -253,6 +262,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
   {
     description: 'securityBlacklist.gitCredentials',
@@ -262,6 +272,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
   {
     description: 'securityBlacklist.gitCredentials',
@@ -271,6 +282,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
   {
     description: 'securityBlacklist.npmrc',
@@ -280,6 +292,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
   {
     description: 'securityBlacklist.npmrc',
@@ -289,6 +302,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
   {
     description: 'securityBlacklist.historyFiles',
@@ -299,6 +313,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
   {
     description: 'securityBlacklist.historyFiles',
@@ -308,6 +323,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
   {
     description: 'securityBlacklist.browserCredentials',
@@ -318,6 +334,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
   {
     description: 'securityBlacklist.gcpCredentials',
@@ -327,6 +344,7 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
   {
     description: 'securityBlacklist.gcpCredentials',
@@ -336,10 +354,6 @@ export const DEFAULT_SECURITY_BLACKLIST_REQUIRED: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
+    policy: 'required',
   },
-];
-
-export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
-  ...DEFAULT_SECURITY_BLACKLIST_ALWAYS,
-  ...DEFAULT_SECURITY_BLACKLIST_REQUIRED,
 ];

@@ -3,8 +3,8 @@ import { type SecurityBlacklistConfig } from '@lobechat/types';
 /**
  * Default Security Blacklist
  *
- * This is the last line of defense against dangerous operations.
- * Rules default to 'always' unless explicitly marked as 'required'.
+ * These rules block execution and require human intervention by default.
+ * Rules explicitly marked as 'required' can be bypassed by auto-run flows.
  *
  * Note: `description` values are i18n keys (namespace: 'tool', prefix: 'securityBlacklist.')
  * and are translated in the intervention UI via `t(description)`.
@@ -88,6 +88,40 @@ export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
     },
   },
 
+  // ==================== Network & Remote Access Dangers ====================
+  {
+    description: 'securityBlacklist.disableFirewall',
+    match: {
+      command: {
+        pattern: '(ufw\\s+disable|iptables\\s+-F|systemctl\\s+stop\\s+firewalld)',
+        type: 'regex',
+      },
+    },
+    policy: 'required',
+  },
+  {
+    description: 'securityBlacklist.sshConfig',
+    match: {
+      command: {
+        pattern: '.*(/etc/ssh/sshd_config).*',
+        type: 'regex',
+      },
+    },
+    policy: 'required',
+  },
+
+  // ==================== Package Manager Dangers ====================
+  {
+    description: 'securityBlacklist.removeSystemPackages',
+    match: {
+      command: {
+        pattern: '(apt|yum|dnf|pacman)\\s+(remove|purge|erase).*(systemd|kernel|glibc|bash|sudo)',
+        type: 'regex',
+      },
+    },
+    policy: 'required',
+  },
+
   // ==================== Kernel & System Core Dangers ====================
   {
     description: 'securityBlacklist.kernelParams',
@@ -126,40 +160,6 @@ export const DEFAULT_SECURITY_BLACKLIST: SecurityBlacklistConfig = [
         type: 'regex',
       },
     },
-  },
-
-  // ==================== Network & Remote Access Dangers ====================
-  {
-    description: 'securityBlacklist.disableFirewall',
-    match: {
-      command: {
-        pattern: '(ufw\\s+disable|iptables\\s+-F|systemctl\\s+stop\\s+firewalld)',
-        type: 'regex',
-      },
-    },
-    policy: 'required',
-  },
-  {
-    description: 'securityBlacklist.sshConfig',
-    match: {
-      command: {
-        pattern: '.*(/etc/ssh/sshd_config).*',
-        type: 'regex',
-      },
-    },
-    policy: 'required',
-  },
-
-  // ==================== Package Manager Dangers ====================
-  {
-    description: 'securityBlacklist.removeSystemPackages',
-    match: {
-      command: {
-        pattern: '(apt|yum|dnf|pacman)\\s+(remove|purge|erase).*(systemd|kernel|glibc|bash|sudo)',
-        type: 'regex',
-      },
-    },
-    policy: 'required',
   },
 
   // ==================== Sensitive Information Leakage ====================

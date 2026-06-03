@@ -132,8 +132,11 @@ export class GeneralChatAgent implements Agent {
     // Get security blacklist for resolver metadata
     const securityBlacklist = state.securityBlacklist ?? DEFAULT_SECURITY_BLACKLIST;
 
-    // Build resolver metadata: merge state.metadata with security blacklist
-    const resolverMetadata = { ...state.metadata, securityBlacklist };
+    // Build resolver metadata. Only pass custom securityBlacklist overrides;
+    // default audits use their own policy-specific rule sets.
+    const resolverMetadata = state.securityBlacklist
+      ? { ...state.metadata, securityBlacklist: state.securityBlacklist }
+      : state.metadata;
 
     // Get user config (default to 'manual' mode)
     const userConfig = state.userInterventionConfig || { approvalMode: 'manual' };
@@ -192,12 +195,6 @@ export class GeneralChatAgent implements Agent {
         continue;
       }
 
-      // Phase 3.5: Handle overridable global block (policy !== 'always')
-      if (globalBlocked && globalPolicy !== 'always') {
-        toolsNeedingIntervention.push(toolCalling);
-        continue;
-      }
-
       // Phase 4: Check 'always' policy - overrides auto-run mode
       if (this.matchesAlwaysPolicy(staticConfig, toolArgs)) {
         toolsNeedingIntervention.push(toolCalling);
@@ -210,7 +207,13 @@ export class GeneralChatAgent implements Agent {
         continue;
       }
 
-      // Phase 5.5: Unknown tool guard — require intervention for tools not in manifest.
+      // Phase 5.5: Handle overridable global block (policy !== 'always')
+      if (globalBlocked && globalPolicy !== 'always') {
+        toolsNeedingIntervention.push(toolCalling);
+        continue;
+      }
+
+      // Phase 6: Unknown tool guard — require intervention for tools not in manifest.
       // Auto-run users accept the risk; headless mode converts this to a blocked tool result.
       if (!manifest) {
         console.warn(
@@ -220,7 +223,7 @@ export class GeneralChatAgent implements Agent {
         continue;
       }
 
-      // Phase 6: User config is 'allow-list', check if tool is in whitelist
+      // Phase 7: User config is 'allow-list', check if tool is in whitelist
       if (approvalMode === 'allow-list') {
         if (allowList.includes(toolKey)) {
           toolsToExecute.push(toolCalling);
@@ -230,7 +233,7 @@ export class GeneralChatAgent implements Agent {
         continue;
       }
 
-      // Phase 7: User config is 'manual' (default), use tool's own config
+      // Phase 8: User config is 'manual' (default), use tool's own config
       const policy = InterventionChecker.shouldIntervene({
         config: staticConfig,
         securityBlacklist,

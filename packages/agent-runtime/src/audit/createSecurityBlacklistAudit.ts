@@ -4,7 +4,11 @@ import {
 } from '@lobechat/types';
 
 import { InterventionChecker } from '../core/InterventionChecker';
-import { DEFAULT_SECURITY_BLACKLIST } from './defaultSecurityBlacklist';
+import {
+  DEFAULT_SECURITY_BLACKLIST,
+  DEFAULT_SECURITY_BLACKLIST_ALWAYS,
+  DEFAULT_SECURITY_BLACKLIST_REQUIRED,
+} from './defaultSecurityBlacklist';
 
 export const SECURITY_BLACKLIST_AUDIT_TYPE = 'securityBlacklist';
 
@@ -12,9 +16,11 @@ export const SECURITY_BLACKLIST_AUDIT_TYPE = 'securityBlacklist';
  * Create a DynamicInterventionResolver that checks security blacklist rules.
  * Reads blacklist from `metadata.securityBlacklist`, falls back to DEFAULT_SECURITY_BLACKLIST.
  */
-export const createSecurityBlacklistAudit = (): DynamicInterventionResolver => {
+export const createSecurityBlacklistAudit = (
+  defaultSecurityBlacklist = DEFAULT_SECURITY_BLACKLIST,
+): DynamicInterventionResolver => {
   return async (toolArgs: Record<string, any>, metadata?: Record<string, any>) => {
-    const securityBlacklist = metadata?.securityBlacklist ?? DEFAULT_SECURITY_BLACKLIST;
+    const securityBlacklist = metadata?.securityBlacklist ?? defaultSecurityBlacklist;
     const result = InterventionChecker.checkSecurityBlacklist(securityBlacklist, toolArgs);
     return result.blocked;
   };
@@ -26,6 +32,12 @@ export const createSecurityBlacklistAudit = (): DynamicInterventionResolver => {
  */
 export const createSecurityBlacklistGlobalAudit = (): GlobalInterventionAuditConfig => ({
   policy: 'always',
-  resolver: createSecurityBlacklistAudit(),
+  resolver: createSecurityBlacklistAudit(DEFAULT_SECURITY_BLACKLIST_ALWAYS),
+  type: SECURITY_BLACKLIST_AUDIT_TYPE,
+});
+
+export const createRequiredSecurityBlacklistGlobalAudit = (): GlobalInterventionAuditConfig => ({
+  policy: 'required',
+  resolver: createSecurityBlacklistAudit(DEFAULT_SECURITY_BLACKLIST_REQUIRED),
   type: SECURITY_BLACKLIST_AUDIT_TYPE,
 });

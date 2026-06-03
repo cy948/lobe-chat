@@ -2710,6 +2710,7 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
+      // 'required' policy is overridable → headless mode executes directly
       expect(result).toEqual([
         {
           type: 'call_tool',
@@ -2865,10 +2866,10 @@ describe('GeneralChatAgent', () => {
       expect(callOrder).toEqual(['first']);
     });
 
-    it('should use default security blacklist audits when globalInterventionAudits is not provided', async () => {
+    it('should use default security blacklist audit when globalInterventionAudits is not provided', async () => {
       const agent = new GeneralChatAgent({
         agentConfig: { maxSteps: 100 },
-        // NOT providing globalInterventionAudits → should default to security blacklist audits
+        // NOT providing globalInterventionAudits → should default to security blacklist
         operationId: 'test-session',
         modelRuntimeConfig: mockModelRuntimeConfig,
       });
@@ -2946,7 +2947,7 @@ describe('GeneralChatAgent', () => {
   });
 
   describe('headless mode (for async tasks)', () => {
-    it('should resolve tools requiring approval in headless mode', async () => {
+    it('should resolve tool-level required tools in headless mode', async () => {
       const agent = new GeneralChatAgent({
         agentConfig: { maxSteps: 100 },
         operationId: 'test-session',
@@ -3097,7 +3098,7 @@ describe('GeneralChatAgent', () => {
         modelRuntimeConfig: mockModelRuntimeConfig,
       });
 
-      const safeTool: ChatToolPayload = {
+      const requiredTool: ChatToolPayload = {
         id: 'call-1',
         identifier: 'web-search',
         apiName: 'search',
@@ -3147,7 +3148,7 @@ describe('GeneralChatAgent', () => {
 
       const context = createMockContext('llm_result', {
         hasToolsCalling: true,
-        toolsCalling: [safeTool, blacklistedTool, alwaysTool],
+        toolsCalling: [requiredTool, blacklistedTool, alwaysTool],
         parentMessageId: 'msg-1',
       });
 
@@ -3157,7 +3158,7 @@ describe('GeneralChatAgent', () => {
         {
           payload: {
             parentMessageId: 'msg-1',
-            toolsCalling: [safeTool, blacklistedTool, alwaysTool],
+            toolsCalling: [requiredTool, blacklistedTool, alwaysTool],
           },
           type: 'resolve_blocked_tools',
         },

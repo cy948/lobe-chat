@@ -192,7 +192,7 @@ export class GeneralChatAgent implements Agent {
         continue;
       }
 
-      // Phase 3.5: Headless mode auto-runs overridable global blocks (policy !== 'always')
+      // Phase 3.5: Headless mode auto-runs global blocks with non-always policy
       if (approvalMode === 'headless' && globalBlocked && globalPolicy !== 'always') {
         toolsToExecute.push(toolCalling);
         continue;

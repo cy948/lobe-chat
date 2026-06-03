@@ -3431,7 +3431,7 @@ export const createRuntimeExecutors = (
         toolMessageIds.push(toolMessage.id);
       } catch (error) {
         console.error('[resolve_blocked_tools] Failed to create blocked tool message: %O', error);
-        const fatal = isParentMessageMissingError(error)
+        const fatal = isMidOperationReferenceMissingError(error)
           ? createConversationParentMissingError(parentMessageId, error)
           : error instanceof Error
             ? error

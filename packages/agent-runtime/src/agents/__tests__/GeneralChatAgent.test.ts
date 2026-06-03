@@ -2662,6 +2662,7 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
+      // Headless/CLI has no human intervention UI, so return a blocked tool result for replan.
       expect(result).toEqual([
         {
           payload: {
@@ -2982,6 +2983,7 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
+      // Headless/CLI cannot request tool-level approval, so return a blocked tool result for replan.
       expect(result).toEqual([
         {
           payload: {
@@ -3033,6 +3035,7 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
+      // Headless/CLI cannot ask a human to approve always-policy tools, so return results for replan.
       expect(result).toEqual([
         {
           payload: {
@@ -3080,6 +3083,7 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
+      // Headless/CLI cannot wait on security blacklist approval, so return a blocked result for replan.
       expect(result).toEqual([
         {
           payload: {
@@ -3154,6 +3158,7 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
+      // Headless/CLI batches all tools that need intervention into blocked results for replan.
       expect(result).toEqual([
         {
           payload: {
@@ -3206,6 +3211,7 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
+      // Headless/CLI returns blocked results for every tool that would otherwise need approval.
       expect(result).toEqual([
         {
           payload: {

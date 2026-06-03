@@ -2673,7 +2673,7 @@ describe('GeneralChatAgent', () => {
       ]);
     });
 
-    it('should resolve tool in headless mode when global resolver with policy required triggers', async () => {
+    it('should execute tool in headless mode when global resolver with policy required triggers', async () => {
       const customResolver: GlobalInterventionAuditConfig = {
         type: 'softBlocker',
         policy: 'required',
@@ -2712,11 +2712,8 @@ describe('GeneralChatAgent', () => {
 
       expect(result).toEqual([
         {
-          payload: {
-            parentMessageId: 'msg-1',
-            toolsCalling: [toolCall],
-          },
-          type: 'resolve_blocked_tools',
+          type: 'call_tool',
+          payload: { parentMessageId: 'msg-1', toolCalling: toolCall },
         },
       ]);
     });

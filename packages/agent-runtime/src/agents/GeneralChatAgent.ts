@@ -513,7 +513,7 @@ export class GeneralChatAgent implements Agent {
                   toolsCalling: toolsNeedingIntervention,
                 },
                 type: 'resolve_blocked_tools',
-              });
+              } satisfies AgentInstruction);
             } else {
               instructions.push({
                 pendingToolsCalling: toolsNeedingIntervention,

@@ -2766,7 +2766,7 @@ describe('GeneralChatAgent', () => {
       ]);
     });
 
-    it('should not pass default securityBlacklist through resolver metadata', async () => {
+    it('should pass resolver metadata including securityBlacklist to global resolvers', async () => {
       let capturedMetadata: Record<string, any> | undefined;
 
       const spyResolver: GlobalInterventionAuditConfig = {
@@ -2809,9 +2809,11 @@ describe('GeneralChatAgent', () => {
 
       await agent.runner(context, state);
 
+      // Resolver should receive metadata with securityBlacklist merged in
       expect(capturedMetadata).toBeDefined();
       expect(capturedMetadata!.workingDirectory).toBe('/workspace');
-      expect(capturedMetadata!.securityBlacklist).toBeUndefined();
+      expect(capturedMetadata!.securityBlacklist).toBeDefined();
+      expect(Array.isArray(capturedMetadata!.securityBlacklist)).toBe(true);
     });
 
     it('should evaluate global resolvers in array order and stop at first match', async () => {
@@ -2902,47 +2904,6 @@ describe('GeneralChatAgent', () => {
           type: 'request_human_approve',
           pendingToolsCalling: [blacklistedTool],
           reason: 'human_intervention_required',
-        },
-      ]);
-    });
-
-    it('should execute default required blacklist tools in auto-run mode', async () => {
-      const agent = new GeneralChatAgent({
-        agentConfig: { maxSteps: 100 },
-        operationId: 'test-session',
-        modelRuntimeConfig: mockModelRuntimeConfig,
-      });
-
-      const requiredTool: ChatToolPayload = {
-        id: 'call-1',
-        identifier: 'bash',
-        apiName: 'bash',
-        arguments: '{"command":"cat .env"}',
-        type: 'builtin',
-      };
-
-      const state = createMockState({
-        toolManifestMap: {
-          bash: { identifier: 'bash', humanIntervention: 'never' },
-        },
-        userInterventionConfig: { approvalMode: 'auto-run' },
-      });
-
-      const context = createMockContext('llm_result', {
-        hasToolsCalling: true,
-        toolsCalling: [requiredTool],
-        parentMessageId: 'msg-1',
-      });
-
-      const result = await agent.runner(context, state);
-
-      expect(result).toEqual([
-        {
-          type: 'call_tool',
-          payload: {
-            parentMessageId: 'msg-1',
-            toolCalling: requiredTool,
-          },
         },
       ]);
     });

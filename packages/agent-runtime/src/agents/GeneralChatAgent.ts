@@ -210,7 +210,7 @@ export class GeneralChatAgent implements Agent {
         continue;
       }
 
-      // Phase 5.5: Unknown tool guard — require intervention for tools not in manifest.
+      // Phase 5.5: Unknown tool guard — require intervention for tools not in manifest
       // Auto-run users accept the risk; headless mode converts this to a blocked tool result.
       if (!manifest) {
         console.warn(
@@ -503,7 +503,7 @@ export class GeneralChatAgent implements Agent {
             }
           }
 
-          // Request approval for tools that need intervention.
+          // Request approval for tools that need intervention
           // Headless mode cannot wait for approval, so it turns them into blocked tool results.
           if (toolsNeedingIntervention.length > 0) {
             if (state.userInterventionConfig?.approvalMode === 'headless') {

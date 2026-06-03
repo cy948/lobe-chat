@@ -2,6 +2,7 @@ import {
   type DynamicInterventionResolver,
   type GlobalInterventionAuditConfig,
   type HumanInterventionPolicy,
+  type SecurityBlacklistConfig,
 } from '@lobechat/types';
 
 import { InterventionChecker } from '../core/InterventionChecker';
@@ -17,7 +18,8 @@ export const createSecurityBlacklistAudit = (
   policy: HumanInterventionPolicy = 'always',
 ): DynamicInterventionResolver => {
   return async (toolArgs: Record<string, any>, metadata?: Record<string, any>) => {
-    const securityBlacklist = metadata?.securityBlacklist ?? DEFAULT_SECURITY_BLACKLIST;
+    const securityBlacklist: SecurityBlacklistConfig =
+      metadata?.securityBlacklist ?? DEFAULT_SECURITY_BLACKLIST;
     const filteredBlacklist = securityBlacklist.filter(
       (rule) => (rule.policy ?? 'always') === policy,
     );

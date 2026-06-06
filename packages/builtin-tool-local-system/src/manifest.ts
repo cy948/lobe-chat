@@ -265,7 +265,7 @@ export const LocalSystemManifest: BuiltinToolManifest = {
     {
       defaultTimeoutMs: 30_000,
       description:
-        'Start a terminal session to execute a shell command and return console output collected during the wait window (up to 30 seconds by default). If the command exits during that window, the result includes `exit_code`; if it is still running, the result includes `shell_id` for later output retrieval or termination.',
+        'Start a terminal session to execute a shell command and return console output collected during the wait window (up to 30 seconds by default). If the command exits during that window, the result includes `exit_code`; if it is still running, the result includes `shell_id` for later output retrieval or termination. The wait window is not a deadline; user devices may be slow due to network, compute, storage, proxies, or cold caches. Keep long-running operations observable when possible.',
       humanIntervention: 'required',
       name: LocalSystemApiName.runCommand,
       parameters: {
@@ -287,7 +287,7 @@ export const LocalSystemManifest: BuiltinToolManifest = {
           },
           run_in_background: {
             description:
-              'Set to true to return immediately after starting the terminal session. The result will include a `shell_id` for later observation or termination.',
+              "Set to true when this command can run asynchronously while independent next steps proceed. Consider whether later steps depend on this command's output, exit code, files, installed packages, or side effects.",
             type: 'boolean',
           },
         },
@@ -298,7 +298,7 @@ export const LocalSystemManifest: BuiltinToolManifest = {
     {
       defaultTimeoutMs: 30_000,
       description:
-        'Retrieve output from a running or completed background shell command. Waits for one output window (up to 30 seconds by default) and returns only new output since the last check.',
+        'Retrieve output from a running or completed background shell command. Waits for one output window (up to 30 seconds by default) and returns only new output since the last check. No new output in one window is not proof that the command is stuck.',
       name: LocalSystemApiName.getCommandOutput,
       parameters: {
         properties: {
@@ -318,7 +318,8 @@ export const LocalSystemManifest: BuiltinToolManifest = {
     },
     {
       defaultTimeoutMs: 10_000,
-      description: 'Kill a running background shell command by its ID.',
+      description:
+        'Kill a running background shell command by its ID. Before killing, consider whether the task is still needed and whether observed progress matches its expected lifecycle.',
       name: LocalSystemApiName.killCommand,
       parameters: {
         properties: {

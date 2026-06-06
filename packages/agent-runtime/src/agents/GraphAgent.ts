@@ -164,9 +164,9 @@ export class GraphAgent implements Agent {
       // The agent will use tools freely; structured output is extracted after the loop
       fullPrompt =
         renderedPrompt +
-        '\n\nIMPORTANT: You MUST use your available tools (web search, etc.) to research this. ' +
-        'Do NOT answer from memory. Search for real evidence and data first, ' +
-        'then provide your findings based on the tool results.';
+        '\n\nIMPORTANT: Use your available tools to gather concrete evidence before concluding. ' +
+        'Do not answer from memory alone. Inspect the relevant environment, files, commands, ' +
+        'or external sources that are available to this agent, then base your findings on tool results.';
       tools = state.tools ?? [];
     } else {
       // LLM node: structured output, no tools
@@ -232,20 +232,19 @@ export class GraphAgent implements Agent {
     gc.store[currentNodeId] = output;
     gc.nodeActive = false;
 
-    // Terminal node → done
-    if (currentNodeId === this.graph.terminal) {
-      this.saveGraphContext(state, gc);
-      return {
-        reason: 'completed',
-        reasonDetail: `Graph "${this.graph.name}" completed at terminal node "${currentNodeId}"`,
-        type: 'finish',
-      };
-    }
-
     // Evaluate transitions
     const nextNodeId = this.evaluateTransitions(gc, currentNodeId, output);
 
     if (!nextNodeId) {
+      if (currentNodeId === this.graph.terminal) {
+        this.saveGraphContext(state, gc);
+        return {
+          reason: 'completed',
+          reasonDetail: `Graph "${this.graph.name}" completed at terminal node "${currentNodeId}"`,
+          type: 'finish',
+        };
+      }
+
       this.saveGraphContext(state, gc);
       return {
         reason: 'error_recovery',

@@ -2765,6 +2765,52 @@ describe('GeneralChatAgent', () => {
       ]);
     });
 
+    it('should require intervention for required global resolver in auto-run mode', async () => {
+      const customResolver: GlobalInterventionAuditConfig = {
+        type: 'softBlocker',
+        policy: 'required',
+        resolver: async () => true,
+      };
+
+      const agent = new GeneralChatAgent({
+        agentConfig: { maxSteps: 100 },
+        globalInterventionAudits: [customResolver],
+        operationId: 'test-session',
+        modelRuntimeConfig: mockModelRuntimeConfig,
+      });
+
+      const toolCall: ChatToolPayload = {
+        id: 'call-1',
+        identifier: 'my-tool',
+        apiName: 'doSomething',
+        arguments: '{}',
+        type: 'default',
+      };
+
+      const state = createMockState({
+        toolManifestMap: {
+          'my-tool': { identifier: 'my-tool', humanIntervention: 'never' },
+        },
+        userInterventionConfig: { approvalMode: 'auto-run' },
+      });
+
+      const context = createMockContext('llm_result', {
+        hasToolsCalling: true,
+        toolsCalling: [toolCall],
+        parentMessageId: 'msg-1',
+      });
+
+      const result = await agent.runner(context, state);
+
+      expect(result).toEqual([
+        {
+          type: 'request_human_approve',
+          pendingToolsCalling: [toolCall],
+          reason: 'human_intervention_required',
+        },
+      ]);
+    });
+
     it('should pass resolver metadata including securityBlacklist to global resolvers', async () => {
       let capturedMetadata: Record<string, any> | undefined;
 
@@ -2948,7 +2994,7 @@ describe('GeneralChatAgent', () => {
   });
 
   describe('headless mode (for async tasks)', () => {
-    it('should resolve tool-level required tools in headless mode', async () => {
+    it('should execute tool-level required runCommand in headless mode', async () => {
       const agent = new GeneralChatAgent({
         agentConfig: { maxSteps: 100 },
         operationId: 'test-session',
@@ -2957,17 +3003,22 @@ describe('GeneralChatAgent', () => {
 
       const toolCall: ChatToolPayload = {
         id: 'call-1',
-        identifier: 'dangerous-tool',
-        apiName: 'delete',
-        arguments: '{}',
+        identifier: 'lobe-local-system',
+        apiName: 'runCommand',
+        arguments: '{"command":"which R","description":"Locate the R executable"}',
         type: 'default',
       };
 
       const state = createMockState({
         toolManifestMap: {
-          'dangerous-tool': {
-            identifier: 'dangerous-tool',
-            humanIntervention: 'required', // Tool requires approval
+          'lobe-local-system': {
+            identifier: 'lobe-local-system',
+            api: [
+              {
+                name: 'runCommand',
+                humanIntervention: 'required',
+              },
+            ],
           },
         },
         userInterventionConfig: {
@@ -2983,14 +3034,11 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      // Headless/CLI cannot request tool-level approval, so return a blocked tool result for replan.
+      // Tool-level `required` is overridable; headless/CLI should auto-run safe commands.
       expect(result).toEqual([
         {
-          payload: {
-            parentMessageId: 'msg-1',
-            toolsCalling: [toolCall],
-          },
-          type: 'resolve_blocked_tools',
+          type: 'call_tool',
+          payload: { parentMessageId: 'msg-1', toolCalling: toolCall },
         },
       ]);
     });
@@ -3023,7 +3071,7 @@ describe('GeneralChatAgent', () => {
           },
         },
         userInterventionConfig: {
-          approvalMode: 'headless', // Headless mode bypasses even 'always'
+          approvalMode: 'headless',
         },
       });
 
@@ -3035,7 +3083,7 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      // Headless/CLI cannot ask a human to approve always-policy tools, so return results for replan.
+      // Tool-level `always` is non-bypassable, so headless returns blocked results for replan.
       expect(result).toEqual([
         {
           payload: {
@@ -3158,19 +3206,23 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      // Headless/CLI batches all tools that need intervention into blocked results for replan.
+      // Headless auto-runs overridable `required` tools and blocks only non-bypassable calls.
       expect(result).toEqual([
+        {
+          payload: { parentMessageId: 'msg-1', toolCalling: requiredTool },
+          type: 'call_tool',
+        },
         {
           payload: {
             parentMessageId: 'msg-1',
-            toolsCalling: [requiredTool, blacklistedTool, alwaysTool],
+            toolsCalling: [blacklistedTool, alwaysTool],
           },
           type: 'resolve_blocked_tools',
         },
       ]);
     });
 
-    it('should resolve multiple tools requiring approval in headless mode', async () => {
+    it('should batch multiple tool-level required calls in headless mode', async () => {
       const agent = new GeneralChatAgent({
         agentConfig: { maxSteps: 100 },
         operationId: 'test-session',
@@ -3196,7 +3248,7 @@ describe('GeneralChatAgent', () => {
       const state = createMockState({
         toolManifestMap: {
           search: { identifier: 'search', humanIntervention: 'required' },
-          crawl: { identifier: 'crawl', humanIntervention: 'always' },
+          crawl: { identifier: 'crawl', humanIntervention: 'required' },
         },
         userInterventionConfig: {
           approvalMode: 'headless',
@@ -3211,14 +3263,14 @@ describe('GeneralChatAgent', () => {
 
       const result = await agent.runner(context, state);
 
-      // Headless/CLI returns blocked results for every tool that would otherwise need approval.
+      // Tool-level `required` is overridable, so headless can execute the batch directly.
       expect(result).toEqual([
         {
           payload: {
             parentMessageId: 'msg-1',
             toolsCalling: [tool1, tool2],
           },
-          type: 'resolve_blocked_tools',
+          type: 'call_tools_batch',
         },
       ]);
     });

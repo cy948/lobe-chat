@@ -4,7 +4,12 @@ import type {
   AgentState,
   GeneralAgentConfig,
 } from '@lobechat/agent-runtime';
-import { AgentRuntime, findInMessages, GeneralChatAgent } from '@lobechat/agent-runtime';
+import {
+  AgentRuntime,
+  findInMessages,
+  GeneralChatAgent,
+  GraphAgent,
+} from '@lobechat/agent-runtime';
 import type { ISnapshotStore } from '@lobechat/agent-tracing';
 import { dynamicInterventionAudits } from '@lobechat/builtin-tools/dynamicInterventionAudits';
 import { getModelPropertyWithFallback } from '@lobechat/model-runtime';
@@ -43,6 +48,7 @@ import { LocalQueueServiceImpl } from '@/server/services/queue/impls';
 import { ToolExecutionService } from '@/server/services/toolExecution';
 import { BuiltinToolsExecutor } from '@/server/services/toolExecution/builtin';
 
+import { terminalBenchGraph } from '../aiAgent/terminalBenchGraph';
 import { isAbortError, throwIfAborted } from './abort';
 import { CompletionLifecycle } from './CompletionLifecycle';
 import { hookDispatcher } from './hooks';
@@ -67,6 +73,7 @@ if (process.env.VERCEL) {
 }
 
 const log = debug('lobe-server:agent-runtime-service');
+const isTerminalBenchGraphEnabled = () => process.env.TB_GRAPH_AGENT === '1';
 
 const toAgentSignalSnapshotEvents = (
   emission: Awaited<ReturnType<typeof emitAgentSignalSourceEvent>> | undefined,
@@ -184,7 +191,11 @@ export class AgentRuntimeService {
     this.traceRecorder = new OperationTraceRecorder(
       options?.snapshotStore ?? this.createDefaultSnapshotStore(),
     );
-    this.agentFactory = options?.agentFactory;
+    this.agentFactory =
+      options?.agentFactory ??
+      (isTerminalBenchGraphEnabled()
+        ? (config) => new GraphAgent({ ...config, graph: terminalBenchGraph })
+        : undefined);
     this.execSubAgentTaskCallback = options?.execSubAgentTask;
     this.serverDB = db;
     this.userId = userId;
@@ -1519,7 +1530,7 @@ export class AgentRuntimeService {
   /**
    * Create default snapshot store based on environment.
    * - ENABLE_AGENT_S3_TRACING=1 → S3SnapshotStore
-   * - NODE_ENV=development → FileSnapshotStore
+   * - ENABLE_AGENT_FILE_TRACING=1 or NODE_ENV=development → FileSnapshotStore
    * - Otherwise → null (no tracing)
    */
   private createDefaultSnapshotStore(): ISnapshotStore | null {
@@ -1532,7 +1543,7 @@ export class AgentRuntimeService {
       }
     }
 
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.ENABLE_AGENT_FILE_TRACING === '1' || process.env.NODE_ENV === 'development') {
       try {
         const { FileSnapshotStore } = require('@lobechat/agent-tracing');
         return new FileSnapshotStore();

@@ -138,8 +138,9 @@ export interface UserInterventionConfig {
    * - auto-run: Automatically approve all tools without user consent
    * - allow-list: Only approve tools in the allow list
    * - manual: Use tool's own humanIntervention config (default)
-   * - headless: Fully automated mode for async tasks - all tools execute automatically,
-   *             security blacklist tools are skipped (not blocked)
+   * - headless: Fully automated mode for async/CLI tasks. Tools that can run safely
+   *             execute automatically; tools that would require approval return blocked
+   *             tool results so the model can replan without a human approval UI.
    */
   approvalMode: 'auto-run' | 'allow-list' | 'manual' | 'headless';
 }

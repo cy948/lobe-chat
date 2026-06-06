@@ -4,7 +4,9 @@ import { type SecurityBlacklistConfig } from '@lobechat/types';
  * Default Security Blacklist
  *
  * These rules block execution and require human intervention by default.
- * Rules explicitly marked as 'required' can be bypassed by auto-run flows.
+ * Rules explicitly marked as 'required' still trigger the global audit, but may be
+ * handled differently by each runtime mode. For example, headless can auto-run
+ * non-always global matches, while normal non-headless modes request intervention.
  *
  * Note: `description` values are i18n keys (namespace: 'tool', prefix: 'securityBlacklist.')
  * and are translated in the intervention UI via `t(description)`.

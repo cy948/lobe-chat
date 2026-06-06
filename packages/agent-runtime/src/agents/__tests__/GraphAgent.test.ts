@@ -149,6 +149,9 @@ const expectFinish = (instruction: AgentInstruction | AgentInstruction[]) => {
   return instruction as Extract<AgentInstruction, { type: 'finish' }>;
 };
 
+const latestPrompt = (instruction: Extract<AgentInstruction, { type: 'call_llm' }>) =>
+  instruction.payload.messages.at(-1)?.content as string;
+
 const finishAgentNode = async (agent: GraphAgent, state: AgentState) =>
   expectCallLlm(
     await agent.runner(
@@ -223,6 +226,12 @@ describe('GraphAgent control flow', () => {
     const plan = await completeAgentNode(agent, state, { findings: ['repo has tests'] });
     expect(plan.stepLabel).toBe('plan');
     expect(plan.payload.tools).toEqual([]);
+    expect(latestPrompt(plan)).toContain('Graph phase context:');
+    expect(latestPrompt(plan)).toContain('Current phase: plan');
+    expect(latestPrompt(plan)).toContain('Formal phase boundary: yes');
+    expect(latestPrompt(plan)).toContain('"from":"inspect"');
+    expect(latestPrompt(plan)).toContain('"to":"plan"');
+    expect(latestPrompt(plan)).toContain('"findings":["repo has tests"]');
 
     const workingLoop = expectCallLlm(
       await completeLlmNode(agent, state, { steps: ['change code'] }),
@@ -231,10 +240,25 @@ describe('GraphAgent control flow', () => {
 
     const final = await completeAgentNode(agent, state, loopOutput());
     expect(final.stepLabel).toBe('final_review');
+    expect(latestPrompt(final)).toContain('Original accepted plan anchor:');
+    expect(latestPrompt(final)).toContain('"from":"plan"');
+    expect(latestPrompt(final)).toContain('"steps":["change code"]');
 
     const finish = expectFinish(await completeLlmNode(agent, state, { ready_to_finish: true }));
     expect(finish.reason).toBe('completed');
     expect(finish.reasonDetail).toContain('completed at terminal node "final_review"');
+  });
+
+  it('extracts only the current graph phase artifact after an agent node finishes', async () => {
+    const agent = createAgent();
+    const state = createState();
+
+    expectCallLlm(await agent.runner(context('init'), state));
+    const extraction = await finishAgentNode(agent, state);
+    const prompt = latestPrompt(extraction);
+
+    expect(prompt).toContain('current graph phase "inspect"');
+    expect(prompt).not.toContain('research and information gathered above');
   });
 
   it('routes continuing micro-iterations back to the working loop', async () => {
@@ -278,6 +302,9 @@ describe('GraphAgent control flow', () => {
     const next = expectCallLlm(await completeLlmNode(agent, state, { ready_to_finish: false }));
 
     expect(next.stepLabel).toBe('working_loop');
+    expect(latestPrompt(next)).toContain('"from":"final_review"');
+    expect(latestPrompt(next)).toContain('"to":"working_loop"');
+    expect(latestPrompt(next)).toContain('"ready_to_finish":false');
   });
 
   it('falls through instead of looping forever after the backtrack cap is reached', async () => {

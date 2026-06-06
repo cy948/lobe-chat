@@ -155,6 +155,7 @@ export class GraphAgent implements Agent {
     }
 
     const renderedPrompt = this.renderPrompt(node.prompt, gc);
+    const phaseHeader = this.renderPhaseHeader(gc);
 
     let fullPrompt: string;
     let tools: any[];
@@ -164,6 +165,7 @@ export class GraphAgent implements Agent {
       // The agent will use tools freely; structured output is extracted after the loop
       fullPrompt =
         renderedPrompt +
+        phaseHeader +
         '\n\nIMPORTANT: Use your available tools to gather concrete evidence before concluding. ' +
         'Do not answer from memory alone. Inspect the relevant environment, files, commands, ' +
         'or external sources that are available to this agent, then base your findings on tool results.';
@@ -172,6 +174,7 @@ export class GraphAgent implements Agent {
       // LLM node: structured output, no tools
       fullPrompt =
         renderedPrompt +
+        phaseHeader +
         `\n\nYou MUST respond with a JSON object that conforms to this schema:\n` +
         `\`\`\`json\n${JSON.stringify(node.outputSchema, null, 2)}\n\`\`\`\n` +
         `Only output valid JSON, no other text.`;
@@ -202,8 +205,9 @@ export class GraphAgent implements Agent {
     const node = this.graph.states[gc.currentNode];
 
     const extractionPrompt =
-      `Based on the research and information gathered above, ` +
-      `extract and summarize your findings into a JSON object that conforms to this schema:\n` +
+      `Extract the accepted structured artifact for the current graph phase "${gc.currentNode}". ` +
+      `Use the current phase work and its direct tool results as the source of truth. ` +
+      `Return a JSON object that conforms to this schema:\n` +
       `\`\`\`json\n${JSON.stringify(node.outputSchema, null, 2)}\n\`\`\`\n` +
       `Only output valid JSON, no other text.`;
 
@@ -255,6 +259,7 @@ export class GraphAgent implements Agent {
 
     // Move to next node
     gc.currentNode = nextNodeId;
+    gc.handoff = { from: currentNodeId, output, to: nextNodeId };
 
     // If backtracking, clear intermediate store entries
     const nodeKeys = Object.keys(this.graph.states);
@@ -299,7 +304,54 @@ export class GraphAgent implements Agent {
   private getNextState(currentNodeId: string): string | null {
     const keys = Object.keys(this.graph.states);
     const idx = keys.indexOf(currentNodeId);
+    if (currentNodeId === this.graph.terminal) return null;
     return idx >= 0 && idx + 1 < keys.length ? keys[idx + 1] : null;
+  }
+
+  private renderPhaseHeader(gc: GraphContext): string {
+    const handoff = gc.handoff?.to === gc.currentNode ? gc.handoff : undefined;
+    const planAnchor = this.getOriginalPlanAnchor(gc);
+    const artifact = handoff
+      ? JSON.stringify({ from: handoff.from, output: handoff.output, to: handoff.to })
+      : 'null';
+
+    const lines = [
+      '\n\nGraph phase context:',
+      `Current phase: ${gc.currentNode}`,
+      `Formal phase boundary: ${handoff ? 'yes' : 'no'}`,
+      `Previous accepted artifact: ${artifact}`,
+    ];
+
+    if (planAnchor && this.shouldInjectOriginalPlanAnchor(gc.currentNode)) {
+      lines.push(
+        `Original accepted plan anchor: ${JSON.stringify({
+          from: planAnchor.from,
+          output: planAnchor.output,
+        })}`,
+        'For final verification or review, judge completion against the original accepted plan anchor before relying on older conversation history.',
+      );
+    }
+
+    lines.push('Use the accepted artifacts above as the source of truth for this graph phase.');
+
+    return lines.join('\n');
+  }
+
+  private getOriginalPlanAnchor(
+    gc: GraphContext,
+  ): { from: string; output: Record<string, any> } | null {
+    if (gc.store.plan) return { from: 'plan', output: gc.store.plan };
+    if (gc.store.make_plan) return { from: 'make_plan', output: gc.store.make_plan };
+
+    const planNodeId = Object.keys(gc.store).find((key) => key.toLowerCase().includes('plan'));
+    if (!planNodeId) return null;
+
+    return { from: planNodeId, output: gc.store[planNodeId] };
+  }
+
+  private shouldInjectOriginalPlanAnchor(nodeId: string): boolean {
+    const normalized = nodeId.toLowerCase();
+    return normalized.includes('final') || normalized.includes('review');
   }
 
   private renderPrompt(template: string, gc: GraphContext): string {

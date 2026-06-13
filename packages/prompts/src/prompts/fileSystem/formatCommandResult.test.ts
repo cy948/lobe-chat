@@ -4,7 +4,7 @@ import { formatCommandResult } from './formatCommandResult';
 
 describe('formatCommandResult', () => {
   it('should format successful command without output', () => {
-    const result = formatCommandResult({ success: true });
+    const result = formatCommandResult({ exitCode: 0, success: true });
     expect(result).toMatchInlineSnapshot(`"Command completed successfully."`);
   });
 
@@ -21,6 +21,7 @@ describe('formatCommandResult', () => {
 
   it('should format successful command with stdout', () => {
     const result = formatCommandResult({
+      exitCode: 0,
       stdout: 'Hello World',
       success: true,
     });
@@ -34,6 +35,7 @@ describe('formatCommandResult', () => {
 
   it('should format successful command with stderr', () => {
     const result = formatCommandResult({
+      exitCode: 0,
       stderr: 'Warning: deprecated',
       success: true,
     });

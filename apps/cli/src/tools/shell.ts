@@ -1,5 +1,3 @@
-import path from 'node:path';
-
 import {
   type GetCommandOutputParams,
   type KillCommandParams,
@@ -8,12 +6,9 @@ import {
   ShellProcessManager,
 } from '@lobechat/local-file-shell';
 
-import { resolveCliHomeDir } from '../settings';
 import { log } from '../utils/logger';
 
-const processManager = new ShellProcessManager({
-  outputRoot: path.join(resolveCliHomeDir(), 'local-system', 'shell-outputs'),
-});
+const processManager = new ShellProcessManager();
 
 export function cleanupAllProcesses() {
   processManager.cleanupAll();

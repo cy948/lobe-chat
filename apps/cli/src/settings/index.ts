@@ -13,9 +13,7 @@ export interface StoredSettings {
 }
 
 const LOBEHUB_DIR_NAME = process.env.LOBEHUB_CLI_HOME || '.lobehub';
-export const resolveCliHomeDir = (): string => path.join(os.homedir(), LOBEHUB_DIR_NAME);
-
-const SETTINGS_DIR = resolveCliHomeDir();
+const SETTINGS_DIR = path.join(os.homedir(), LOBEHUB_DIR_NAME);
 const SETTINGS_FILE = path.join(SETTINGS_DIR, 'settings.json');
 // Kept in its own file rather than settings.json, which is unlinked whenever
 // all server/gateway URLs are default — the connectionId must persist regardless.

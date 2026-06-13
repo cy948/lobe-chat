@@ -278,14 +278,10 @@ export interface RunCommandResult {
   output?: string;
   output_file_path?: string;
   output_file_size?: number;
-  omitted_bytes?: number;
-  preview_kind?: 'head_tail' | 'tail';
-  preview_truncated?: boolean;
   running?: boolean;
   shell_id?: string;
   stderr?: string;
   stdout?: string;
-  status?: 'completed' | 'running';
   success: boolean;
 }
 
@@ -308,15 +304,11 @@ export interface GetCommandOutputResult {
    * `undefined` means the command is still running.
    */
   exit_code?: number;
-  omitted_bytes?: number;
   output: string;
   output_file_path?: string;
   output_file_size: number;
-  preview_kind?: 'head_tail' | 'tail';
-  preview_truncated?: boolean;
   running?: boolean;
   size_delta_since_last_check?: number;
-  status?: 'completed' | 'running';
   stderr: string;
   stdout: string;
   success: boolean;

@@ -33,6 +33,45 @@ describe('formatCommandResult', () => {
     `);
   });
 
+  it('should format command output file metadata and preview', () => {
+    const result = formatCommandResult({
+      exitCode: 0,
+      output: 'first lines\n...\nlast lines',
+      outputFilePath: '/tmp/lobehub-shell/output.log',
+      outputFileSize: 20_000,
+      success: true,
+    });
+
+    expect(result).toMatchInlineSnapshot(`
+      "Command completed successfully.
+
+      Output file: /tmp/lobehub-shell/output.log (20000 bytes)
+
+      Output:
+      first lines
+      ...
+      last lines"
+    `);
+  });
+
+  it('should prefer combined output over separate stdout and stderr', () => {
+    const result = formatCommandResult({
+      output: 'combined stream',
+      shellId: 'shell-123',
+      stderr: 'stderr stream',
+      stdout: 'stdout stream',
+      success: true,
+    });
+
+    expect(result).toMatchInlineSnapshot(`
+      "Command is still running after the wait window.
+      shell_id: shell-123
+
+      Output:
+      combined stream"
+    `);
+  });
+
   it('should format successful command with stderr', () => {
     const result = formatCommandResult({
       exitCode: 0,

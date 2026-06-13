@@ -1,13 +1,24 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { ShellProcessManager } from '../process-manager';
 import { runCommand } from '../runner';
 
 describe('runCommand', () => {
-  const processManager = new ShellProcessManager();
+  let processManager: ShellProcessManager;
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lobehub-shell-runner-'));
+    processManager = new ShellProcessManager({ outputRoot: tmpDir });
+  });
 
   afterEach(() => {
     processManager.cleanupAll();
+    fs.rmSync(tmpDir, { force: true, recursive: true });
   });
 
   describe('foreground observation mode', () => {
@@ -21,7 +32,7 @@ describe('runCommand', () => {
     });
 
     it('should assign readable incremental shell IDs within a manager', async () => {
-      const localManager = new ShellProcessManager();
+      const localManager = new ShellProcessManager({ outputRoot: tmpDir });
 
       const first = await runCommand({ command: 'echo first' }, { processManager: localManager });
       const second = await runCommand({ command: 'echo second' }, { processManager: localManager });
@@ -116,6 +127,7 @@ describe('runCommand', () => {
       expect(result.success).toBe(true);
       expect(result.shell_id).toBeDefined();
       expect(result.exit_code).toBeUndefined();
+      expect(result.running).toBe(true);
     });
 
     it('should capture background process output', async () => {

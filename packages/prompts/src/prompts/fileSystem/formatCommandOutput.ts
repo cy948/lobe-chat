@@ -2,15 +2,11 @@ export interface FormatCommandOutputParams {
   durationMs?: number;
   error?: string;
   exitCode?: number;
-  omittedBytes?: number;
   output?: string;
   outputFilePath?: string;
   outputFileSize?: number;
-  previewKind?: 'head_tail' | 'tail';
-  previewTruncated?: boolean;
   running?: boolean;
   sizeDeltaSinceLastCheck?: number;
-  status?: 'completed' | 'running';
   success: boolean;
 }
 
@@ -26,12 +22,8 @@ export const formatCommandOutput = ({
   output,
   outputFilePath,
   outputFileSize,
-  previewKind,
-  previewTruncated,
-  omittedBytes,
   running,
   sizeDeltaSinceLastCheck,
-  status,
   error,
 }: FormatCommandOutputParams): string => {
   const message = success ? 'Command output snapshot retrieved.' : `Failed: ${error}`;
@@ -41,7 +33,7 @@ export const formatCommandOutput = ({
   if (durationMs !== undefined && Number.isFinite(durationMs)) {
     parts.push(`Duration: ${formatDuration(durationMs)}`);
   }
-  parts.push(`Status: ${status ?? (running ? 'running' : 'completed')}`);
+  if (running !== undefined) parts.push(`Status: ${running ? 'running' : 'completed'}`);
   if (sizeDeltaSinceLastCheck !== undefined) {
     parts.push(`New bytes since last check: ${sizeDeltaSinceLastCheck}`);
   }
@@ -49,12 +41,7 @@ export const formatCommandOutput = ({
     const size = outputFileSize === undefined ? 'unknown size' : `${outputFileSize} bytes`;
     parts.push(`Output file: ${outputFilePath} (${size})`);
   }
-  if (output) {
-    const label = previewTruncated
-      ? `Output preview (${previewKind === 'tail' ? 'tail' : 'head/tail'}, omitted ${omittedBytes ?? 0} bytes)`
-      : 'Output';
-    parts.push(`${label}:\n${output}`);
-  }
+  if (output) parts.push(`Output:\n${output}`);
   if (error && success) parts.push(`Error: ${error}`);
 
   return parts.join('\n\n');

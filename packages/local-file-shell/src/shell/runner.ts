@@ -77,8 +77,8 @@ export async function runCommand(
       const output = processManager.buildRunCommandOutput(shellProcess);
       return {
         ...output,
+        running: true,
         shell_id: shellId,
-        status: 'running',
         success: true,
       };
     }

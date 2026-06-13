@@ -84,10 +84,9 @@ export class ShellProcessManager {
     this.processes.set(shellId, shellProcess);
   }
 
-  buildRunCommandOutput(shellProcess: ShellProcess): Omit<
-    GetCommandOutputResult,
-    'duration_ms' | 'exit_code' | 'success'
-  > {
+  buildRunCommandOutput(
+    shellProcess: ShellProcess,
+  ): Omit<GetCommandOutputResult, 'duration_ms' | 'exit_code' | 'success'> {
     return this.buildOutputResult(shellProcess, RUN_COMMAND_HEAD_RATIO);
   }
 
@@ -99,11 +98,10 @@ export class ShellProcessManager {
     return this.observeOutput(params, GET_COMMAND_OUTPUT_HEAD_RATIO);
   }
 
-  private async observeOutput({
-    filter,
-    shell_id,
-    timeout,
-  }: GetCommandOutputParams, headRatio: number): Promise<GetCommandOutputResult> {
+  private async observeOutput(
+    { filter, shell_id, timeout }: GetCommandOutputParams,
+    headRatio: number,
+  ): Promise<GetCommandOutputResult> {
     const shellProcess = this.processes.get(shell_id);
     if (!shellProcess) {
       return {
@@ -163,7 +161,7 @@ export class ShellProcessManager {
 
     if (filter) {
       try {
-        const regex = new RegExp(filter, 'gm');
+        const regex = new RegExp(filter, 'm');
         const lines = output.split('\n');
         output = lines.filter((line) => regex.test(line)).join('\n');
       } catch {
@@ -179,15 +177,11 @@ export class ShellProcessManager {
     return {
       duration_ms: durationMs,
       exit_code: exitCode ?? undefined,
-      omitted_bytes: result.omitted_bytes,
       output,
       output_file_path: result.output_file_path,
       output_file_size: result.output_file_size,
-      preview_kind: result.preview_kind,
-      preview_truncated: result.preview_truncated,
       running: exitCode === null,
       size_delta_since_last_check: sizeDelta,
-      status: exitCode === null ? 'running' : 'completed',
       stderr: result.stderr,
       stdout: result.stdout,
       success: true,
@@ -229,12 +223,9 @@ export class ShellProcessManager {
     const stderr = buildOutputPreview(outputFiles.stderrPath, { headRatio });
 
     return {
-      omitted_bytes: combined.omittedBytes,
       output: combined.content,
       output_file_path: outputFiles.outputPath,
       output_file_size: combined.size,
-      preview_kind: combined.kind,
-      preview_truncated: combined.truncated,
       stderr: stderr.content,
       stdout: stdout.content,
     };

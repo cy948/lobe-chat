@@ -1,8 +1,10 @@
 import type { ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { type ShellProcess, ShellProcessManager } from '../process-manager';
 
@@ -19,7 +21,11 @@ function createMockProcess(exitCode: number | null = null): ChildProcess {
   return process;
 }
 
-function createShellProcess(manager: ShellProcessManager, shellId: string, process: ChildProcess): ShellProcess {
+function createShellProcess(
+  manager: ShellProcessManager,
+  shellId: string,
+  process: ChildProcess,
+): ShellProcess {
   return {
     exitCode: process.exitCode,
     lastObservedOutputSize: 0,
@@ -28,7 +34,11 @@ function createShellProcess(manager: ShellProcessManager, shellId: string, proce
   };
 }
 
-function writeOutput(shellProcess: ShellProcess, stream: 'stderr' | 'stdout', content: string): void {
+function writeOutput(
+  shellProcess: ShellProcess,
+  stream: 'stderr' | 'stdout',
+  content: string,
+): void {
   const buffer = Buffer.from(content);
   fs.writeSync(shellProcess.outputFiles.outputFd, buffer);
   fs.writeSync(
@@ -39,9 +49,16 @@ function writeOutput(shellProcess: ShellProcess, stream: 'stderr' | 'stdout', co
 
 describe('ShellProcessManager', () => {
   let manager: ShellProcessManager;
+  let tmpDir: string;
 
   beforeEach(() => {
-    manager = new ShellProcessManager();
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lobehub-shell-process-manager-'));
+    manager = new ShellProcessManager({ outputRoot: tmpDir });
+  });
+
+  afterEach(() => {
+    manager.cleanupAll();
+    fs.rmSync(tmpDir, { force: true, recursive: true });
   });
 
   describe('getOutput', () => {
@@ -168,6 +185,20 @@ describe('ShellProcessManager', () => {
       expect(result.success).toBe(true);
       expect(result.output).toContain('line 1');
       expect(result.output).not.toContain('line 2');
+    });
+
+    it('should filter consecutive matching lines', async () => {
+      const process = createMockProcess();
+      const shellProcess = createShellProcess(manager, 'test-1', process);
+      writeOutput(shellProcess, 'stdout', 'match one\nmatch two\nskip\n');
+      manager.register('test-1', shellProcess);
+
+      const result = await manager.getOutput({ filter: '^match', shell_id: 'test-1', timeout: 0 });
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('match one');
+      expect(result.output).toContain('match two');
+      expect(result.output).not.toContain('skip');
     });
 
     it('should handle invalid regex filter gracefully', async () => {

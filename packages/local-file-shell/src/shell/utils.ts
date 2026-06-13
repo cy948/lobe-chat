@@ -6,14 +6,9 @@ export const INLINE_OUTPUT_MAX_BYTES = 8 * 1024;
 /** @deprecated Use INLINE_OUTPUT_MAX_BYTES for shell output previews. */
 export const MAX_OUTPUT_LENGTH = 80_000;
 
-export type OutputPreviewKind = 'head_tail' | 'tail';
-
 export interface OutputPreview {
   content: string;
-  kind: OutputPreviewKind;
-  omittedBytes: number;
   size: number;
-  truncated: boolean;
 }
 
 /** ANSI SGR reset, closes any open color/style state */
@@ -68,12 +63,12 @@ export const buildOutputPreview = (
   try {
     stat = fs.statSync(filePath);
   } catch {
-    return { content: '', kind: headRatio <= 0 ? 'tail' : 'head_tail', omittedBytes: 0, size: 0, truncated: false };
+    return { content: '', size: 0 };
   }
 
   const size = stat.size;
   if (size <= 0 || maxBytes <= 0) {
-    return { content: '', kind: headRatio <= 0 ? 'tail' : 'head_tail', omittedBytes: size, size, truncated: size > 0 };
+    return { content: '', size };
   }
 
   const fd = fs.openSync(filePath, 'r');
@@ -83,10 +78,7 @@ export const buildOutputPreview = (
       fs.readSync(fd, buffer, 0, size, 0);
       return {
         content: stripAnsi(buffer.toString('utf8')),
-        kind: headRatio <= 0 ? 'tail' : 'head_tail',
-        omittedBytes: 0,
         size,
-        truncated: false,
       };
     }
 
@@ -100,10 +92,7 @@ export const buildOutputPreview = (
       fs.readSync(fd, tail, 0, tail.length, Math.max(0, size - tail.length));
       return {
         content: `... [showing last ${tail.length} of ${size} bytes; full output: ${filePath}]\n${stripAnsi(tail.toString('utf8'))}`,
-        kind: 'tail',
-        omittedBytes: size - tail.length,
         size,
-        truncated: true,
       };
     }
 
@@ -114,10 +103,7 @@ export const buildOutputPreview = (
 
     return {
       content: `${stripAnsi(head.toString('utf8'))}\n... [omitted ${omittedBytes} bytes; full output: ${filePath}]\n${stripAnsi(tail.toString('utf8'))}`,
-      kind: 'head_tail',
-      omittedBytes,
       size,
-      truncated: true,
     };
   } finally {
     fs.closeSync(fd);

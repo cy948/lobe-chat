@@ -7,11 +7,7 @@ describe('formatCommandOutput', () => {
     const result = formatCommandOutput({
       success: true,
     });
-    expect(result).toMatchInlineSnapshot(`
-      "Command output snapshot retrieved.
-
-      Status: completed"
-    `);
+    expect(result).toMatchInlineSnapshot(`"Command output snapshot retrieved."`);
   });
 
   it('should suppress zero exit code when present', () => {
@@ -19,11 +15,7 @@ describe('formatCommandOutput', () => {
       exitCode: 0,
       success: true,
     });
-    expect(result).toMatchInlineSnapshot(`
-      "Command output snapshot retrieved.
-
-      Status: completed"
-    `);
+    expect(result).toMatchInlineSnapshot(`"Command output snapshot retrieved."`);
   });
 
   it('should format duration in seconds when present', () => {
@@ -34,9 +26,7 @@ describe('formatCommandOutput', () => {
     expect(result).toMatchInlineSnapshot(`
       "Command output snapshot retrieved.
 
-      Duration: 45s
-
-      Status: completed"
+      Duration: 45s"
     `);
   });
 
@@ -54,8 +44,6 @@ describe('formatCommandOutput', () => {
 
       Duration: 123s
 
-      Status: completed
-
       Output:
       Process output here"
     `);
@@ -66,11 +54,7 @@ describe('formatCommandOutput', () => {
       error: 'Process not found',
       success: false,
     });
-    expect(result).toMatchInlineSnapshot(`
-      "Failed: Process not found
-
-      Status: completed"
-    `);
+    expect(result).toMatchInlineSnapshot(`"Failed: Process not found"`);
   });
 
   it('should format successful output with error info', () => {
@@ -84,8 +68,6 @@ describe('formatCommandOutput', () => {
       "Command output snapshot retrieved.
 
       Exit code: 1
-
-      Status: completed
 
       Output:
       Some output

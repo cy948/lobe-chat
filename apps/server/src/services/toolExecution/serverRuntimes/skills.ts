@@ -1,7 +1,7 @@
 import { builtinSkills } from '@lobechat/builtin-skills';
 import { LocalSystemApiName, LocalSystemIdentifier } from '@lobechat/builtin-tool-local-system';
-// Project skill files are wired through deviceGateway using local-system tools:
-// `readFile` loads content, and `globFiles` enumerates resources for validation.
+// Note: only `readFile` is wired through deviceGateway. Directory enumeration is
+// left to the model via `local-system.globFiles` so we don't double-fetch.
 import {
   type CommandResult,
   type ExecScriptActivatedSkill,

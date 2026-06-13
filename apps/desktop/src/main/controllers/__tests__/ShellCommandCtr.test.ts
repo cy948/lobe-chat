@@ -10,6 +10,9 @@ const { ipcMainHandleMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('electron', () => ({
+  app: {
+    getPath: vi.fn(() => '/tmp/lobehub-shell-command-test'),
+  },
   ipcMain: {
     handle: ipcMainHandleMock,
   },

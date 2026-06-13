@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 
 import type { RunCommandParams, RunCommandResult } from '../types';
-import type { ShellProcess, ShellProcessManager } from './process-manager';
+import type { ShellOutputFiles, ShellProcess, ShellProcessManager } from './process-manager';
 import { getShellConfig } from './utils';
 
 export interface RunCommandOptions {
@@ -36,6 +37,7 @@ export async function runCommand(
 
   try {
     const shellId = processManager.createShellId();
+    const outputFiles = processManager.createOutputFiles(shellId);
     const childProcess = spawn(shellConfig.cmd, shellConfig.args, {
       cwd,
       env: childEnv,
@@ -44,19 +46,17 @@ export async function runCommand(
 
     const shellProcess: ShellProcess = {
       exitCode: null,
-      lastReadStderr: 0,
-      lastReadStdout: 0,
+      lastObservedOutputSize: 0,
+      outputFiles,
       process: childProcess,
-      stderr: [],
-      stdout: [],
     };
 
     childProcess.stdout?.on('data', (data) => {
-      shellProcess.stdout.push(data.toString());
+      writeOutputChunk(outputFiles, 'stdout', data);
     });
 
     childProcess.stderr?.on('data', (data) => {
-      shellProcess.stderr.push(data.toString());
+      writeOutputChunk(outputFiles, 'stderr', data);
     });
 
     childProcess.on('exit', (code) => {
@@ -66,7 +66,7 @@ export async function runCommand(
 
     childProcess.on('error', (error) => {
       logger?.error(`${logPrefix} Command failed:`, error);
-      shellProcess.stderr.push(error.message);
+      writeOutputChunk(outputFiles, 'stderr', `${error.message}\n`);
       shellProcess.exitCode = 1;
     });
 
@@ -74,10 +74,16 @@ export async function runCommand(
     logger?.info?.(`${logPrefix} Started session`, { background: run_in_background, shellId });
 
     if (run_in_background) {
-      return { shell_id: shellId, success: true };
+      const output = processManager.buildRunCommandOutput(shellProcess);
+      return {
+        ...output,
+        shell_id: shellId,
+        status: 'running',
+        success: true,
+      };
     }
 
-    const observation = await processManager.getOutput({
+    const observation = await processManager.getRunCommandOutput({
       shell_id: shellId,
       timeout,
     });
@@ -90,3 +96,18 @@ export async function runCommand(
     return { error: (error as Error).message, success: false };
   }
 }
+
+const writeOutputChunk = (
+  outputFiles: ShellOutputFiles,
+  stream: 'stderr' | 'stdout',
+  data: Buffer | string,
+): void => {
+  if (outputFiles.closed) return;
+  const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+  try {
+    fs.writeSync(outputFiles.outputFd, buffer);
+    fs.writeSync(stream === 'stdout' ? outputFiles.stdoutFd : outputFiles.stderrFd, buffer);
+  } catch {
+    // The process may emit buffered data after cancellation closed the output files.
+  }
+};

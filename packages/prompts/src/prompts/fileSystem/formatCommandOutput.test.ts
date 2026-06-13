@@ -7,7 +7,11 @@ describe('formatCommandOutput', () => {
     const result = formatCommandOutput({
       success: true,
     });
-    expect(result).toMatchInlineSnapshot(`"Output retrieved."`);
+    expect(result).toMatchInlineSnapshot(`
+      "Command output snapshot retrieved.
+
+      Status: completed"
+    `);
   });
 
   it('should suppress zero exit code when present', () => {
@@ -15,7 +19,11 @@ describe('formatCommandOutput', () => {
       exitCode: 0,
       success: true,
     });
-    expect(result).toMatchInlineSnapshot(`"Output retrieved."`);
+    expect(result).toMatchInlineSnapshot(`
+      "Command output snapshot retrieved.
+
+      Status: completed"
+    `);
   });
 
   it('should format duration in seconds when present', () => {
@@ -24,9 +32,11 @@ describe('formatCommandOutput', () => {
       success: true,
     });
     expect(result).toMatchInlineSnapshot(`
-      "Output retrieved.
+      "Command output snapshot retrieved.
 
-      Duration: 45s"
+      Duration: 45s
+
+      Status: completed"
     `);
   });
 
@@ -38,11 +48,13 @@ describe('formatCommandOutput', () => {
       success: true,
     });
     expect(result).toMatchInlineSnapshot(`
-      "Output retrieved.
+      "Command output snapshot retrieved.
 
       Exit code: 17
 
       Duration: 123s
+
+      Status: completed
 
       Output:
       Process output here"
@@ -54,7 +66,11 @@ describe('formatCommandOutput', () => {
       error: 'Process not found',
       success: false,
     });
-    expect(result).toMatchInlineSnapshot(`"Failed: Process not found"`);
+    expect(result).toMatchInlineSnapshot(`
+      "Failed: Process not found
+
+      Status: completed"
+    `);
   });
 
   it('should format successful output with error info', () => {
@@ -65,9 +81,11 @@ describe('formatCommandOutput', () => {
       success: true,
     });
     expect(result).toMatchInlineSnapshot(`
-      "Output retrieved.
+      "Command output snapshot retrieved.
 
       Exit code: 1
+
+      Status: completed
 
       Output:
       Some output

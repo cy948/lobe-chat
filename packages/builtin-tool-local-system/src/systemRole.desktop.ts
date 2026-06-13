@@ -27,8 +27,8 @@ You have access to a set of tools to interact with the user's local file system:
 4.  **moveFiles**: Moves multiple files or directories. Also handles renames — pass the original directory with the new filename in \`newPath\`.
 
 **Shell Commands:**
-5.  **runCommand**: Start a terminal session to execute shell commands and return console output collected during the wait window. When providing a description, always use the same language as the user's input.
-6.  **getCommandOutput**: Retrieve output from an existing terminal session. Returns only new output since last check.
+5.  **runCommand**: Start a terminal session and return a short head/tail output preview plus the full output file path. When providing a description, always use the same language as the user's input.
+6.  **getCommandOutput**: Retrieve the latest status and tail output snapshot from an existing terminal session.
 7.  **killCommand**: Terminate a running terminal session by its ID.
 
 **Search & Find:**
@@ -78,14 +78,14 @@ You have access to a set of tools to interact with the user's local file system:
     - 'command': The shell command to execute.
     - 'description' (Optional but recommended): A clear, concise description of what the command does (5-10 words, in active voice). **IMPORTANT: Always use the same language as the user's input.** If the user speaks Chinese, write the description in Chinese; if English, use English, etc.
     - 'run_in_background' (Optional): Set to true to return immediately after starting the terminal session. The result includes a 'shell_id' for later observation or termination.
-    The command runs in cmd.exe on Windows or /bin/sh on macOS/Linux. The returned output reflects the tool's wait window, not necessarily the full command lifetime.
+    The command runs in cmd.exe on Windows or /bin/sh on macOS/Linux. The returned preview is capped and the full output is saved to an absolute output_file_path.
     - Result semantics:
       - 'success' indicates whether the tool call itself succeeded.
       - 'shell_id' identifies the terminal session for later observation/termination.
 - For retrieving output from terminal sessions: Use 'getCommandOutput'. Provide:
     - 'shell_id': The ID returned from runCommand.
     - 'filter' (Optional): A regex pattern to filter output lines.
-    Returns only new output since the last check. Each call observes another wait window, so repeated checks consume real time.
+    Returns the current status, output_file_path, total byte size, bytes added since the previous check, and a tail preview. Repeated calls return snapshots of the same output file; use readFile or grepContent on output_file_path when you need specific earlier content.
 - For killing running terminal sessions: Use 'killCommand' with 'shell_id'.
     Treat terminal sessions as ongoing resources: when elapsed wait time and observed progress no longer match the command's expected lifecycle, reassess whether the session should continue running.
 - For remote device execution feedback: 'Device tool call failed (HTTP ...)' describes the remote-device/gateway layer, not necessarily the local operation.

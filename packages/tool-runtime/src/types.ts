@@ -187,7 +187,14 @@ export interface RunCommandState {
   error?: string;
   exitCode?: number;
   isBackground: boolean;
+  omittedBytes?: number;
   output?: string;
+  outputFilePath?: string;
+  outputFileSize?: number;
+  previewKind?: 'head_tail' | 'tail';
+  previewTruncated?: boolean;
+  running?: boolean;
+  status?: 'completed' | 'running';
   stderr?: string;
   stdout?: string;
   success: boolean;
@@ -198,7 +205,14 @@ export interface GetCommandOutputState {
   error?: string;
   exitCode?: number;
   newOutput?: string;
+  omittedBytes?: number;
+  outputFilePath?: string;
+  outputFileSize?: number;
+  previewKind?: 'head_tail' | 'tail';
+  previewTruncated?: boolean;
   running?: boolean;
+  sizeDeltaSinceLastCheck?: number;
+  status?: 'completed' | 'running';
   success: boolean;
 }
 

@@ -225,7 +225,7 @@ export const LocalSystemManifest: BuiltinToolManifest = {
     {
       defaultTimeoutMs: 30_000,
       description:
-        'Start a terminal session to execute a shell command and return console output collected during the wait window (up to 30 seconds by default). If the command is still running after the wait window, the result includes `shell_id` for later observation or termination.',
+        'Start a terminal session and return a short head/tail output preview plus the full output file path. If the command is still running after the wait window, the result includes `shell_id` for later observation or termination.',
       humanIntervention: 'required',
       name: LocalSystemApiName.runCommand,
       parameters: {
@@ -258,7 +258,7 @@ export const LocalSystemManifest: BuiltinToolManifest = {
     {
       defaultTimeoutMs: 30_000,
       description:
-        'Retrieve output from a running or completed background shell command. Waits for one output window (up to 30 seconds by default) and returns only new output since the last check.',
+        'Retrieve the latest status and tail output snapshot from a running or completed shell command. Also returns the full output file path and byte size.',
       name: LocalSystemApiName.getCommandOutput,
       parameters: {
         properties: {

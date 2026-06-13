@@ -132,7 +132,7 @@ describe('runCommand', () => {
       expect(output.stdout).toContain('hello');
     });
 
-    it('should return only new buffered output on subsequent reads', async () => {
+    it('should return the latest tail snapshot on subsequent reads', async () => {
       const bgResult = await runCommand(
         { command: 'echo first && sleep 0.2 && echo second', run_in_background: true },
         { processManager },

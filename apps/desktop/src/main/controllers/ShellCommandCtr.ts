@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import type {
   GetCommandOutputParams,
   GetCommandOutputResult,
@@ -7,6 +9,7 @@ import type {
   RunCommandResult,
 } from '@lobechat/electron-client-ipc';
 import { runCommand, ShellProcessManager } from '@lobechat/local-file-shell';
+import { app as electronApp } from 'electron';
 
 import { createLogger } from '@/utils/logger';
 
@@ -15,7 +18,9 @@ import { ControllerModule, IpcMethod } from './index';
 
 const logger = createLogger('controllers:ShellCommandCtr');
 
-const processManager = new ShellProcessManager();
+const processManager = new ShellProcessManager({
+  outputRoot: path.join(electronApp.getPath('userData'), 'local-system', 'shell-outputs'),
+});
 
 /** Prefix for a simple `lh`/`lobe`/`lobehub` invocation (keyword + boundary, args via slice). */
 const SIMPLE_LH_PREFIX = /^\s*(?:lh|lobe|lobehub)(?=\s|$)/;

@@ -14,6 +14,7 @@ export interface RunCommandParams {
 }
 
 export interface RunCommandResult {
+  duration_ms?: number;
   error?: string;
   /**
    * Present only after the command has exited.
@@ -22,6 +23,12 @@ export interface RunCommandResult {
    */
   exit_code?: number;
   output?: string;
+  output_file_path?: string;
+  output_file_size?: number;
+  omitted_bytes?: number;
+  preview_kind?: 'head_tail' | 'tail';
+  preview_truncated?: boolean;
+  running?: boolean;
   /**
    * Session identifier. Present for background commands and foreground commands
    * that can be resumed with `getCommandOutput`.
@@ -29,6 +36,7 @@ export interface RunCommandResult {
   shell_id?: string;
   stderr?: string;
   stdout?: string;
+  status?: 'completed' | 'running';
   /**
    * True when the command/session request completed successfully.
    * Use `exit_code` to determine whether the underlying command has exited.
@@ -61,6 +69,14 @@ export interface GetCommandOutputResult {
    */
   exit_code?: number;
   output: string;
+  output_file_path?: string;
+  output_file_size: number;
+  omitted_bytes?: number;
+  preview_kind?: 'head_tail' | 'tail';
+  preview_truncated?: boolean;
+  running?: boolean;
+  size_delta_since_last_check?: number;
+  status?: 'completed' | 'running';
   stderr: string;
   stdout: string;
   /**

@@ -1,5 +1,6 @@
 import type { ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -18,15 +19,22 @@ function createMockProcess(exitCode: number | null = null): ChildProcess {
   return process;
 }
 
-function createShellProcess(process: ChildProcess): ShellProcess {
+function createShellProcess(manager: ShellProcessManager, shellId: string, process: ChildProcess): ShellProcess {
   return {
     exitCode: process.exitCode,
-    lastReadStderr: 0,
-    lastReadStdout: 0,
+    lastObservedOutputSize: 0,
+    outputFiles: manager.createOutputFiles(shellId),
     process,
-    stderr: [],
-    stdout: [],
   };
+}
+
+function writeOutput(shellProcess: ShellProcess, stream: 'stderr' | 'stdout', content: string): void {
+  const buffer = Buffer.from(content);
+  fs.writeSync(shellProcess.outputFiles.outputFd, buffer);
+  fs.writeSync(
+    stream === 'stdout' ? shellProcess.outputFiles.stdoutFd : shellProcess.outputFiles.stderrFd,
+    buffer,
+  );
 }
 
 describe('ShellProcessManager', () => {
@@ -46,11 +54,10 @@ describe('ShellProcessManager', () => {
 
     it('should retrieve stdout and stderr', async () => {
       const process = createMockProcess();
-      manager.register('test-1', {
-        ...createShellProcess(process),
-        stderr: ['error line\n'],
-        stdout: ['line 1\n', 'line 2\n'],
-      });
+      const shellProcess = createShellProcess(manager, 'test-1', process);
+      writeOutput(shellProcess, 'stdout', 'line 1\nline 2\n');
+      writeOutput(shellProcess, 'stderr', 'error line\n');
+      manager.register('test-1', shellProcess);
 
       const result = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
 
@@ -61,30 +68,31 @@ describe('ShellProcessManager', () => {
       expect(result.exit_code).toBeUndefined();
     });
 
-    it('should return only new buffered output on repeated reads', async () => {
+    it('should return a tail snapshot and report byte delta on repeated reads', async () => {
       const process = createMockProcess();
-      const shellProcess = {
-        ...createShellProcess(process),
-        stdout: ['first\n'],
-      };
+      const shellProcess = createShellProcess(manager, 'test-1', process);
+      writeOutput(shellProcess, 'stdout', 'first\n');
       manager.register('test-1', shellProcess);
 
       const first = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
       expect(first.stdout).toContain('first');
+      expect(first.size_delta_since_last_check).toBeGreaterThan(0);
 
       const second = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
-      expect(second.stdout).toBe('');
+      expect(second.stdout).toContain('first');
+      expect(second.size_delta_since_last_check).toBe(0);
 
-      shellProcess.stdout.push('second\n');
+      writeOutput(shellProcess, 'stdout', 'second\n');
       const third = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
-      expect(third.stdout).toBe('second\n');
+      expect(third.stdout).toContain('second');
+      expect(third.size_delta_since_last_check).toBeGreaterThan(0);
     });
 
     it('should return the current output snapshot when observation timeout elapses', async () => {
       vi.useFakeTimers();
       try {
         const process = createMockProcess();
-        const shellProcess = createShellProcess(process);
+        const shellProcess = createShellProcess(manager, 'test-1', process);
         manager.register('test-1', shellProcess);
         let resolved = false;
 
@@ -94,7 +102,7 @@ describe('ShellProcessManager', () => {
         });
 
         setTimeout(() => {
-          shellProcess.stdout.push('delayed\n');
+          writeOutput(shellProcess, 'stdout', 'delayed\n');
         }, 20);
 
         await vi.advanceTimersByTimeAsync(20);
@@ -113,7 +121,7 @@ describe('ShellProcessManager', () => {
       vi.useFakeTimers();
       try {
         const process = createMockProcess();
-        const shellProcess = createShellProcess(process);
+        const shellProcess = createShellProcess(manager, 'test-1', process);
         manager.register('test-1', shellProcess);
         let resolved = false;
 
@@ -136,7 +144,7 @@ describe('ShellProcessManager', () => {
 
     it('should return done when process exits before new output', async () => {
       const process = createMockProcess();
-      manager.register('test-1', createShellProcess(process));
+      manager.register('test-1', createShellProcess(manager, 'test-1', process));
 
       const pending = manager.getOutput({ shell_id: 'test-1', timeout: 100 });
 
@@ -151,10 +159,9 @@ describe('ShellProcessManager', () => {
 
     it('should filter output with regex', async () => {
       const process = createMockProcess();
-      manager.register('test-1', {
-        ...createShellProcess(process),
-        stdout: ['line 1\nline 2\nline 3\n'],
-      });
+      const shellProcess = createShellProcess(manager, 'test-1', process);
+      writeOutput(shellProcess, 'stdout', 'line 1\nline 2\nline 3\n');
+      manager.register('test-1', shellProcess);
 
       const result = await manager.getOutput({ filter: 'line 1', shell_id: 'test-1', timeout: 0 });
 
@@ -165,7 +172,9 @@ describe('ShellProcessManager', () => {
 
     it('should handle invalid regex filter gracefully', async () => {
       const process = createMockProcess();
-      manager.register('test-1', { ...createShellProcess(process), stdout: ['output\n'] });
+      const shellProcess = createShellProcess(manager, 'test-1', process);
+      writeOutput(shellProcess, 'stdout', 'output\n');
+      manager.register('test-1', shellProcess);
 
       const result = await manager.getOutput({
         filter: '[invalid(regex',
@@ -179,7 +188,7 @@ describe('ShellProcessManager', () => {
 
     it('should reflect completion via exit_code', async () => {
       const process = createMockProcess();
-      manager.register('test-1', createShellProcess(process));
+      manager.register('test-1', createShellProcess(manager, 'test-1', process));
 
       let result = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
       expect(result.exit_code).toBeUndefined();
@@ -194,7 +203,7 @@ describe('ShellProcessManager', () => {
       vi.useFakeTimers();
       try {
         const process = createMockProcess();
-        manager.register('test-1', createShellProcess(process));
+        manager.register('test-1', createShellProcess(manager, 'test-1', process));
 
         await vi.advanceTimersByTimeAsync(42_000);
 
@@ -210,7 +219,7 @@ describe('ShellProcessManager', () => {
       vi.useFakeTimers();
       try {
         const process = createMockProcess();
-        manager.register('test-1', createShellProcess(process));
+        manager.register('test-1', createShellProcess(manager, 'test-1', process));
 
         await vi.advanceTimersByTimeAsync(2500);
         (process as { exitCode: number | null }).exitCode = 0;
@@ -227,10 +236,9 @@ describe('ShellProcessManager', () => {
 
     it('should retain completed output after the process exits', async () => {
       const process = createMockProcess();
-      manager.register('test-1', {
-        ...createShellProcess(process),
-        stdout: ['done\n'],
-      });
+      const shellProcess = createShellProcess(manager, 'test-1', process);
+      writeOutput(shellProcess, 'stdout', 'done\n');
+      manager.register('test-1', shellProcess);
 
       (process as { exitCode: number | null }).exitCode = 0;
 
@@ -244,7 +252,7 @@ describe('ShellProcessManager', () => {
   describe('kill', () => {
     it('should kill process successfully', () => {
       const process = createMockProcess();
-      manager.register('test-1', createShellProcess(process));
+      manager.register('test-1', createShellProcess(manager, 'test-1', process));
 
       const result = manager.kill('test-1');
 
@@ -261,7 +269,7 @@ describe('ShellProcessManager', () => {
 
     it('should remove process from registry after killing', async () => {
       const process = createMockProcess();
-      manager.register('test-1', createShellProcess(process));
+      manager.register('test-1', createShellProcess(manager, 'test-1', process));
 
       manager.kill('test-1');
 
@@ -275,7 +283,7 @@ describe('ShellProcessManager', () => {
       (process.kill as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
         throw new Error('Kill failed');
       });
-      manager.register('test-1', createShellProcess(process));
+      manager.register('test-1', createShellProcess(manager, 'test-1', process));
 
       const result = manager.kill('test-1');
 
@@ -288,8 +296,8 @@ describe('ShellProcessManager', () => {
     it('should kill all registered processes', async () => {
       const p1 = createMockProcess();
       const p2 = createMockProcess();
-      manager.register('test-1', createShellProcess(p1));
-      manager.register('test-2', createShellProcess(p2));
+      manager.register('test-1', createShellProcess(manager, 'test-1', p1));
+      manager.register('test-2', createShellProcess(manager, 'test-2', p2));
 
       manager.cleanupAll();
 
@@ -304,7 +312,7 @@ describe('ShellProcessManager', () => {
       (p1.kill as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
         throw new Error('fail');
       });
-      manager.register('test-1', createShellProcess(p1));
+      manager.register('test-1', createShellProcess(manager, 'test-1', p1));
 
       expect(() => manager.cleanupAll()).not.toThrow();
     });

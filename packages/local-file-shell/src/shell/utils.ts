@@ -1,5 +1,20 @@
-/** Maximum output length to prevent context explosion */
+import fs from 'node:fs';
+
+/** Maximum preview bytes returned inline to prevent context explosion */
+export const INLINE_OUTPUT_MAX_BYTES = 8 * 1024;
+
+/** @deprecated Use INLINE_OUTPUT_MAX_BYTES for shell output previews. */
 export const MAX_OUTPUT_LENGTH = 80_000;
+
+export type OutputPreviewKind = 'head_tail' | 'tail';
+
+export interface OutputPreview {
+  content: string;
+  kind: OutputPreviewKind;
+  omittedBytes: number;
+  size: number;
+  truncated: boolean;
+}
 
 /** ANSI SGR reset, closes any open color/style state */
 const ANSI_RESET = '\u001B[0m';
@@ -7,6 +22,8 @@ const ANSI_RESET = '\u001B[0m';
 /** Matches a complete ANSI escape sequence anchored at the start of the string */
 // eslint-disable-next-line no-control-regex, regexp/no-obscure-range
 const ANSI_ESCAPE_AT_START = /^\u001B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/;
+// eslint-disable-next-line no-control-regex, regexp/no-obscure-range
+const ANSI_ESCAPE = /\u001B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g;
 
 /**
  * Truncate string to max length with indicator.
@@ -33,6 +50,78 @@ export const truncateOutput = (str: string, maxLength: number = MAX_OUTPUT_LENGT
   const reset = slice.includes('\u001B') ? ANSI_RESET : '';
 
   return slice + reset + '\n... [truncated, ' + (str.length - maxLength) + ' more characters]';
+};
+
+const stripAnsi = (str: string): string => str.replaceAll(ANSI_ESCAPE, '');
+
+export const buildOutputPreview = (
+  filePath: string,
+  {
+    headRatio,
+    maxBytes = INLINE_OUTPUT_MAX_BYTES,
+  }: {
+    headRatio: number;
+    maxBytes?: number;
+  },
+): OutputPreview => {
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(filePath);
+  } catch {
+    return { content: '', kind: headRatio <= 0 ? 'tail' : 'head_tail', omittedBytes: 0, size: 0, truncated: false };
+  }
+
+  const size = stat.size;
+  if (size <= 0 || maxBytes <= 0) {
+    return { content: '', kind: headRatio <= 0 ? 'tail' : 'head_tail', omittedBytes: size, size, truncated: size > 0 };
+  }
+
+  const fd = fs.openSync(filePath, 'r');
+  try {
+    if (size <= maxBytes) {
+      const buffer = Buffer.alloc(size);
+      fs.readSync(fd, buffer, 0, size, 0);
+      return {
+        content: stripAnsi(buffer.toString('utf8')),
+        kind: headRatio <= 0 ? 'tail' : 'head_tail',
+        omittedBytes: 0,
+        size,
+        truncated: false,
+      };
+    }
+
+    const normalizedHeadRatio = Math.min(Math.max(headRatio, 0), 1);
+    const headBytes = Math.floor(maxBytes * normalizedHeadRatio);
+    const tailBytes = Math.max(0, maxBytes - headBytes);
+    const omittedBytes = Math.max(0, size - headBytes - tailBytes);
+
+    if (headBytes <= 0) {
+      const tail = Buffer.alloc(Math.min(maxBytes, size));
+      fs.readSync(fd, tail, 0, tail.length, Math.max(0, size - tail.length));
+      return {
+        content: `... [showing last ${tail.length} of ${size} bytes; full output: ${filePath}]\n${stripAnsi(tail.toString('utf8'))}`,
+        kind: 'tail',
+        omittedBytes: size - tail.length,
+        size,
+        truncated: true,
+      };
+    }
+
+    const head = Buffer.alloc(headBytes);
+    const tail = Buffer.alloc(tailBytes);
+    fs.readSync(fd, head, 0, headBytes, 0);
+    fs.readSync(fd, tail, 0, tailBytes, Math.max(0, size - tailBytes));
+
+    return {
+      content: `${stripAnsi(head.toString('utf8'))}\n... [omitted ${omittedBytes} bytes; full output: ${filePath}]\n${stripAnsi(tail.toString('utf8'))}`,
+      kind: 'head_tail',
+      omittedBytes,
+      size,
+      truncated: true,
+    };
+  } finally {
+    fs.closeSync(fd);
+  }
 };
 
 /** Get cross-platform shell configuration */

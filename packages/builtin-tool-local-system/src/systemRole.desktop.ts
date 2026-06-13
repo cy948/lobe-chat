@@ -77,14 +77,14 @@ You have access to a set of tools to interact with the user's local file system:
 - For executing shell commands: Use 'runCommand'. Provide the following parameters:
     - 'command': The shell command to execute.
     - 'description' (Optional but recommended): A clear, concise description of what the command does (5-10 words, in active voice). **IMPORTANT: Always use the same language as the user's input.** If the user speaks Chinese, write the description in Chinese; if English, use English, etc.
-    - 'run_in_background' (Optional): Set to true to return immediately after starting the terminal session. The result includes a 'shell_id' for later observation or termination.
+    - 'run_in_background' (Optional): Set to true to return immediately after starting the terminal session. The result includes a 'shell_id' session handle for later observation or termination.
     The command runs in cmd.exe on Windows or /bin/sh on macOS/Linux. The returned output reflects the tool's wait window, not necessarily the full command lifetime.
     - Result semantics:
       - 'success' indicates whether the tool call itself succeeded.
-      - 'shell_id' identifies the terminal session for later observation/termination.
-      - 'exit_code' is only present after the command has exited. If it is absent, the command is still running.
+      - 'shell_id' is the terminal session handle for later observation/termination.
+      - 'exit_code' is present only after the command has exited. If it is absent, the command is still running.
 - For retrieving output from terminal sessions: Use 'getCommandOutput'. Provide:
-    - 'shell_id': The ID returned from runCommand.
+    - 'shell_id': The session handle returned from runCommand.
     - 'filter' (Optional): A regex pattern to filter output lines.
     Returns only new output since the last check. Each call observes another wait window, so repeated checks consume real time.
 - For killing running terminal sessions: Use 'killCommand' with 'shell_id'.

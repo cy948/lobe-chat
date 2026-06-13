@@ -28,8 +28,10 @@ export const formatCommandResult = ({
     if (hasNonZeroExit) header += ` with exit code ${exitCode}`;
     if (error) header += `: ${error}`;
     parts.push(header);
-  } else if (shellId) {
-    parts.push(`Command started in background with shell_id: ${shellId}`);
+  } else if (shellId && exitCode === undefined) {
+    parts.push(
+      ['Command is still running after the wait window.', `shell_id: ${shellId}`].join('\n'),
+    );
   } else {
     parts.push('Command completed successfully.');
   }

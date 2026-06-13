@@ -225,7 +225,7 @@ export const LocalSystemManifest: BuiltinToolManifest = {
     {
       defaultTimeoutMs: 30_000,
       description:
-        'Start a terminal session to execute a shell command and return console output collected during the wait window (up to 30 seconds by default). If the command exits during that window, the result includes `exit_code`; if it is still running, the result includes `shell_id` for later output retrieval or termination.',
+        'Start a terminal session to execute a shell command and return console output collected during the wait window (up to 30 seconds by default). `shell_id` is the session handle for later observation or termination. `exit_code` is present only after the command exits; if absent, the command is still running.',
       humanIntervention: 'required',
       name: LocalSystemApiName.runCommand,
       parameters: {
@@ -247,7 +247,7 @@ export const LocalSystemManifest: BuiltinToolManifest = {
           },
           run_in_background: {
             description:
-              'Set to true to return immediately after starting the terminal session. The result will include a `shell_id` for later observation or termination.',
+              'Set to true to return immediately after starting the terminal session. The result includes a `shell_id` session handle for later observation or termination.',
             type: 'boolean',
           },
         },
@@ -258,7 +258,7 @@ export const LocalSystemManifest: BuiltinToolManifest = {
     {
       defaultTimeoutMs: 30_000,
       description:
-        'Retrieve output from a running or completed background shell command. Waits for one output window (up to 30 seconds by default) and returns only new output since the last check.',
+        'Retrieve new output from an existing terminal session. Waits for one output window (up to 30 seconds by default) and returns only output produced since the last check.',
       name: LocalSystemApiName.getCommandOutput,
       parameters: {
         properties: {
@@ -268,7 +268,7 @@ export const LocalSystemManifest: BuiltinToolManifest = {
             type: 'string',
           },
           shell_id: {
-            description: 'The ID of the background shell to retrieve output from',
+            description: 'The terminal session handle to retrieve output from',
             type: 'string',
           },
         },
@@ -278,12 +278,12 @@ export const LocalSystemManifest: BuiltinToolManifest = {
     },
     {
       defaultTimeoutMs: 10_000,
-      description: 'Kill a running background shell command by its ID.',
+      description: 'Kill a running terminal session by its handle.',
       name: LocalSystemApiName.killCommand,
       parameters: {
         properties: {
           shell_id: {
-            description: 'The ID of the background shell to kill',
+            description: 'The terminal session handle to kill',
             type: 'string',
           },
         },

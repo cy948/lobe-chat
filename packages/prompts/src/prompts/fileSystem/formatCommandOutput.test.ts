@@ -10,19 +10,15 @@ describe('formatCommandOutput', () => {
     expect(result).toMatchInlineSnapshot(`"Output retrieved."`);
   });
 
-  it('should include exit code when present', () => {
+  it('should suppress zero exit code when present', () => {
     const result = formatCommandOutput({
       exitCode: 0,
       success: true,
     });
-    expect(result).toMatchInlineSnapshot(`
-      "Output retrieved.
-
-      Exit code: 0"
-    `);
+    expect(result).toMatchInlineSnapshot(`"Output retrieved."`);
   });
 
-  it('should format successful output with content', () => {
+  it('should format completed output with non-zero exit code', () => {
     const result = formatCommandOutput({
       exitCode: 17,
       output: 'Process output here',

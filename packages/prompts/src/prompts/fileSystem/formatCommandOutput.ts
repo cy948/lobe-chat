@@ -14,7 +14,7 @@ export const formatCommandOutput = ({
   const message = success ? 'Output retrieved.' : `Failed: ${error}`;
 
   const parts: string[] = [message];
-  if (exitCode !== undefined) parts.push(`Exit code: ${exitCode}`);
+  if (exitCode !== undefined && exitCode !== 0) parts.push(`Exit code: ${exitCode}`);
   if (output) parts.push(`Output:\n${output}`);
   if (error && success) parts.push(`Error: ${error}`);
 

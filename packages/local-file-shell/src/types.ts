@@ -14,12 +14,6 @@ export interface RunCommandParams {
 }
 
 export interface RunCommandResult {
-  /**
-   * Time in milliseconds from command start to this observation.
-   * For running commands, this is elapsed time at observation time.
-   * For completed commands, this is the final duration.
-   */
-  duration_ms?: number;
   error?: string;
   /**
    * Present only after the command has exited.

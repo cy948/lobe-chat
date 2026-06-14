@@ -21,7 +21,6 @@ export interface ShellProcess {
   closedAt?: number;
   endedAt?: number;
   exitCode: number | null;
-  lastObservedOutputSize: number;
   outputFiles: ShellOutputFiles;
   process: ChildProcess;
   startedAt?: number;
@@ -149,7 +148,6 @@ export class ShellProcessManager {
       await this.waitForClose(shellProcess);
     }
 
-    const previousSize = shellProcess.lastObservedOutputSize;
     const result = this.buildOutputResult(shellProcess, headRatio);
     let { output } = result;
 
@@ -163,8 +161,6 @@ export class ShellProcessManager {
       }
     }
 
-    const sizeDelta = Math.max(0, result.output_file_size - previousSize);
-    shellProcess.lastObservedOutputSize = result.output_file_size;
     const startedAt = shellProcess.startedAt ?? Date.now();
     const durationMs = Math.max(0, (shellProcess.endedAt ?? Date.now()) - startedAt);
 
@@ -176,7 +172,6 @@ export class ShellProcessManager {
       output_file_size: result.output_file_size,
       output_truncated: result.output_truncated,
       running: exitCode === null,
-      size_delta_since_last_check: sizeDelta,
       stderr: result.stderr,
       stdout: result.stdout,
       success: true,

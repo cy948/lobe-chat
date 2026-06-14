@@ -332,6 +332,8 @@ export abstract class ComputerRuntime {
         outputFileSize: r.outputFileSize ?? r.output_file_size,
         outputTruncated: r.outputTruncated ?? r.output_truncated,
         shellId: r.commandId || r.shell_id,
+        stderr: r.stderr,
+        stdout: r.stdout,
         success: commandSuccess,
       });
 
@@ -364,7 +366,6 @@ export abstract class ComputerRuntime {
         outputFileSize: r.outputFileSize ?? r.output_file_size,
         outputTruncated: r.outputTruncated ?? r.output_truncated,
         running: r.running ?? false,
-        sizeDeltaSinceLastCheck: r.sizeDeltaSinceLastCheck ?? r.size_delta_since_last_check,
         success: outputSuccess,
       };
 
@@ -378,7 +379,6 @@ export abstract class ComputerRuntime {
         outputTruncated: r.outputTruncated ?? r.output_truncated,
         running: r.running,
         shellId: args.commandId,
-        sizeDeltaSinceLastCheck: r.sizeDeltaSinceLastCheck ?? r.size_delta_since_last_check,
         success: outputSuccess,
       });
 

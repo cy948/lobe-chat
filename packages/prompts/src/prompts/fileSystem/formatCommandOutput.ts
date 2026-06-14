@@ -8,7 +8,6 @@ export interface FormatCommandOutputParams {
   outputTruncated?: boolean;
   running?: boolean;
   shellId?: string;
-  sizeDeltaSinceLastCheck?: number;
   success: boolean;
 }
 
@@ -27,7 +26,6 @@ export const formatCommandOutput = ({
   outputTruncated,
   running,
   shellId,
-  sizeDeltaSinceLastCheck,
   error,
 }: FormatCommandOutputParams): string => {
   let message = success ? 'Command output snapshot retrieved.' : `Failed: ${error}`;
@@ -41,9 +39,6 @@ export const formatCommandOutput = ({
     parts.push(`Duration: ${formatDuration(durationMs)}`);
   }
   if (running !== undefined) parts.push(`Status: ${running ? 'running' : 'completed'}`);
-  if (sizeDeltaSinceLastCheck !== undefined) {
-    parts.push(`New bytes since last check: ${sizeDeltaSinceLastCheck}`);
-  }
   if (outputFilePath && outputTruncated) {
     const size = outputFileSize === undefined ? 'unknown size' : `${outputFileSize} bytes`;
     parts.push(`Output too large (${size}). Full output saved to: ${outputFilePath}`);

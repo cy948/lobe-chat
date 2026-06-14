@@ -206,7 +206,6 @@ export interface GetCommandOutputState {
   outputFileSize?: number;
   outputTruncated?: boolean;
   running?: boolean;
-  sizeDeltaSinceLastCheck?: number;
   success: boolean;
 }
 

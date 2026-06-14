@@ -200,7 +200,6 @@ export class LocalSystemExecutionRuntime extends ComputerRuntime {
             outputFileSize: raw.output_file_size,
             outputTruncated: raw.output_truncated,
             running: raw.running,
-            sizeDeltaSinceLastCheck: raw.size_delta_since_last_check,
             success: raw.success,
           },
           success: raw.success,

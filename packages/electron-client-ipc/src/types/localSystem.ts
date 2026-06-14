@@ -310,7 +310,6 @@ export interface GetCommandOutputResult {
   output_file_size: number;
   output_truncated?: boolean;
   running?: boolean;
-  size_delta_since_last_check?: number;
   stderr: string;
   stdout: string;
   success: boolean;

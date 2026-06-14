@@ -28,7 +28,6 @@ function createShellProcess(
 ): ShellProcess {
   return {
     exitCode: process.exitCode,
-    lastObservedOutputSize: 0,
     outputFiles: manager.createOutputFiles(shellId),
     process,
   };
@@ -82,7 +81,7 @@ describe('ShellProcessManager', () => {
       expect(result.exit_code).toBeUndefined();
     });
 
-    it('should return a tail snapshot and report byte delta on repeated reads', async () => {
+    it('should return a tail snapshot on repeated reads', async () => {
       const process = createMockProcess();
       const shellProcess = createShellProcess(manager, 'test-1', process);
       writeOutput(shellProcess, 'stdout', 'first\n');
@@ -90,16 +89,13 @@ describe('ShellProcessManager', () => {
 
       const first = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
       expect(first.stdout).toContain('first');
-      expect(first.size_delta_since_last_check).toBeGreaterThan(0);
 
       const second = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
       expect(second.stdout).toContain('first');
-      expect(second.size_delta_since_last_check).toBe(0);
 
       writeOutput(shellProcess, 'stdout', 'second\n');
       const third = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
       expect(third.stdout).toContain('second');
-      expect(third.size_delta_since_last_check).toBeGreaterThan(0);
     });
 
     it('should return the current output snapshot when observation timeout elapses', async () => {

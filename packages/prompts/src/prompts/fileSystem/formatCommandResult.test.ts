@@ -18,10 +18,10 @@ describe('formatCommandResult', () => {
     `);
   });
 
-  it('should format successful command with stdout', () => {
+  it('should format successful command with output', () => {
     const result = formatCommandResult({
       exitCode: 0,
-      stdout: 'Hello World',
+      output: 'Hello World',
       success: true,
     });
     expect(result).toMatchInlineSnapshot(`
@@ -72,37 +72,6 @@ describe('formatCommandResult', () => {
     `);
   });
 
-  it('should prefer combined output over separate stdout and stderr', () => {
-    const result = formatCommandResult({
-      output: 'combined stream',
-      shellId: 'shell-123',
-      stderr: 'stderr stream',
-      stdout: 'stdout stream',
-      success: true,
-    });
-
-    expect(result).toMatchInlineSnapshot(`
-      "Command running in background with shell_id: shell-123
-
-      Output:
-      combined stream"
-    `);
-  });
-
-  it('should format successful command with stderr', () => {
-    const result = formatCommandResult({
-      exitCode: 0,
-      stderr: 'Warning: deprecated',
-      success: true,
-    });
-    expect(result).toMatchInlineSnapshot(`
-      "Command completed successfully.
-
-      Stderr:
-      Warning: deprecated"
-    `);
-  });
-
   it('should suppress the Exit code line when exitCode is 0', () => {
     const result = formatCommandResult({
       exitCode: 0,
@@ -123,7 +92,7 @@ describe('formatCommandResult', () => {
   it('should treat a non-zero exit code as failure even when envelope success is true', () => {
     const result = formatCommandResult({
       exitCode: 137,
-      stdout: 'partial output',
+      output: 'partial output',
       success: true,
     });
     expect(result).toMatchInlineSnapshot(`
@@ -146,18 +115,14 @@ describe('formatCommandResult', () => {
     const result = formatCommandResult({
       error: 'Command error',
       exitCode: 1,
-      stderr: 'Error occurred',
-      stdout: 'Some output',
+      output: 'Some output',
       success: false,
     });
     expect(result).toMatchInlineSnapshot(`
       "Command failed with exit code 1: Command error
 
       Output:
-      Some output
-
-      Stderr:
-      Error occurred"
+      Some output"
     `);
   });
 });

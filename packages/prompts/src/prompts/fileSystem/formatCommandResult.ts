@@ -8,8 +8,6 @@ export interface FormatCommandResultParams {
   outputFileSize?: number;
   outputTruncated?: boolean;
   shellId?: string;
-  stderr?: string;
-  stdout?: string;
   success: boolean;
 }
 
@@ -21,8 +19,6 @@ export const formatCommandResult = ({
   outputFilePath,
   outputFileSize,
   outputTruncated,
-  stdout,
-  stderr,
   exitCode,
 }: FormatCommandResultParams): string => {
   const parts: string[] = [];
@@ -54,9 +50,6 @@ export const formatCommandResult = ({
 
   if (output) {
     parts.push(`${outputTruncated && exitCode !== undefined ? 'Preview' : 'Output'}:\n${output}`);
-  } else {
-    if (stdout) parts.push(`Output:\n${stdout}`);
-    if (stderr) parts.push(`Stderr:\n${stderr}`);
   }
 
   return parts.join('\n\n');

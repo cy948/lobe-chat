@@ -300,8 +300,7 @@ export abstract class ComputerRuntime {
           error: result.error?.message,
           exitCode: result.result?.exitCode ?? result.result?.exit_code,
           isBackground: args.background || false,
-          stderr: result.result?.stderr,
-          stdout: result.result?.stdout,
+          output: result.result?.output,
           success: false,
         });
       }
@@ -321,8 +320,6 @@ export abstract class ComputerRuntime {
         outputFileSize: r.outputFileSize ?? r.output_file_size,
         outputTruncated: r.outputTruncated ?? r.output_truncated,
         running,
-        stderr: r.stderr,
-        stdout: r.stdout,
         success: commandSuccess,
       };
 
@@ -334,8 +331,6 @@ export abstract class ComputerRuntime {
         outputFileSize: r.outputFileSize ?? r.output_file_size,
         outputTruncated: r.outputTruncated ?? r.output_truncated,
         shellId: r.commandId || r.shell_id,
-        stderr: r.stderr,
-        stdout: r.stdout,
         success: commandSuccess,
       });
 
@@ -502,13 +497,13 @@ export abstract class ComputerRuntime {
     // Priority chain:
     //   1. result.error.message (explicit error from service layer)
     //   2. JSON.stringify(result.error) (non-Error error objects)
-    //   3. state.stderr (e.g. git commit failure — exit ≠ 0, error in stderr)
+    //   3. state.output (e.g. command failure output without an explicit error)
     //   4. state.error (runtime-level error message)
     //   5. [UNKNOWN_EXEC_ERROR] Tool execution failed (last-resort fallback)
     const errorText =
       result.error?.message ||
       (result.error !== undefined ? JSON.stringify(result.error) : undefined) ||
-      (typeof state?.stderr === 'string' ? state.stderr : undefined) ||
+      (typeof state?.output === 'string' ? state.output : undefined) ||
       (typeof state?.error === 'string' ? state.error : undefined) ||
       '[UNKNOWN_EXEC_ERROR] Tool execution failed';
     return {

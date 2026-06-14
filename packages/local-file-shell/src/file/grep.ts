@@ -26,9 +26,12 @@ export async function grepContent({
       args.push('--hidden', '--glob', '!**/.git/**');
     }
     if (filePattern) args.push('--glob', filePattern);
-    args.push(pattern);
+    args.push(pattern, '.');
 
-    const child = spawn('rg', args, { cwd: expandTilde(cwd) || process.cwd() });
+    const child = spawn('rg', args, {
+      cwd: expandTilde(cwd) || process.cwd(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
     let stdout = '';
 
     child.stdout?.on('data', (data) => {
@@ -55,6 +58,7 @@ export async function grepContent({
               return null;
             }
           })
+          .filter((entry) => entry?.type === 'match')
           .filter(Boolean);
 
         resolve({

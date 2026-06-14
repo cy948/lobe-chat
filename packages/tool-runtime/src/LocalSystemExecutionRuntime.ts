@@ -138,6 +138,14 @@ export class LocalSystemExecutionRuntime extends ComputerRuntime {
         };
       }
 
+      case 'grepContent': {
+        return {
+          cwd: params.directory,
+          filePattern: params.filePattern,
+          pattern: params.pattern,
+        };
+      }
+
       default: {
         return params;
       }
@@ -180,8 +188,6 @@ export class LocalSystemExecutionRuntime extends ComputerRuntime {
             outputFilePath: raw.output_file_path,
             outputFileSize: raw.output_file_size,
             outputTruncated: raw.output_truncated,
-            stderr: raw.stderr,
-            stdout: raw.stdout,
             success: raw.success,
           },
           success: raw.success,

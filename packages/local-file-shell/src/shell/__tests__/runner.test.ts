@@ -26,7 +26,7 @@ describe('runCommand', () => {
       const result = await runCommand({ command: 'echo hello' }, { processManager });
 
       expect(result.success).toBe(true);
-      expect(result.stdout).toContain('hello');
+      expect(result.output).toContain('hello');
       expect(result.exit_code).toBe(0);
       expect(result.shell_id).toBeDefined();
     });
@@ -42,11 +42,10 @@ describe('runCommand', () => {
       localManager.cleanupAll();
     });
 
-    it('should capture stderr', async () => {
+    it('should capture merged output', async () => {
       const result = await runCommand({ command: 'echo error >&2' }, { processManager });
 
-      expect(result.stdout).toContain('error');
-      expect(result.stderr).toBe('');
+      expect(result.output).toContain('error');
     });
 
     it('should handle command failure', async () => {
@@ -101,7 +100,7 @@ describe('runCommand', () => {
       const result = await runCommand({ command: 'pwd', cwd: '/tmp' }, { processManager });
 
       expect(result.success).toBe(true);
-      expect(result.stdout).toContain('/tmp');
+      expect(result.output).toContain('/tmp');
     });
 
     it('should merge env into child process environment', async () => {
@@ -114,7 +113,7 @@ describe('runCommand', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.stdout).toContain('from-runner');
+      expect(result.output).toContain('from-runner');
     });
   });
 
@@ -130,8 +129,6 @@ describe('runCommand', () => {
       expect(result.exit_code).toBeUndefined();
       expect(result.output_file_path).toMatch(/sh-\d+\.log$/);
       expect(result.output).toBeUndefined();
-      expect(result.stdout).toBeUndefined();
-      expect(result.stderr).toBeUndefined();
     });
 
     it('should capture background process output', async () => {
@@ -145,7 +142,7 @@ describe('runCommand', () => {
       const output = await processManager.getOutput({ shell_id: bgResult.shell_id! });
 
       expect(output.success).toBe(true);
-      expect(output.stdout).toContain('hello');
+      expect(output.output).toContain('hello');
     });
 
     it('should return the latest tail snapshot on subsequent reads', async () => {
@@ -156,11 +153,11 @@ describe('runCommand', () => {
 
       await new Promise((r) => setTimeout(r, 100));
       const first = await processManager.getOutput({ shell_id: bgResult.shell_id!, timeout: 0 });
-      expect(first.stdout).toContain('first');
+      expect(first.output).toContain('first');
 
       await new Promise((r) => setTimeout(r, 300));
       const second = await processManager.getOutput({ shell_id: bgResult.shell_id!, timeout: 0 });
-      expect(second.stdout).toContain('second');
+      expect(second.output).toContain('second');
     });
   });
 

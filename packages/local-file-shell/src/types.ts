@@ -31,8 +31,6 @@ export interface RunCommandResult {
    * that can be resumed with `getCommandOutput`.
    */
   shell_id?: string;
-  stderr?: string;
-  stdout?: string;
   /**
    * True when the command/session request completed successfully.
    * Use `exit_code` to determine whether the underlying command has exited.
@@ -68,8 +66,6 @@ export interface GetCommandOutputResult {
   output_file_path?: string;
   output_file_size: number;
   output_truncated?: boolean;
-  stderr: string;
-  stdout: string;
   /**
    * True when the output request completed successfully.
    * Use `exit_code` to determine whether the underlying command has exited.

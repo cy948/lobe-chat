@@ -20,7 +20,7 @@ describe('shell tools (integration wrapper)', () => {
     const result = await runCommand({ command: 'echo hello' });
 
     expect(result.success).toBe(true);
-    expect(result.stdout).toContain('hello');
+    expect(result.output).toContain('hello');
   });
 
   it('should delegate background commands and getCommandOutput', async () => {
@@ -36,7 +36,7 @@ describe('shell tools (integration wrapper)', () => {
 
     const output = await getCommandOutput({ shell_id: bgResult.shell_id! });
     expect(output.success).toBe(true);
-    expect(output.stdout).toContain('background');
+    expect(output.output).toContain('background');
   });
 
   it('should delegate killCommand', async () => {

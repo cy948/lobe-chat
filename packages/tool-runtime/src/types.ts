@@ -192,8 +192,6 @@ export interface RunCommandState {
   outputFileSize?: number;
   outputTruncated?: boolean;
   running?: boolean;
-  stderr?: string;
-  stdout?: string;
   success: boolean;
 }
 

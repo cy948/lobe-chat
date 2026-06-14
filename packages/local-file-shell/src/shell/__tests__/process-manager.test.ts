@@ -38,11 +38,7 @@ function createShellProcess(
   };
 }
 
-function writeOutput(
-  shellProcess: ShellProcess,
-  _stream: 'stderr' | 'stdout',
-  content: string,
-): void {
+function writeOutput(shellProcess: ShellProcess, content: string): void {
   const buffer = Buffer.from(content);
   fs.writeSync(shellProcess.outputFile.fd, buffer);
 }
@@ -69,38 +65,37 @@ describe('ShellProcessManager', () => {
       expect(result.error).toContain('not found');
     });
 
-    it('should retrieve merged stdout and stderr output', async () => {
+    it('should retrieve merged output', async () => {
       const process = createMockProcess();
       const shellProcess = createShellProcess(manager, 'test-1', process);
-      writeOutput(shellProcess, 'stdout', 'line 1\nline 2\n');
-      writeOutput(shellProcess, 'stderr', 'error line\n');
+      writeOutput(shellProcess, 'line 1\nline 2\n');
+      writeOutput(shellProcess, 'error line\n');
       manager.register('test-1', shellProcess);
 
       const result = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
 
       expect(result.success).toBe(true);
-      expect(result.stdout).toContain('line 1');
-      expect(result.stdout).toContain('line 2');
-      expect(result.stdout).toContain('error line');
-      expect(result.stderr).toBe('');
+      expect(result.output).toContain('line 1');
+      expect(result.output).toContain('line 2');
+      expect(result.output).toContain('error line');
       expect(result.exit_code).toBeUndefined();
     });
 
     it('should return a tail snapshot on repeated reads', async () => {
       const process = createMockProcess();
       const shellProcess = createShellProcess(manager, 'test-1', process);
-      writeOutput(shellProcess, 'stdout', 'first\n');
+      writeOutput(shellProcess, 'first\n');
       manager.register('test-1', shellProcess);
 
       const first = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
-      expect(first.stdout).toContain('first');
+      expect(first.output).toContain('first');
 
       const second = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
-      expect(second.stdout).toContain('first');
+      expect(second.output).toContain('first');
 
-      writeOutput(shellProcess, 'stdout', 'second\n');
+      writeOutput(shellProcess, 'second\n');
       const third = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
-      expect(third.stdout).toContain('second');
+      expect(third.output).toContain('second');
     });
 
     it('should return the current output snapshot when observation timeout elapses', async () => {
@@ -117,7 +112,7 @@ describe('ShellProcessManager', () => {
         });
 
         setTimeout(() => {
-          writeOutput(shellProcess, 'stdout', 'delayed\n');
+          writeOutput(shellProcess, 'delayed\n');
         }, 20);
 
         await vi.advanceTimersByTimeAsync(20);
@@ -125,7 +120,7 @@ describe('ShellProcessManager', () => {
 
         await vi.advanceTimersByTimeAsync(80);
         const result = await pending;
-        expect(result.stdout).toContain('delayed');
+        expect(result.output).toContain('delayed');
         expect(result.exit_code).toBeUndefined();
       } finally {
         vi.useRealTimers();
@@ -183,7 +178,7 @@ describe('ShellProcessManager', () => {
       setTimeout(() => {
         (process as { exitCode: number | null }).exitCode = 0;
         process.emit('exit', 0);
-        writeOutput(shellProcess, 'stdout', 'late output after exit\n');
+        writeOutput(shellProcess, 'late output after exit\n');
         process.emit('close', 0);
       }, 20);
 
@@ -215,7 +210,7 @@ describe('ShellProcessManager', () => {
     it('should filter output with regex', async () => {
       const process = createMockProcess();
       const shellProcess = createShellProcess(manager, 'test-1', process);
-      writeOutput(shellProcess, 'stdout', 'line 1\nline 2\nline 3\n');
+      writeOutput(shellProcess, 'line 1\nline 2\nline 3\n');
       manager.register('test-1', shellProcess);
 
       const result = await manager.getOutput({ filter: 'line 1', shell_id: 'test-1', timeout: 0 });
@@ -228,7 +223,7 @@ describe('ShellProcessManager', () => {
     it('should filter consecutive matching lines', async () => {
       const process = createMockProcess();
       const shellProcess = createShellProcess(manager, 'test-1', process);
-      writeOutput(shellProcess, 'stdout', 'match one\nmatch two\nskip\n');
+      writeOutput(shellProcess, 'match one\nmatch two\nskip\n');
       manager.register('test-1', shellProcess);
 
       const result = await manager.getOutput({ filter: '^match', shell_id: 'test-1', timeout: 0 });
@@ -242,7 +237,7 @@ describe('ShellProcessManager', () => {
     it('should handle invalid regex filter gracefully', async () => {
       const process = createMockProcess();
       const shellProcess = createShellProcess(manager, 'test-1', process);
-      writeOutput(shellProcess, 'stdout', 'output\n');
+      writeOutput(shellProcess, 'output\n');
       manager.register('test-1', shellProcess);
 
       const result = await manager.getOutput({
@@ -308,7 +303,7 @@ describe('ShellProcessManager', () => {
     it('should retain completed output after the process exits', async () => {
       const process = createMockProcess();
       const shellProcess = createShellProcess(manager, 'test-1', process);
-      writeOutput(shellProcess, 'stdout', 'done\n');
+      writeOutput(shellProcess, 'done\n');
       manager.register('test-1', shellProcess);
 
       (process as { exitCode: number | null }).exitCode = 0;
@@ -317,7 +312,7 @@ describe('ShellProcessManager', () => {
       const result = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
       expect(result.success).toBe(true);
       expect(result.exit_code).toBe(0);
-      expect(result.stdout).toContain('done');
+      expect(result.output).toContain('done');
     });
   });
 

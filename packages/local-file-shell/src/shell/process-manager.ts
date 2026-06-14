@@ -94,8 +94,6 @@ export class ShellProcessManager {
         error: `Shell ID ${shell_id} not found`,
         output: '',
         output_file_size: 0,
-        stderr: '',
-        stdout: '',
         success: false,
       };
     }
@@ -143,8 +141,8 @@ export class ShellProcessManager {
     }
 
     const { outputFile } = shellProcess;
-    const combined = buildOutputPreview(outputFile.path, { headRatio });
-    let output = combined.content;
+    const outputPreview = buildOutputPreview(outputFile.path, { headRatio });
+    let output = outputPreview.content;
 
     if (filter) {
       try {
@@ -164,10 +162,8 @@ export class ShellProcessManager {
       exit_code: exitCode ?? undefined,
       output,
       output_file_path: outputFile.path,
-      output_file_size: combined.size,
-      output_truncated: combined.truncated,
-      stderr: '',
-      stdout: combined.content,
+      output_file_size: outputPreview.size,
+      output_truncated: outputPreview.truncated,
       success: true,
     };
   }

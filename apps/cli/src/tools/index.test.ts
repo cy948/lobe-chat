@@ -73,8 +73,8 @@ describe('executeToolCall', () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain('dispatched');
-    const state = result.state as { output?: string; stdout?: string };
-    expect(state.stdout ?? state.output).toContain('dispatched');
+    const state = result.state as { output?: string };
+    expect(state.output).toContain('dispatched');
   });
 
   it('should dispatch listFiles', async () => {
@@ -163,7 +163,7 @@ describe('executeToolCall', () => {
 
     const result = await executeToolCall(
       'grepContent',
-      JSON.stringify({ cwd: tmpDir, pattern: 'findme' }),
+      JSON.stringify({ directory: tmpDir, pattern: 'findme' }),
     );
 
     expect(result).toEqual(workerResult);
@@ -211,7 +211,7 @@ describe('executeToolCall', () => {
   it('should forward the gateway timeout to getCommandOutput polling', async () => {
     const spy = vi
       .spyOn(ShellProcessManager.prototype, 'getOutput')
-      .mockResolvedValue({ exit_code: 0, output: '', stderr: '', stdout: '', success: true });
+      .mockResolvedValue({ exit_code: 0, output: '', output_file_size: 0, success: true });
 
     // 3rd arg is the gateway per-call timeout; executeToolCall injects it into args
     await executeToolCall('getCommandOutput', JSON.stringify({ shell_id: 'sid' }), 5000);

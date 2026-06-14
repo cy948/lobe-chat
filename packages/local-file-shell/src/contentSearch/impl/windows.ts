@@ -6,7 +6,6 @@ import type { GrepContentParams, GrepContentResult } from '../../types';
 import { BaseContentSearch } from '../base';
 
 const logger = createLogger('contentSearch:windows');
-const CONTENT_SEARCH_TIMEOUT_MS = 30_000;
 
 /**
  * Windows content search tool type
@@ -131,7 +130,6 @@ export class WindowsContentSearchImpl extends BaseContentSearch {
         cwd: searchPath,
         reject: false,
         stdin: 'ignore',
-        timeout: CONTENT_SEARCH_TIMEOUT_MS,
       });
 
       if (exitCode !== 0 && exitCode !== 1 && stderr) {
@@ -204,7 +202,6 @@ export class WindowsContentSearchImpl extends BaseContentSearch {
         cwd: this.resolveSearchPath(params),
         reject: false,
         stdin: 'ignore',
-        timeout: CONTENT_SEARCH_TIMEOUT_MS,
       });
 
       let total = 0;
@@ -248,7 +245,6 @@ export class WindowsContentSearchImpl extends BaseContentSearch {
         cwd: searchPath,
         reject: false,
         stdin: 'ignore',
-        timeout: CONTENT_SEARCH_TIMEOUT_MS,
       });
 
       if (exitCode !== 0 && exitCode !== 1) {

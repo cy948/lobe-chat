@@ -1,5 +1,4 @@
 import { spawn } from 'node:child_process';
-import fs from 'node:fs';
 
 import type { RunCommandParams, RunCommandResult } from '../types';
 import type { ShellOutputFile, ShellProcess, ShellProcessManager } from './process-manager';
@@ -61,11 +60,11 @@ export async function runCommand(
 
     childProcess.on('error', (error) => {
       logger?.error(`${logPrefix} Command failed:`, error);
-      appendOutputFile(shellOutputFile.path, `${error.message}\n`);
       shellProcess.exitCode = 1;
     });
 
     processManager.register(shellId, shellProcess);
+    // Close our fd copy only after error/close listeners are registered; spawn errors are asynchronous.
     processManager.closeOutputFile(shellOutputFile);
     logger?.info?.(`${logPrefix} Started session`, { background: run_in_background, shellId });
 
@@ -91,11 +90,3 @@ export async function runCommand(
     return { error: (error as Error).message, success: false };
   }
 }
-
-const appendOutputFile = (filePath: string, data: string): void => {
-  try {
-    fs.appendFileSync(filePath, data, { mode: 0o600 });
-  } catch {
-    // The process may fail before or during output file setup.
-  }
-};

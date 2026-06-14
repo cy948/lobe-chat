@@ -307,25 +307,22 @@ export abstract class ComputerRuntime {
 
       const r = result.result || {};
       const commandSuccess = typeof r.success === 'boolean' ? r.success : result.success;
-      const exitCode = r.exitCode ?? r.exit_code;
-      const running = exitCode === undefined;
 
       const state: RunCommandState = {
         commandId: r.commandId || r.shell_id,
         error: r.error,
-        exitCode,
+        exitCode: r.exitCode ?? r.exit_code,
         isBackground: args.background || false,
         output: r.output,
         outputFilePath: r.outputFilePath ?? r.output_file_path,
         outputFileSize: r.outputFileSize ?? r.output_file_size,
         outputTruncated: r.outputTruncated ?? r.output_truncated,
-        running,
         success: commandSuccess,
       };
 
       const content = formatCommandResult({
         error: r.error,
-        exitCode,
+        exitCode: r.exitCode ?? r.exit_code,
         output: r.output,
         outputFilePath: r.outputFilePath ?? r.output_file_path,
         outputFileSize: r.outputFileSize ?? r.output_file_size,
@@ -353,25 +350,22 @@ export abstract class ComputerRuntime {
 
       const r = result.result || {};
       const outputSuccess = typeof r.success === 'boolean' ? r.success : result.success;
-      const exitCode = r.exitCode ?? r.exit_code;
-      const running = exitCode === undefined;
 
       const state: GetCommandOutputState = {
         durationMs: r.durationMs ?? r.duration_ms,
         error: r.error,
-        exitCode,
+        exitCode: r.exitCode ?? r.exit_code,
         newOutput: r.newOutput || r.output,
         outputFilePath: r.outputFilePath ?? r.output_file_path,
         outputFileSize: r.outputFileSize ?? r.output_file_size,
         outputTruncated: r.outputTruncated ?? r.output_truncated,
-        running,
         success: outputSuccess,
       };
 
       const content = formatCommandOutput({
         durationMs: r.durationMs ?? r.duration_ms,
         error: r.error,
-        exitCode,
+        exitCode: r.exitCode ?? r.exit_code,
         output: r.newOutput || r.output,
         outputFilePath: r.outputFilePath ?? r.output_file_path,
         outputFileSize: r.outputFileSize ?? r.output_file_size,

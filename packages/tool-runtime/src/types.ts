@@ -191,7 +191,6 @@ export interface RunCommandState {
   outputFilePath?: string;
   outputFileSize?: number;
   outputTruncated?: boolean;
-  running?: boolean;
   success: boolean;
 }
 
@@ -203,7 +202,6 @@ export interface GetCommandOutputState {
   outputFilePath?: string;
   outputFileSize?: number;
   outputTruncated?: boolean;
-  running?: boolean;
   success: boolean;
 }
 

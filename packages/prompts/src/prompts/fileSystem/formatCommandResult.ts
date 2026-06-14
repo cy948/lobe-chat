@@ -23,8 +23,9 @@ export const formatCommandResult = ({
 }: FormatCommandResultParams): string => {
   const parts: string[] = [];
 
-  // `success` means the command/session request succeeded; `exitCode` tells
-  // whether the underlying process has exited and how it finished.
+  // `success` is the envelope ("service responded"); `exitCode` is the command
+  // itself. Treat a non-zero exit as failure regardless of envelope success,
+  // so we never render "Command completed successfully." over a 137/130/etc.
   const hasNonZeroExit = exitCode !== undefined && exitCode !== 0;
   const failed = !success || hasNonZeroExit;
 

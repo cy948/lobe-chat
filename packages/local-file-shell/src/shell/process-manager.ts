@@ -33,14 +33,17 @@ export interface ShellProcess {
 export class ShellProcessManager {
   private nextShellId = 1;
 
-  private outputRunDir?: string;
+  private readonly outputRunDir: string;
 
   private processes = new Map<string, ShellProcess>();
 
-  private readonly outputRoot: string;
-
   constructor(outputRoot?: string) {
-    this.outputRoot = path.resolve(outputRoot ?? path.join(os.tmpdir(), 'lobehub', 'shell'));
+    this.outputRunDir = path.join(
+      path.resolve(outputRoot ?? path.join(os.tmpdir(), 'lobehub', 'shell')),
+      formatDate(new Date()),
+      process.pid.toString(),
+    );
+    fs.mkdirSync(this.outputRunDir, { mode: 0o700, recursive: true });
   }
 
   createShellId(): string {
@@ -48,7 +51,7 @@ export class ShellProcessManager {
   }
 
   createOutputFile(shellId: string): ShellOutputFile {
-    const outputPath = path.join(this.ensureOutputRunDir(), `${shellId}.log`);
+    const outputPath = path.join(this.outputRunDir, `${shellId}.log`);
 
     return {
       fd: this.openOutputFile(outputPath),
@@ -212,17 +215,6 @@ export class ShellProcessManager {
     await new Promise<void>((resolve) => {
       shellProcess.process.once('close', resolve);
     });
-  }
-
-  private ensureOutputRunDir(): string {
-    if (this.outputRunDir) return this.outputRunDir;
-
-    const dateDir = path.join(this.outputRoot, formatDate(new Date()));
-    fs.mkdirSync(dateDir, { mode: 0o700, recursive: true });
-
-    this.outputRunDir = path.join(dateDir, process.pid.toString());
-    fs.mkdirSync(this.outputRunDir, { mode: 0o700, recursive: true });
-    return this.outputRunDir;
   }
 
   private openOutputFile(filePath: string): number {

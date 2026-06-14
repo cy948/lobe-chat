@@ -172,9 +172,8 @@ export async function runLocalSystemTool(
     }
 
     case 'grepContent': {
-      const p = args as GrepContentParams & { cwd?: string; path?: string; scope?: string };
-      const directory = p.directory || p.path || p.scope || p.cwd || '';
-      return runtime.grepContent({ ...p, directory } as never);
+      const resolved = resolveArgsWithScope(args as GrepContentParams, 'path');
+      return runtime.grepContent(resolved as never);
     }
 
     case 'globFiles': {

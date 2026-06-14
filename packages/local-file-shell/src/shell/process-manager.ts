@@ -167,7 +167,7 @@ export class ShellProcessManager {
     }
 
     const { outputFile } = shellProcess;
-    const outputPreview = buildOutputPreview(outputFile.path, { headRatio });
+    const outputPreview = buildOutputPreview(outputFile.path, headRatio);
     let output = outputPreview.content;
 
     if (filter) {

@@ -16,13 +16,8 @@ const stripAnsi = (str: string): string => str.replaceAll(ANSI_ESCAPE, '');
 
 export const buildOutputPreview = (
   filePath: string,
-  {
-    headRatio,
-    maxBytes = INLINE_OUTPUT_MAX_BYTES,
-  }: {
-    headRatio: number;
-    maxBytes?: number;
-  },
+  headRatio: number,
+  maxBytes = INLINE_OUTPUT_MAX_BYTES,
 ): OutputPreview => {
   let stat: fs.Stats;
   try {

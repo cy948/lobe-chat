@@ -21,7 +21,7 @@ describe('buildOutputPreview', () => {
     const filePath = path.join(tmpDir, 'output.log');
     fs.writeFileSync(filePath, 'a'.repeat(10) + 'b'.repeat(10));
 
-    const preview = buildOutputPreview(filePath, { headRatio: 0.25, maxBytes: 8 });
+    const preview = buildOutputPreview(filePath, 0.25, 8);
 
     expect(preview.size).toBe(20);
     expect(preview.truncated).toBe(true);
@@ -34,7 +34,7 @@ describe('buildOutputPreview', () => {
     const filePath = path.join(tmpDir, 'output.log');
     fs.writeFileSync(filePath, `prefix\n\x1B[31m${'x'.repeat(12)}\x1B[0m`);
 
-    const preview = buildOutputPreview(filePath, { headRatio: 0, maxBytes: 16 });
+    const preview = buildOutputPreview(filePath, 0, 16);
 
     expect(preview.truncated).toBe(true);
     expect(preview.content).toContain('showing last 16');

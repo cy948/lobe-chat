@@ -18,6 +18,19 @@ describe('formatCommandResult', () => {
     `);
   });
 
+  it('should format still-running command with output file path', () => {
+    const result = formatCommandResult({
+      outputFilePath: '/tmp/lobehub-shell/output.log',
+      shellId: 'shell-123',
+      success: true,
+    });
+    expect(result).toMatchInlineSnapshot(`
+      "Command running in background with shell_id: shell-123
+
+      Output is being written to: /tmp/lobehub-shell/output.log"
+    `);
+  });
+
   it('should format successful command with output', () => {
     const result = formatCommandResult({
       exitCode: 0,
@@ -32,7 +45,7 @@ describe('formatCommandResult', () => {
     `);
   });
 
-  it('should format command output file metadata and preview', () => {
+  it('should format command output file metadata and output', () => {
     const result = formatCommandResult({
       exitCode: 0,
       output: 'first lines\n...\nlast lines',
@@ -47,7 +60,7 @@ describe('formatCommandResult', () => {
 
       Output too large (19.5KB). Full output saved to: /tmp/lobehub-shell/output.log
 
-      Preview:
+      Output:
       first lines
       ...
       last lines"

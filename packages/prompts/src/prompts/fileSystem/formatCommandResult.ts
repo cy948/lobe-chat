@@ -35,9 +35,8 @@ export const formatCommandResult = ({
     if (error) header += `: ${error}`;
     parts.push(header);
   } else if (exitCode === undefined) {
-    let message = `Command running in background with shell_id: ${shellId}`;
-    if (outputFilePath) message += `. Output is being written to: ${outputFilePath}`;
-    parts.push(message);
+    parts.push(`Command running in background with shell_id: ${shellId}`);
+    if (outputFilePath) parts.push(`Output is being written to: ${outputFilePath}`);
   } else {
     parts.push('Command completed successfully.');
   }
@@ -48,9 +47,7 @@ export const formatCommandResult = ({
     );
   }
 
-  if (output) {
-    parts.push(`${outputTruncated && exitCode !== undefined ? 'Preview' : 'Output'}:\n${output}`);
-  }
+  if (output) parts.push(`Output:\n${output}`);
 
   return parts.join('\n\n');
 };

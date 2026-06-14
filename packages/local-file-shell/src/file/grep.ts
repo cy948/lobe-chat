@@ -47,7 +47,7 @@ export async function grepContent({
     const finish = (result: GrepContentResult) => {
       if (settled) return;
       settled = true;
-      if (timer) clearTimeout(timer);
+      clearTimeout(timer);
       resolve(result);
     };
 

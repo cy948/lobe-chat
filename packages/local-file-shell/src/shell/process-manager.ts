@@ -55,9 +55,21 @@ export class ShellProcessManager {
 
   createOutputFile(shellId: string): ShellOutputFile {
     const outputPath = path.join(this.outputRunDir, `${shellId}.log`);
+    const fd =
+      process.platform === 'win32'
+        ? fs.openSync(outputPath, 'w', 0o600)
+        : fs.openSync(
+            outputPath,
+            fs.constants.O_APPEND |
+              fs.constants.O_CREAT |
+              fs.constants.O_TRUNC |
+              fs.constants.O_WRONLY |
+              (fs.constants.O_NOFOLLOW ?? 0),
+            0o600,
+          );
 
     return {
-      fd: this.openOutputFile(outputPath),
+      fd,
       path: outputPath,
     };
   }
@@ -74,7 +86,19 @@ export class ShellProcessManager {
 
     shellProcess.process.once('exit', markEnded);
     shellProcess.process.once('error', markEnded);
-    shellProcess.closed = this.createClosedPromise(shellProcess);
+    // Wait for the child stdio streams to close before reading the final output.
+    // The process may emit "exit" before inherited streams finish flushing.
+    shellProcess.closed =
+      shellProcess.closedAt === undefined
+        ? new Promise<void>((resolve) => {
+            shellProcess.process.once('close', () => {
+              shellProcess.closedAt ??= Date.now();
+              shellProcess.endedAt ??= shellProcess.closedAt;
+              this.closeOutputFile(shellProcess.outputFile);
+              resolve();
+            });
+          })
+        : Promise.resolve();
     this.processes.set(shellId, shellProcess);
   }
 
@@ -206,34 +230,6 @@ export class ShellProcessManager {
     } catch {
       // Ignore repeated close attempts.
     }
-  }
-
-  private createClosedPromise(shellProcess: ShellProcess): Promise<void> {
-    if (shellProcess.closedAt !== undefined) return Promise.resolve();
-
-    return new Promise<void>((resolve) => {
-      shellProcess.process.once('close', () => {
-        shellProcess.closedAt ??= Date.now();
-        shellProcess.endedAt ??= shellProcess.closedAt;
-        this.closeOutputFile(shellProcess.outputFile);
-        resolve();
-      });
-    });
-  }
-
-  private openOutputFile(filePath: string): number {
-    if (process.platform === 'win32') return fs.openSync(filePath, 'w', 0o600);
-
-    const noFollow = fs.constants.O_NOFOLLOW ?? 0;
-    return fs.openSync(
-      filePath,
-      fs.constants.O_APPEND |
-        fs.constants.O_CREAT |
-        fs.constants.O_TRUNC |
-        fs.constants.O_WRONLY |
-        noFollow,
-      0o600,
-    );
   }
 }
 

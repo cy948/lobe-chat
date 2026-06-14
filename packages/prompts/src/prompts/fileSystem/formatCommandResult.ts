@@ -23,29 +23,29 @@ export const formatCommandResult = ({
 }: FormatCommandResultParams): string => {
   const parts: string[] = [];
 
-  // `success` is the envelope ("service responded"); `exitCode` is the command
-  // itself. Treat a non-zero exit as failure regardless of envelope success,
-  // so we never render "Command completed successfully." over a 137/130/etc.
+  // `success` means the command/session request succeeded; `exitCode` tells
+  // whether the underlying process has exited and how it finished.
   const hasNonZeroExit = exitCode !== undefined && exitCode !== 0;
   const failed = !success || hasNonZeroExit;
+  const running = exitCode === undefined;
 
-  if (!failed && exitCode === undefined) {
-    let message = `Command running in background with shell_id: ${shellId}`;
-    if (outputFilePath) message += `. Output is being written to: ${outputFilePath}`;
-    parts.push(message);
-  } else if (failed) {
+  if (failed) {
     let header = 'Command failed';
     if (hasNonZeroExit) header += ` with exit code ${exitCode}`;
     if (error) header += `: ${error}`;
     parts.push(header);
+  } else if (running) {
+    let message = `Command running in background with shell_id: ${shellId}`;
+    if (outputFilePath) message += `. Output is being written to: ${outputFilePath}`;
+    parts.push(message);
   } else {
     parts.push('Command completed successfully.');
   }
 
   if (outputFilePath && outputTruncated && exitCode !== undefined) {
-    const size =
-      outputFileSize === undefined ? 'unknown size' : formatCommandOutputFileSize(outputFileSize);
-    parts.push(`Output too large (${size}). Full output saved to: ${outputFilePath}`);
+    parts.push(
+      `Output too large (${formatCommandOutputFileSize(outputFileSize)}). Full output saved to: ${outputFilePath}`,
+    );
   }
 
   if (output) {

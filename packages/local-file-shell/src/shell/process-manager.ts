@@ -40,9 +40,7 @@ export class ShellProcessManager {
   private readonly outputRoot: string;
 
   constructor(outputRoot?: string) {
-    this.outputRoot = path.resolve(
-      outputRoot ?? path.join(os.tmpdir(), 'lobehub', 'shell-outputs'),
-    );
+    this.outputRoot = path.resolve(outputRoot ?? path.join(os.tmpdir(), 'lobehub', 'shell'));
   }
 
   createShellId(): string {
@@ -50,10 +48,7 @@ export class ShellProcessManager {
   }
 
   createOutputFile(shellId: string): ShellOutputFile {
-    const shellDir = path.join(this.ensureOutputRunDir(), shellId);
-    fs.mkdirSync(shellDir, { mode: 0o700, recursive: false });
-
-    const outputPath = path.join(shellDir, 'output.log');
+    const outputPath = path.join(this.ensureOutputRunDir(), `${shellId}.log`);
 
     return {
       fd: this.openOutputFile(outputPath),
@@ -147,8 +142,9 @@ export class ShellProcessManager {
       await this.waitForClose(shellProcess);
     }
 
-    const result = this.buildOutputResult(shellProcess, headRatio);
-    let { output } = result;
+    const { outputFile } = shellProcess;
+    const combined = buildOutputPreview(outputFile.path, { headRatio });
+    let output = combined.content;
 
     if (filter) {
       try {
@@ -167,11 +163,11 @@ export class ShellProcessManager {
       duration_ms: durationMs,
       exit_code: exitCode ?? undefined,
       output,
-      output_file_path: result.output_file_path,
-      output_file_size: result.output_file_size,
-      output_truncated: result.output_truncated,
-      stderr: result.stderr,
-      stdout: result.stdout,
+      output_file_path: outputFile.path,
+      output_file_size: combined.size,
+      output_truncated: combined.truncated,
+      stderr: '',
+      stdout: combined.content,
       success: true,
     };
   }
@@ -204,20 +200,6 @@ export class ShellProcessManager {
     }
   }
 
-  private buildOutputResult(shellProcess: ShellProcess, headRatio: number) {
-    const { outputFile } = shellProcess;
-    const combined = buildOutputPreview(outputFile.path, { headRatio });
-
-    return {
-      output: combined.content,
-      output_file_path: outputFile.path,
-      output_file_size: combined.size,
-      output_truncated: combined.truncated,
-      stderr: '',
-      stdout: combined.content,
-    };
-  }
-
   closeOutputFile(outputFile: ShellOutputFile): void {
     if (outputFile.fdClosed) return;
     outputFile.fdClosed = true;
@@ -239,24 +221,12 @@ export class ShellProcessManager {
   private ensureOutputRunDir(): string {
     if (this.outputRunDir) return this.outputRunDir;
 
-    const now = new Date();
-    const dateDir = path.join(this.outputRoot, formatDate(now));
+    const dateDir = path.join(this.outputRoot, formatDate(new Date()));
     fs.mkdirSync(dateDir, { mode: 0o700, recursive: true });
 
-    const baseName = formatTime(now);
-    for (let i = 1; i <= 100; i++) {
-      const dirName = i === 1 ? baseName : `${baseName}-${i}`;
-      const runDir = path.join(dateDir, dirName);
-      try {
-        fs.mkdirSync(runDir, { mode: 0o700, recursive: false });
-        this.outputRunDir = runDir;
-        return runDir;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      }
-    }
-
-    throw new Error(`Unable to create shell output directory under ${dateDir}`);
+    this.outputRunDir = path.join(dateDir, process.pid.toString());
+    fs.mkdirSync(this.outputRunDir, { mode: 0o700, recursive: true });
+    return this.outputRunDir;
   }
 
   private openOutputFile(filePath: string): number {
@@ -279,9 +249,6 @@ const pad2 = (value: number): string => value.toString().padStart(2, '0');
 
 const formatDate = (date: Date): string =>
   `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
-
-const formatTime = (date: Date): string =>
-  `${pad2(date.getHours())}${pad2(date.getMinutes())}${pad2(date.getSeconds())}`;
 
 const killProcessTree = (childProcess: ChildProcess): void => {
   const { pid } = childProcess;

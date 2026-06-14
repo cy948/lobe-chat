@@ -420,18 +420,17 @@ describe('ShellProcessManager default output root', () => {
         path.join(
           os.tmpdir(),
           'lobehub',
-          'shell-outputs',
+          'shell',
           '2026-06-14',
-          '123456',
-          'sh-1',
-          'output.log',
+          process.pid.toString(),
+          'sh-1.log',
         ),
       );
       expect(fs.existsSync(outputFile.path)).toBe(true);
       manager.cleanupAll();
     } finally {
       vi.useRealTimers();
-      fs.rmSync(path.join(os.tmpdir(), 'lobehub', 'shell-outputs', '2026-06-14', '123456'), {
+      fs.rmSync(path.join(os.tmpdir(), 'lobehub', 'shell', '2026-06-14', process.pid.toString()), {
         force: true,
         recursive: true,
       });

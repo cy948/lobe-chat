@@ -128,7 +128,7 @@ describe('runCommand', () => {
       expect(result.success).toBe(true);
       expect(result.shell_id).toBeDefined();
       expect(result.exit_code).toBeUndefined();
-      expect(result.output_file_path).toMatch(/output\.log$/);
+      expect(result.output_file_path).toMatch(/sh-\d+\.log$/);
       expect(result.output).toBeUndefined();
       expect(result.stdout).toBeUndefined();
       expect(result.stderr).toBeUndefined();

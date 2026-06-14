@@ -39,9 +39,11 @@ export class ShellProcessManager {
   private processes = new Map<string, ShellProcess>();
 
   constructor(outputRoot?: string) {
+    const date = new Date();
+
     this.outputRunDir = path.join(
       path.resolve(outputRoot ?? path.join(os.tmpdir(), 'lobehub', 'shell')),
-      formatDate(new Date()),
+      `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`,
       process.pid.toString(),
     );
     fs.mkdirSync(this.outputRunDir, { mode: 0o700, recursive: true });
@@ -234,11 +236,6 @@ export class ShellProcessManager {
     );
   }
 }
-
-const pad2 = (value: number): string => value.toString().padStart(2, '0');
-
-const formatDate = (date: Date): string =>
-  `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 
 const killProcessTree = (childProcess: ChildProcess): void => {
   const { pid } = childProcess;

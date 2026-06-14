@@ -171,7 +171,6 @@ export class ShellProcessManager {
       output_file_path: result.output_file_path,
       output_file_size: result.output_file_size,
       output_truncated: result.output_truncated,
-      running: exitCode === null,
       stderr: result.stderr,
       stdout: result.stdout,
       success: true,

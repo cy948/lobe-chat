@@ -308,17 +308,19 @@ export abstract class ComputerRuntime {
 
       const r = result.result || {};
       const commandSuccess = typeof r.success === 'boolean' ? r.success : result.success;
+      const exitCode = r.exitCode ?? r.exit_code;
+      const running = exitCode === undefined;
 
       const state: RunCommandState = {
         commandId: r.commandId || r.shell_id,
         error: r.error,
-        exitCode: r.exitCode ?? r.exit_code,
+        exitCode,
         isBackground: args.background || false,
         output: r.output,
         outputFilePath: r.outputFilePath ?? r.output_file_path,
         outputFileSize: r.outputFileSize ?? r.output_file_size,
         outputTruncated: r.outputTruncated ?? r.output_truncated,
-        running: r.running,
+        running,
         stderr: r.stderr,
         stdout: r.stdout,
         success: commandSuccess,
@@ -326,7 +328,7 @@ export abstract class ComputerRuntime {
 
       const content = formatCommandResult({
         error: r.error,
-        exitCode: r.exitCode ?? r.exit_code,
+        exitCode,
         output: r.output,
         outputFilePath: r.outputFilePath ?? r.output_file_path,
         outputFileSize: r.outputFileSize ?? r.output_file_size,
@@ -356,28 +358,30 @@ export abstract class ComputerRuntime {
 
       const r = result.result || {};
       const outputSuccess = typeof r.success === 'boolean' ? r.success : result.success;
+      const exitCode = r.exitCode ?? r.exit_code;
+      const running = exitCode === undefined;
 
       const state: GetCommandOutputState = {
         durationMs: r.durationMs ?? r.duration_ms,
         error: r.error,
-        exitCode: r.exitCode ?? r.exit_code,
+        exitCode,
         newOutput: r.newOutput || r.output,
         outputFilePath: r.outputFilePath ?? r.output_file_path,
         outputFileSize: r.outputFileSize ?? r.output_file_size,
         outputTruncated: r.outputTruncated ?? r.output_truncated,
-        running: r.running ?? false,
+        running,
         success: outputSuccess,
       };
 
       const content = formatCommandOutput({
         durationMs: r.durationMs ?? r.duration_ms,
         error: r.error,
-        exitCode: r.exitCode ?? r.exit_code,
+        exitCode,
         output: r.newOutput || r.output,
         outputFilePath: r.outputFilePath ?? r.output_file_path,
         outputFileSize: r.outputFileSize ?? r.output_file_size,
         outputTruncated: r.outputTruncated ?? r.output_truncated,
-        running: r.running,
+        running,
         shellId: args.commandId,
         success: outputSuccess,
       });

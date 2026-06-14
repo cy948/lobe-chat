@@ -128,7 +128,6 @@ describe('runCommand', () => {
       expect(result.success).toBe(true);
       expect(result.shell_id).toBeDefined();
       expect(result.exit_code).toBeUndefined();
-      expect(result.running).toBe(true);
     });
 
     it('should capture background process output', async () => {

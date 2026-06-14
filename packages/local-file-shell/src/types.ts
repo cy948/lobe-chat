@@ -26,7 +26,6 @@ export interface RunCommandResult {
   output_file_path?: string;
   output_file_size?: number;
   output_truncated?: boolean;
-  running?: boolean;
   /**
    * Session identifier. Present for background commands and foreground commands
    * that can be resumed with `getCommandOutput`.
@@ -69,7 +68,6 @@ export interface GetCommandOutputResult {
   output_file_path?: string;
   output_file_size: number;
   output_truncated?: boolean;
-  running?: boolean;
   stderr: string;
   stdout: string;
   /**

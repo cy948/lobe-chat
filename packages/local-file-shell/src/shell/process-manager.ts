@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import treeKill from 'tree-kill';
+
 import type { GetCommandOutputParams, GetCommandOutputResult, KillCommandResult } from '../types';
 import { buildOutputPreview } from './utils';
 
@@ -10,6 +12,7 @@ const DEFAULT_OBSERVATION_TIMEOUT_MS = 30_000;
 const MAX_OBSERVATION_TIMEOUT_MS = 120_000;
 const RUN_COMMAND_HEAD_RATIO = 0.25;
 const GET_COMMAND_OUTPUT_HEAD_RATIO = 0;
+const KILL_SIGNAL: NodeJS.Signals = 'SIGKILL';
 
 export interface ShellOutputFile {
   fd: number;
@@ -180,7 +183,7 @@ export class ShellProcessManager {
     }
 
     try {
-      shellProcess.process.kill();
+      killProcessTree(shellProcess.process);
       this.closeOutputFile(shellProcess.outputFile);
       this.processes.delete(shell_id);
       return { success: true };
@@ -192,7 +195,7 @@ export class ShellProcessManager {
   cleanupAll(): void {
     for (const [id, sp] of this.processes) {
       try {
-        sp.process.kill();
+        killProcessTree(sp.process);
       } catch {
         // Ignore
       }
@@ -279,3 +282,14 @@ const formatDate = (date: Date): string =>
 
 const formatTime = (date: Date): string =>
   `${pad2(date.getHours())}${pad2(date.getMinutes())}${pad2(date.getSeconds())}`;
+
+const killProcessTree = (childProcess: ChildProcess): void => {
+  const { pid } = childProcess;
+
+  if (pid) {
+    treeKill(pid, KILL_SIGNAL);
+    return;
+  }
+
+  childProcess.kill(KILL_SIGNAL);
+};

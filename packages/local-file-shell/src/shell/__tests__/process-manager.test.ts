@@ -6,9 +6,10 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { type ShellProcess, ShellProcessManager } from '../process-manager';
+import type { ShellProcess } from '../process-manager';
+import { ShellProcessManager } from '../process-manager';
 
-function createMockProcess(exitCode: number | null = null): ChildProcess {
+function createMockProcess(exitCode: number | null = null, pid?: number): ChildProcess {
   const process = new EventEmitter() as ChildProcess;
   // Node types expose `exitCode` as readonly; make the test double writable so
   // we can simulate the child process exiting.
@@ -16,6 +17,10 @@ function createMockProcess(exitCode: number | null = null): ChildProcess {
     configurable: true,
     value: exitCode,
     writable: true,
+  });
+  Object.defineProperty(process, 'pid', {
+    configurable: true,
+    value: pid,
   });
   process.kill = vi.fn() as unknown as ChildProcess['kill'];
   return process;
@@ -324,7 +329,24 @@ describe('ShellProcessManager', () => {
       const result = manager.kill('test-1');
 
       expect(result.success).toBe(true);
-      expect(process.kill).toHaveBeenCalled();
+      expect(process.kill).toHaveBeenCalledWith('SIGKILL');
+    });
+
+    it.skipIf(process.platform === 'win32')('should kill the process tree by pid', async () => {
+      const killSpy = vi.spyOn(globalThis.process, 'kill').mockImplementation(() => true);
+      try {
+        const process = createMockProcess(null, 12_345);
+        manager.register('test-1', createShellProcess(manager, 'test-1', process));
+
+        const result = manager.kill('test-1');
+
+        expect(result.success).toBe(true);
+        await waitUntil(() => killSpy.mock.calls.some(([pid]) => pid === 12_345));
+        expect(killSpy).toHaveBeenCalledWith(12_345, 'SIGKILL');
+        expect(process.kill).not.toHaveBeenCalled();
+      } finally {
+        killSpy.mockRestore();
+      }
     });
 
     it('should return error for non-existent shell_id', () => {
@@ -368,8 +390,8 @@ describe('ShellProcessManager', () => {
 
       manager.cleanupAll();
 
-      expect(p1.kill).toHaveBeenCalled();
-      expect(p2.kill).toHaveBeenCalled();
+      expect(p1.kill).toHaveBeenCalledWith('SIGKILL');
+      expect(p2.kill).toHaveBeenCalledWith('SIGKILL');
       expect((await manager.getOutput({ shell_id: 'test-1' })).success).toBe(false);
       expect((await manager.getOutput({ shell_id: 'test-2' })).success).toBe(false);
     });
@@ -416,3 +438,14 @@ describe('ShellProcessManager default output root', () => {
     }
   });
 });
+
+const waitUntil = async (predicate: () => boolean, timeout = 2000): Promise<void> => {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeout) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  throw new Error('Timed out waiting for condition');
+};

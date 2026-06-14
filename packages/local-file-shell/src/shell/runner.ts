@@ -42,6 +42,7 @@ export async function runCommand(
     outputFile = shellOutputFile;
     const childProcess = spawn(shellConfig.cmd, shellConfig.args, {
       cwd,
+      detached: process.platform !== 'win32',
       env: childEnv,
       shell: false,
       stdio: ['pipe', shellOutputFile.fd, shellOutputFile.fd],

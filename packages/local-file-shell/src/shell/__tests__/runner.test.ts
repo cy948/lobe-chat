@@ -175,6 +175,33 @@ describe('runCommand', () => {
       expect(result.success).toBe(true);
     });
 
+    it.skipIf(process.platform === 'win32')(
+      'should kill nested background process tree',
+      async () => {
+        const markerPath = path.join(tmpDir, 'nested-process-marker.log');
+        const bgResult = await runCommand(
+          {
+            command: `sh -c 'while :; do printf "tick\\n" >> "$LOB_TEST_MARKER"; sleep 0.05; done'`,
+            env: { LOB_TEST_MARKER: markerPath },
+            run_in_background: true,
+          },
+          { processManager },
+        );
+
+        await waitUntil(() => fs.existsSync(markerPath) && fs.statSync(markerPath).size > 0);
+
+        const result = processManager.kill(bgResult.shell_id!);
+        expect(result.success).toBe(true);
+
+        await new Promise((r) => setTimeout(r, 100));
+        const sizeAfterKill = fs.statSync(markerPath).size;
+
+        await new Promise((r) => setTimeout(r, 300));
+        expect(fs.statSync(markerPath).size).toBe(sizeAfterKill);
+      },
+      10_000,
+    );
+
     it('should return error for unknown shell_id', async () => {
       const result = await processManager.getOutput({ shell_id: 'unknown-id' });
       expect(result.success).toBe(false);
@@ -243,3 +270,14 @@ describe('runCommand', () => {
     expect(result.success).toBe(true);
   });
 });
+
+const waitUntil = async (predicate: () => boolean, timeout = 2000): Promise<void> => {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeout) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  throw new Error('Timed out waiting for condition');
+};

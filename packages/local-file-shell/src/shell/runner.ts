@@ -69,9 +69,8 @@ export async function runCommand(
     logger?.info?.(`${logPrefix} Started session`, { background: run_in_background, shellId });
 
     if (run_in_background) {
-      const output = processManager.buildRunCommandOutput(shellProcess);
       return {
-        ...output,
+        output_file_path: shellOutputFile.path,
         shell_id: shellId,
         success: true,
       };

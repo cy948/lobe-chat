@@ -27,11 +27,6 @@ export interface ShellProcess {
   startedAt?: number;
 }
 
-export interface ShellProcessManagerOptions {
-  now?: () => Date;
-  outputRoot?: string;
-}
-
 export class ShellProcessManager {
   private nextShellId = 1;
 
@@ -39,7 +34,12 @@ export class ShellProcessManager {
 
   private processes = new Map<string, ShellProcess>();
 
-  constructor(private readonly options: ShellProcessManagerOptions = {}) {}
+  constructor(
+    private readonly options: {
+      now?: () => Date;
+      outputRoot?: string;
+    } = {},
+  ) {}
 
   createShellId(): string {
     return `sh-${this.nextShellId++}`;
@@ -75,12 +75,6 @@ export class ShellProcessManager {
       this.closeOutputFile(shellProcess.outputFile);
     });
     this.processes.set(shellId, shellProcess);
-  }
-
-  buildRunCommandOutput(
-    shellProcess: ShellProcess,
-  ): Omit<GetCommandOutputResult, 'duration_ms' | 'exit_code' | 'success'> {
-    return this.buildOutputResult(shellProcess, RUN_COMMAND_HEAD_RATIO);
   }
 
   async getRunCommandOutput(params: GetCommandOutputParams): Promise<GetCommandOutputResult> {

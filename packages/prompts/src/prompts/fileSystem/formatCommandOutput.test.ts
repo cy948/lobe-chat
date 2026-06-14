@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatCommandOutput } from './formatCommandOutput';
+import { formatCommandOutput, formatCommandOutputFileSize } from './formatCommandOutput';
 
 describe('formatCommandOutput', () => {
   it('should format successful output without exit code', () => {
     const result = formatCommandOutput({
       success: true,
     });
-    expect(result).toMatchInlineSnapshot(`"Command output snapshot retrieved."`);
+    expect(result).toMatchInlineSnapshot(`"Output retrieved."`);
   });
 
   it('should suppress zero exit code when present', () => {
@@ -15,7 +15,7 @@ describe('formatCommandOutput', () => {
       exitCode: 0,
       success: true,
     });
-    expect(result).toMatchInlineSnapshot(`"Command output snapshot retrieved."`);
+    expect(result).toMatchInlineSnapshot(`"Output retrieved."`);
   });
 
   it('should format duration in seconds when present', () => {
@@ -24,7 +24,7 @@ describe('formatCommandOutput', () => {
       success: true,
     });
     expect(result).toMatchInlineSnapshot(`
-      "Command output snapshot retrieved.
+      "Output retrieved.
 
       Duration: 45s"
     `);
@@ -38,7 +38,7 @@ describe('formatCommandOutput', () => {
       success: true,
     });
     expect(result).toMatchInlineSnapshot(`
-      "Command output snapshot retrieved.
+      "Output retrieved.
 
       Exit code: 17
 
@@ -65,7 +65,7 @@ describe('formatCommandOutput', () => {
       success: true,
     });
     expect(result).toMatchInlineSnapshot(`
-      "Command output snapshot retrieved.
+      "Output retrieved.
 
       Exit code: 1
 
@@ -86,7 +86,7 @@ describe('formatCommandOutput', () => {
     });
 
     expect(result).toMatchInlineSnapshot(`
-      "Command output snapshot retrieved.
+      "Output retrieved.
 
       Output too large (19.5KB). Full output saved to: /tmp/lobehub-shell/output.log
 
@@ -107,10 +107,25 @@ describe('formatCommandOutput', () => {
     });
 
     expect(result).toMatchInlineSnapshot(`
-      "Command output snapshot retrieved.
+      "Output retrieved.
 
       Output:
       small output"
+    `);
+  });
+
+  it('should not special-case missing exit code when formatting output', () => {
+    const result = formatCommandOutput({
+      output: 'still running',
+      outputFilePath: '/tmp/lobehub-shell/output.log',
+      success: true,
+    });
+
+    expect(result).toMatchInlineSnapshot(`
+      "Output retrieved.
+
+      Output:
+      still running"
     `);
   });
 
@@ -124,5 +139,10 @@ describe('formatCommandOutput', () => {
     });
 
     expect(result).toContain('Output too large (273.6KB).');
+  });
+
+  it('should treat invalid output file sizes as unknown size', () => {
+    expect(formatCommandOutputFileSize(undefined)).toBe('unknown size');
+    expect(formatCommandOutputFileSize(Number.NaN)).toBe('unknown size');
   });
 });

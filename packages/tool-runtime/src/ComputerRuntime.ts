@@ -376,8 +376,6 @@ export abstract class ComputerRuntime {
         outputFilePath: r.outputFilePath ?? r.output_file_path,
         outputFileSize: r.outputFileSize ?? r.output_file_size,
         outputTruncated: r.outputTruncated ?? r.output_truncated,
-        running,
-        shellId: args.commandId,
         success: outputSuccess,
       });
 

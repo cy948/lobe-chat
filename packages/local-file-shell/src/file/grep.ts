@@ -4,6 +4,8 @@ import type { GrepContentParams, GrepContentResult } from '../types';
 import { expandTilde } from './expandTilde';
 import { hasHiddenSegment } from './hasHiddenSegment';
 
+const GREP_TIMEOUT_MS = 30_000;
+
 /**
  * Lightweight grep — spawns `rg` directly and returns the raw `--json`
  * events. For the platform-aware fallback chain (rg → ag → grep → nodejs)
@@ -21,6 +23,7 @@ export async function grepContent({
     : undefined;
 
   return new Promise<GrepContentResult>((resolve) => {
+    let settled = false;
     const args = ['--json', '-n'];
     if (wantsHidden) {
       args.push('--hidden', '--glob', '!**/.git/**');
@@ -41,9 +44,28 @@ export async function grepContent({
       // stderr consumed but not used
     });
 
+    const finish = (result: GrepContentResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM');
+      finish({
+        engine: 'rg',
+        error: `Search timed out after ${GREP_TIMEOUT_MS}ms`,
+        hint,
+        matches: [],
+        success: false,
+        total_matches: 0,
+      });
+    }, GREP_TIMEOUT_MS);
+
     child.on('close', (code) => {
       if (code !== 0 && code !== 1) {
-        resolve({ engine: 'rg', hint, matches: [], success: false, total_matches: 0 });
+        finish({ engine: 'rg', hint, matches: [], success: false, total_matches: 0 });
         return;
       }
 
@@ -61,7 +83,7 @@ export async function grepContent({
           .filter((entry) => entry?.type === 'match')
           .filter(Boolean);
 
-        resolve({
+        finish({
           engine: 'rg',
           hint,
           matches,
@@ -69,12 +91,12 @@ export async function grepContent({
           total_matches: matches.length,
         });
       } catch {
-        resolve({ engine: 'rg', hint, matches: [], success: true, total_matches: 0 });
+        finish({ engine: 'rg', hint, matches: [], success: true, total_matches: 0 });
       }
     });
 
     child.on('error', () => {
-      resolve({ engine: 'rg', hint, matches: [], success: false, total_matches: 0 });
+      finish({ engine: 'rg', hint, matches: [], success: false, total_matches: 0 });
     });
   });
 }

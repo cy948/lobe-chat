@@ -27,14 +27,13 @@ export const formatCommandResult = ({
   // whether the underlying process has exited and how it finished.
   const hasNonZeroExit = exitCode !== undefined && exitCode !== 0;
   const failed = !success || hasNonZeroExit;
-  const running = exitCode === undefined;
 
   if (failed) {
     let header = 'Command failed';
     if (hasNonZeroExit) header += ` with exit code ${exitCode}`;
     if (error) header += `: ${error}`;
     parts.push(header);
-  } else if (running) {
+  } else if (exitCode === undefined) {
     let message = `Command running in background with shell_id: ${shellId}`;
     if (outputFilePath) message += `. Output is being written to: ${outputFilePath}`;
     parts.push(message);

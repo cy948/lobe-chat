@@ -16,6 +16,18 @@ const formatDuration = (durationMs: number): string => {
   return `${seconds}s`;
 };
 
+export const formatCommandOutputFileSize = (sizeInBytes: number): string => {
+  const kb = sizeInBytes / 1024;
+  if (kb < 1) return `${sizeInBytes} bytes`;
+  if (kb < 1024) return `${kb.toFixed(1).replace(/\.0$/, '')}KB`;
+
+  const mb = kb / 1024;
+  if (mb < 1024) return `${mb.toFixed(1).replace(/\.0$/, '')}MB`;
+
+  const gb = mb / 1024;
+  return `${gb.toFixed(1).replace(/\.0$/, '')}GB`;
+};
+
 export const formatCommandOutput = ({
   durationMs,
   success,
@@ -40,7 +52,8 @@ export const formatCommandOutput = ({
   }
   if (running !== undefined) parts.push(`Status: ${running ? 'running' : 'completed'}`);
   if (outputFilePath && outputTruncated) {
-    const size = outputFileSize === undefined ? 'unknown size' : `${outputFileSize} bytes`;
+    const size =
+      outputFileSize === undefined ? 'unknown size' : formatCommandOutputFileSize(outputFileSize);
     parts.push(`Output too large (${size}). Full output saved to: ${outputFilePath}`);
   }
   if (output) parts.push(`${outputTruncated ? 'Preview' : 'Output'}:\n${output}`);

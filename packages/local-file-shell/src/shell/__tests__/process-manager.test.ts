@@ -28,7 +28,7 @@ function createShellProcess(
 ): ShellProcess {
   return {
     exitCode: process.exitCode,
-    outputFiles: manager.createOutputFiles(shellId),
+    outputFile: manager.createOutputFile(shellId),
     process,
   };
 }
@@ -39,7 +39,7 @@ function writeOutput(
   content: string,
 ): void {
   const buffer = Buffer.from(content);
-  fs.writeSync(shellProcess.outputFiles.outputFd, buffer);
+  fs.writeSync(shellProcess.outputFile.fd, buffer);
 }
 
 describe('ShellProcessManager', () => {
@@ -185,6 +185,26 @@ describe('ShellProcessManager', () => {
       const result = await pending;
       expect(result.exit_code).toBe(0);
       expect(result.output).toContain('late output after exit');
+    });
+
+    it('should wait for close after the parent output fd has been released', async () => {
+      const process = createMockProcess();
+      const shellProcess = createShellProcess(manager, 'test-1', process);
+      manager.register('test-1', shellProcess);
+      manager.closeOutputFile(shellProcess.outputFile);
+
+      const pending = manager.getOutput({ shell_id: 'test-1', timeout: 100 });
+
+      setTimeout(() => {
+        (process as { exitCode: number | null }).exitCode = 0;
+        process.emit('exit', 0);
+        fs.appendFileSync(shellProcess.outputFile.path, 'late child output after exit\n');
+        process.emit('close', 0);
+      }, 20);
+
+      const result = await pending;
+      expect(result.exit_code).toBe(0);
+      expect(result.output).toContain('late child output after exit');
     });
 
     it('should filter output with regex', async () => {
@@ -371,10 +391,10 @@ describe('ShellProcessManager default output root', () => {
     const manager = new ShellProcessManager({
       now: () => new Date(2026, 5, 14, 12, 34, 56),
     });
-    const outputFiles = manager.createOutputFiles('sh-1');
+    const outputFile = manager.createOutputFile('sh-1');
 
     try {
-      expect(outputFiles.outputPath).toBe(
+      expect(outputFile.path).toBe(
         path.join(
           os.tmpdir(),
           'lobehub',
@@ -385,7 +405,7 @@ describe('ShellProcessManager default output root', () => {
           'output.log',
         ),
       );
-      expect(fs.existsSync(outputFiles.outputPath)).toBe(true);
+      expect(fs.existsSync(outputFile.path)).toBe(true);
     } finally {
       manager.cleanupAll();
       fs.rmSync(path.join(os.tmpdir(), 'lobehub', 'shell-outputs', '2026-06-14', '123456'), {

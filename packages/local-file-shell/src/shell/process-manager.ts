@@ -11,17 +11,18 @@ const MAX_OBSERVATION_TIMEOUT_MS = 120_000;
 const RUN_COMMAND_HEAD_RATIO = 0.25;
 const GET_COMMAND_OUTPUT_HEAD_RATIO = 0;
 
-export interface ShellOutputFiles {
-  closed?: boolean;
-  outputFd: number;
-  outputPath: string;
+export interface ShellOutputFile {
+  fd: number;
+  /** Tracks the parent fd only; child stdio close is tracked by ShellProcess.closedAt. */
+  fdClosed?: boolean;
+  path: string;
 }
 
 export interface ShellProcess {
   closedAt?: number;
   endedAt?: number;
   exitCode: number | null;
-  outputFiles: ShellOutputFiles;
+  outputFile: ShellOutputFile;
   process: ChildProcess;
   startedAt?: number;
 }
@@ -44,15 +45,15 @@ export class ShellProcessManager {
     return `sh-${this.nextShellId++}`;
   }
 
-  createOutputFiles(shellId: string): ShellOutputFiles {
+  createOutputFile(shellId: string): ShellOutputFile {
     const shellDir = path.join(this.ensureOutputRunDir(), shellId);
     fs.mkdirSync(shellDir, { mode: 0o700, recursive: false });
 
     const outputPath = path.join(shellDir, 'output.log');
 
     return {
-      outputFd: this.openOutputFile(outputPath),
-      outputPath,
+      fd: this.openOutputFile(outputPath),
+      path: outputPath,
     };
   }
 
@@ -71,7 +72,7 @@ export class ShellProcessManager {
     shellProcess.process.once('close', () => {
       shellProcess.closedAt ??= Date.now();
       shellProcess.endedAt ??= shellProcess.closedAt;
-      this.closeOutputFiles(shellProcess.outputFiles);
+      this.closeOutputFile(shellProcess.outputFile);
     });
     this.processes.set(shellId, shellProcess);
   }
@@ -185,7 +186,7 @@ export class ShellProcessManager {
 
     try {
       shellProcess.process.kill();
-      this.closeOutputFiles(shellProcess.outputFiles);
+      this.closeOutputFile(shellProcess.outputFile);
       this.processes.delete(shell_id);
       return { success: true };
     } catch (error) {
@@ -200,18 +201,18 @@ export class ShellProcessManager {
       } catch {
         // Ignore
       }
-      this.closeOutputFiles(sp.outputFiles);
+      this.closeOutputFile(sp.outputFile);
       this.processes.delete(id);
     }
   }
 
   private buildOutputResult(shellProcess: ShellProcess, headRatio: number) {
-    const { outputFiles } = shellProcess;
-    const combined = buildOutputPreview(outputFiles.outputPath, { headRatio });
+    const { outputFile } = shellProcess;
+    const combined = buildOutputPreview(outputFile.path, { headRatio });
 
     return {
       output: combined.content,
-      output_file_path: outputFiles.outputPath,
+      output_file_path: outputFile.path,
       output_file_size: combined.size,
       output_truncated: combined.truncated,
       stderr: '',
@@ -219,18 +220,18 @@ export class ShellProcessManager {
     };
   }
 
-  private closeOutputFiles(outputFiles: ShellOutputFiles): void {
-    if (outputFiles.closed) return;
-    outputFiles.closed = true;
+  closeOutputFile(outputFile: ShellOutputFile): void {
+    if (outputFile.fdClosed) return;
+    outputFile.fdClosed = true;
     try {
-      fs.closeSync(outputFiles.outputFd);
+      fs.closeSync(outputFile.fd);
     } catch {
       // Ignore repeated close attempts.
     }
   }
 
   private async waitForClose(shellProcess: ShellProcess): Promise<void> {
-    if (shellProcess.closedAt !== undefined || shellProcess.outputFiles.closed) return;
+    if (shellProcess.closedAt !== undefined) return;
 
     await new Promise<void>((resolve) => {
       shellProcess.process.once('close', resolve);
@@ -264,10 +265,16 @@ export class ShellProcessManager {
   }
 
   private openOutputFile(filePath: string): number {
+    if (process.platform === 'win32') return fs.openSync(filePath, 'w', 0o600);
+
     const noFollow = fs.constants.O_NOFOLLOW ?? 0;
     return fs.openSync(
       filePath,
-      fs.constants.O_CREAT | fs.constants.O_WRONLY | fs.constants.O_TRUNC | noFollow,
+      fs.constants.O_APPEND |
+        fs.constants.O_CREAT |
+        fs.constants.O_TRUNC |
+        fs.constants.O_WRONLY |
+        noFollow,
       0o600,
     );
   }

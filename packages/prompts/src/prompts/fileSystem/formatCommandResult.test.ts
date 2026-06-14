@@ -45,7 +45,7 @@ describe('formatCommandResult', () => {
     expect(result).toMatchInlineSnapshot(`
       "Command completed successfully.
 
-      Output too large (20000 bytes). Full output saved to: /tmp/lobehub-shell/output.log
+      Output too large (19.5KB). Full output saved to: /tmp/lobehub-shell/output.log
 
       Preview:
       first lines

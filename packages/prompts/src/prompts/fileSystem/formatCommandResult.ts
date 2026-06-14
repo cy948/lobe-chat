@@ -1,3 +1,5 @@
+import { formatCommandOutputFileSize } from './formatCommandOutput';
+
 export interface FormatCommandResultParams {
   error?: string;
   exitCode?: number;
@@ -45,7 +47,8 @@ export const formatCommandResult = ({
   }
 
   if (outputFilePath && outputTruncated && exitCode !== undefined) {
-    const size = outputFileSize === undefined ? 'unknown size' : `${outputFileSize} bytes`;
+    const size =
+      outputFileSize === undefined ? 'unknown size' : formatCommandOutputFileSize(outputFileSize);
     parts.push(`Output too large (${size}). Full output saved to: ${outputFilePath}`);
   }
 

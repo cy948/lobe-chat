@@ -88,7 +88,7 @@ describe('formatCommandOutput', () => {
     expect(result).toMatchInlineSnapshot(`
       "Command output snapshot retrieved.
 
-      Output too large (20000 bytes). Full output saved to: /tmp/lobehub-shell/output.log
+      Output too large (19.5KB). Full output saved to: /tmp/lobehub-shell/output.log
 
       Preview:
       head
@@ -112,5 +112,17 @@ describe('formatCommandOutput', () => {
       Output:
       small output"
     `);
+  });
+
+  it('should format output file size with Claude Code-style units', () => {
+    const result = formatCommandOutput({
+      output: 'preview',
+      outputFilePath: '/tmp/lobehub-shell/output.log',
+      outputFileSize: 280_148,
+      outputTruncated: true,
+      success: true,
+    });
+
+    expect(result).toContain('Output too large (273.6KB).');
   });
 });

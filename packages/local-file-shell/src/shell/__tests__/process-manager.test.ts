@@ -165,10 +165,30 @@ describe('ShellProcessManager', () => {
       setTimeout(() => {
         (process as { exitCode: number | null }).exitCode = 0;
         process.emit('exit', 0);
+        process.emit('close', 0);
       }, 20);
 
       const result = await pending;
       expect(result.exit_code).toBe(0);
+    });
+
+    it('should wait for close before reading final output', async () => {
+      const process = createMockProcess();
+      const shellProcess = createShellProcess(manager, 'test-1', process);
+      manager.register('test-1', shellProcess);
+
+      const pending = manager.getOutput({ shell_id: 'test-1', timeout: 100 });
+
+      setTimeout(() => {
+        (process as { exitCode: number | null }).exitCode = 0;
+        process.emit('exit', 0);
+        writeOutput(shellProcess, 'stdout', 'late output after exit\n');
+        process.emit('close', 0);
+      }, 20);
+
+      const result = await pending;
+      expect(result.exit_code).toBe(0);
+      expect(result.output).toContain('late output after exit');
     });
 
     it('should filter output with regex', async () => {
@@ -222,6 +242,7 @@ describe('ShellProcessManager', () => {
       expect(result.exit_code).toBeUndefined();
 
       (process as { exitCode: number | null }).exitCode = 0;
+      process.emit('close', 0);
 
       result = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
       expect(result.exit_code).toBe(0);
@@ -252,6 +273,7 @@ describe('ShellProcessManager', () => {
         await vi.advanceTimersByTimeAsync(2500);
         (process as { exitCode: number | null }).exitCode = 0;
         process.emit('exit', 0);
+        process.emit('close', 0);
         await vi.advanceTimersByTimeAsync(7500);
 
         const result = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
@@ -269,6 +291,7 @@ describe('ShellProcessManager', () => {
       manager.register('test-1', shellProcess);
 
       (process as { exitCode: number | null }).exitCode = 0;
+      process.emit('close', 0);
 
       const result = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
       expect(result.success).toBe(true);

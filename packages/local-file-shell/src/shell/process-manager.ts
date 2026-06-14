@@ -18,6 +18,7 @@ export interface ShellOutputFiles {
 }
 
 export interface ShellProcess {
+  closedAt?: number;
   endedAt?: number;
   exitCode: number | null;
   lastObservedOutputSize: number;
@@ -69,6 +70,8 @@ export class ShellProcessManager {
     shellProcess.process.once('exit', markEnded);
     shellProcess.process.once('error', markEnded);
     shellProcess.process.once('close', () => {
+      shellProcess.closedAt ??= Date.now();
+      shellProcess.endedAt ??= shellProcess.closedAt;
       this.closeOutputFiles(shellProcess.outputFiles);
     });
     this.processes.set(shellId, shellProcess);
@@ -143,6 +146,7 @@ export class ShellProcessManager {
     exitCode = childProcess.exitCode ?? shellProcess.exitCode;
     if (exitCode !== null) {
       shellProcess.endedAt ??= Date.now();
+      await this.waitForClose(shellProcess);
     }
 
     const previousSize = shellProcess.lastObservedOutputSize;
@@ -229,6 +233,14 @@ export class ShellProcessManager {
     } catch {
       // Ignore repeated close attempts.
     }
+  }
+
+  private async waitForClose(shellProcess: ShellProcess): Promise<void> {
+    if (shellProcess.closedAt !== undefined || shellProcess.outputFiles.closed) return;
+
+    await new Promise<void>((resolve) => {
+      shellProcess.process.once('close', resolve);
+    });
   }
 
   private ensureOutputRunDir(): string {

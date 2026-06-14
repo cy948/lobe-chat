@@ -278,6 +278,7 @@ export interface RunCommandResult {
   output?: string;
   output_file_path?: string;
   output_file_size?: number;
+  output_truncated?: boolean;
   running?: boolean;
   shell_id?: string;
   stderr?: string;
@@ -307,6 +308,7 @@ export interface GetCommandOutputResult {
   output: string;
   output_file_path?: string;
   output_file_size: number;
+  output_truncated?: boolean;
   running?: boolean;
   size_delta_since_last_check?: number;
   stderr: string;

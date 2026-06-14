@@ -46,9 +46,15 @@ describe('ShellCommandCtr (thin wrapper)', () => {
   let ctr: ShellCommandCtr;
   let mockSpawn: any;
   let mockChildProcess: any;
+  let listeners: Map<string, Set<(...args: any[]) => void>>;
+
+  const emitChildProcess = (event: string, ...args: any[]) => {
+    for (const listener of listeners.get(event) ?? []) listener(...args);
+  };
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    listeners = new Map();
 
     const childProcessModule = await import('node:child_process');
     mockSpawn = vi.mocked(childProcessModule.spawn);
@@ -56,9 +62,26 @@ describe('ShellCommandCtr (thin wrapper)', () => {
     mockChildProcess = {
       stdout: { on: vi.fn() },
       stderr: { on: vi.fn() },
-      off: vi.fn(),
-      on: vi.fn(),
-      once: vi.fn(),
+      off: vi.fn((event: string, callback: (...args: any[]) => void) => {
+        listeners.get(event)?.delete(callback);
+        return mockChildProcess;
+      }),
+      on: vi.fn((event: string, callback: (...args: any[]) => void) => {
+        const eventListeners = listeners.get(event) ?? new Set();
+        eventListeners.add(callback);
+        listeners.set(event, eventListeners);
+        return mockChildProcess;
+      }),
+      once: vi.fn((event: string, callback: (...args: any[]) => void) => {
+        const onceCallback = (...args: any[]) => {
+          listeners.get(event)?.delete(onceCallback);
+          callback(...args);
+        };
+        const eventListeners = listeners.get(event) ?? new Set();
+        eventListeners.add(onceCallback);
+        listeners.set(event, eventListeners);
+        return mockChildProcess;
+      }),
       kill: vi.fn(),
       exitCode: null,
     };
@@ -68,14 +91,11 @@ describe('ShellCommandCtr (thin wrapper)', () => {
   });
 
   it('should delegate handleRunCommand to shared runCommand', async () => {
-    mockChildProcess.on.mockImplementation((event: string, callback: any) => {
-      if (event === 'exit') setTimeout(() => callback(0), 10);
-      return mockChildProcess;
-    });
-    mockChildProcess.once.mockImplementation((event: string, callback: any) => {
-      if (event === 'exit') setTimeout(() => callback(0), 10);
-      return mockChildProcess;
-    });
+    setTimeout(() => {
+      mockChildProcess.exitCode = 0;
+      emitChildProcess('exit', 0);
+      emitChildProcess('close', 0);
+    }, 10);
     mockChildProcess.stdout.on.mockImplementation((event: string, callback: any) => {
       if (event === 'data') setTimeout(() => callback(Buffer.from('output\n')), 5);
       return mockChildProcess.stdout;
@@ -92,14 +112,6 @@ describe('ShellCommandCtr (thin wrapper)', () => {
   });
 
   it('should delegate handleGetCommandOutput to processManager', async () => {
-    mockChildProcess.on.mockImplementation((event: string, callback: any) => {
-      if (event === 'exit') setTimeout(() => callback(0), 10);
-      return mockChildProcess;
-    });
-    mockChildProcess.once.mockImplementation((event: string, callback: any) => {
-      if (event === 'exit') setTimeout(() => callback(0), 10);
-      return mockChildProcess;
-    });
     mockChildProcess.stdout.on.mockImplementation((event: string, callback: any) => {
       if (event === 'data') setTimeout(() => callback(Buffer.from('bg output\n')), 5);
       return mockChildProcess.stdout;
@@ -115,6 +127,7 @@ describe('ShellCommandCtr (thin wrapper)', () => {
 
     const result = await ctr.handleGetCommandOutput({
       shell_id: runResult.shell_id!,
+      timeout: 0,
     });
 
     expect(result.success).toBe(true);

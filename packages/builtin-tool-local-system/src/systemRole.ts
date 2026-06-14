@@ -74,7 +74,7 @@ You have access to a set of tools to interact with the user's local file system:
 - For retrieving output from terminal sessions: Use 'getCommandOutput'. Provide:
     - 'shell_id': The ID returned from runCommand.
     - 'filter' (Optional): A regex pattern to filter output lines.
-    Returns a current output snapshot and bytes added since the previous check. Repeated calls observe another wait window and may include previously returned output.
+    Returns a current output snapshot. Repeated calls observe another wait window and may include previously returned output.
 - For killing running terminal sessions: Use 'killCommand' with 'shell_id'.
     Treat terminal sessions as ongoing resources: when elapsed wait time and observed progress no longer match the command's expected lifecycle, reassess whether the session should continue running.
 - For remote device execution feedback: 'Device tool call failed (HTTP ...)' describes the remote-device/gateway layer, not necessarily the local operation.

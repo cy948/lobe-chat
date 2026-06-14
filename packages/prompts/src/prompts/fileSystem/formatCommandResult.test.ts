@@ -14,8 +14,7 @@ describe('formatCommandResult', () => {
       success: true,
     });
     expect(result).toMatchInlineSnapshot(`
-      "Command is still running after the wait window.
-      shell_id: shell-123"
+      "Command running in background with shell_id: shell-123"
     `);
   });
 
@@ -39,18 +38,37 @@ describe('formatCommandResult', () => {
       output: 'first lines\n...\nlast lines',
       outputFilePath: '/tmp/lobehub-shell/output.log',
       outputFileSize: 20_000,
+      outputTruncated: true,
       success: true,
     });
 
     expect(result).toMatchInlineSnapshot(`
       "Command completed successfully.
 
-      Output file: /tmp/lobehub-shell/output.log (20000 bytes)
+      Output too large (20000 bytes). Full output saved to: /tmp/lobehub-shell/output.log
 
-      Output:
+      Preview:
       first lines
       ...
       last lines"
+    `);
+  });
+
+  it('should format command output file metadata without large-output wording when not truncated', () => {
+    const result = formatCommandResult({
+      exitCode: 0,
+      output: 'small output',
+      outputFilePath: '/tmp/lobehub-shell/output.log',
+      outputFileSize: 12,
+      outputTruncated: false,
+      success: true,
+    });
+
+    expect(result).toMatchInlineSnapshot(`
+      "Command completed successfully.
+
+      Output:
+      small output"
     `);
   });
 
@@ -64,8 +82,7 @@ describe('formatCommandResult', () => {
     });
 
     expect(result).toMatchInlineSnapshot(`
-      "Command is still running after the wait window.
-      shell_id: shell-123
+      "Command running in background with shell_id: shell-123
 
       Output:
       combined stream"

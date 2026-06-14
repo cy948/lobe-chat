@@ -84,6 +84,7 @@ describe('buildOutputPreview', () => {
     const preview = buildOutputPreview(filePath, { headRatio: 0.25, maxBytes: 8 });
 
     expect(preview.size).toBe(20);
+    expect(preview.truncated).toBe(true);
     expect(preview.content).toContain('omitted 12 bytes');
     expect(preview.content).toContain('aa');
     expect(preview.content).toContain('bbbbbb');
@@ -95,6 +96,7 @@ describe('buildOutputPreview', () => {
 
     const preview = buildOutputPreview(filePath, { headRatio: 0, maxBytes: 16 });
 
+    expect(preview.truncated).toBe(true);
     expect(preview.content).toContain('showing last 16');
     expect(preview.content).not.toContain('\x1B');
     expect(preview.content).toContain('xxxxxxxxxxxx');

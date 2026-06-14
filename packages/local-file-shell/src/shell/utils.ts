@@ -9,6 +9,7 @@ export const MAX_OUTPUT_LENGTH = 80_000;
 export interface OutputPreview {
   content: string;
   size: number;
+  truncated: boolean;
 }
 
 /** ANSI SGR reset, closes any open color/style state */
@@ -63,12 +64,12 @@ export const buildOutputPreview = (
   try {
     stat = fs.statSync(filePath);
   } catch {
-    return { content: '', size: 0 };
+    return { content: '', size: 0, truncated: false };
   }
 
   const size = stat.size;
   if (size <= 0 || maxBytes <= 0) {
-    return { content: '', size };
+    return { content: '', size, truncated: false };
   }
 
   const fd = fs.openSync(filePath, 'r');
@@ -79,6 +80,7 @@ export const buildOutputPreview = (
       return {
         content: stripAnsi(buffer.toString('utf8')),
         size,
+        truncated: false,
       };
     }
 
@@ -91,8 +93,9 @@ export const buildOutputPreview = (
       const tail = Buffer.alloc(Math.min(maxBytes, size));
       fs.readSync(fd, tail, 0, tail.length, Math.max(0, size - tail.length));
       return {
-        content: `... [showing last ${tail.length} of ${size} bytes; full output: ${filePath}]\n${stripAnsi(tail.toString('utf8'))}`,
+        content: `... [showing last ${tail.length} of ${size} bytes; full output saved to: ${filePath}]\n${stripAnsi(tail.toString('utf8'))}`,
         size,
+        truncated: true,
       };
     }
 
@@ -102,8 +105,9 @@ export const buildOutputPreview = (
     fs.readSync(fd, tail, 0, tailBytes, Math.max(0, size - tailBytes));
 
     return {
-      content: `${stripAnsi(head.toString('utf8'))}\n... [omitted ${omittedBytes} bytes; full output: ${filePath}]\n${stripAnsi(tail.toString('utf8'))}`,
+      content: `${stripAnsi(head.toString('utf8'))}\n... [omitted ${omittedBytes} bytes; full output saved to: ${filePath}]\n${stripAnsi(tail.toString('utf8'))}`,
       size,
+      truncated: true,
     };
   } finally {
     fs.closeSync(fd);

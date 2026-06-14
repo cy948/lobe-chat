@@ -75,4 +75,42 @@ describe('formatCommandOutput', () => {
       Error: Warning message"
     `);
   });
+
+  it('should format truncated output with saved file metadata and preview', () => {
+    const result = formatCommandOutput({
+      output: 'head\n...\ntail',
+      outputFilePath: '/tmp/lobehub-shell/output.log',
+      outputFileSize: 20_000,
+      outputTruncated: true,
+      success: true,
+    });
+
+    expect(result).toMatchInlineSnapshot(`
+      "Command output snapshot retrieved.
+
+      Output too large (20000 bytes). Full output saved to: /tmp/lobehub-shell/output.log
+
+      Preview:
+      head
+      ...
+      tail"
+    `);
+  });
+
+  it('should keep small saved output as normal output', () => {
+    const result = formatCommandOutput({
+      output: 'small output',
+      outputFilePath: '/tmp/lobehub-shell/output.log',
+      outputFileSize: 12,
+      outputTruncated: false,
+      success: true,
+    });
+
+    expect(result).toMatchInlineSnapshot(`
+      "Command output snapshot retrieved.
+
+      Output:
+      small output"
+    `);
+  });
 });

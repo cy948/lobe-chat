@@ -99,14 +99,13 @@ export async function runCommand(
 
 const writeOutputChunk = (
   outputFiles: ShellOutputFiles,
-  stream: 'stderr' | 'stdout',
+  _stream: 'stderr' | 'stdout',
   data: Buffer | string,
 ): void => {
   if (outputFiles.closed) return;
   const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
   try {
     fs.writeSync(outputFiles.outputFd, buffer);
-    fs.writeSync(stream === 'stdout' ? outputFiles.stdoutFd : outputFiles.stderrFd, buffer);
   } catch {
     // The process may emit buffered data after cancellation closed the output files.
   }

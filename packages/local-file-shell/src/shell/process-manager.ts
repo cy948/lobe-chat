@@ -15,10 +15,6 @@ export interface ShellOutputFiles {
   closed?: boolean;
   outputFd: number;
   outputPath: string;
-  stderrFd: number;
-  stderrPath: string;
-  stdoutFd: number;
-  stdoutPath: string;
 }
 
 export interface ShellProcess {
@@ -53,16 +49,10 @@ export class ShellProcessManager {
     fs.mkdirSync(shellDir, { mode: 0o700, recursive: false });
 
     const outputPath = path.join(shellDir, 'output.log');
-    const stdoutPath = path.join(shellDir, 'stdout.log');
-    const stderrPath = path.join(shellDir, 'stderr.log');
 
     return {
       outputFd: this.openOutputFile(outputPath),
       outputPath,
-      stderrFd: this.openOutputFile(stderrPath),
-      stderrPath,
-      stdoutFd: this.openOutputFile(stdoutPath),
-      stdoutPath,
     };
   }
 
@@ -180,6 +170,7 @@ export class ShellProcessManager {
       output,
       output_file_path: result.output_file_path,
       output_file_size: result.output_file_size,
+      output_truncated: result.output_truncated,
       running: exitCode === null,
       size_delta_since_last_check: sizeDelta,
       stderr: result.stderr,
@@ -219,27 +210,24 @@ export class ShellProcessManager {
   private buildOutputResult(shellProcess: ShellProcess, headRatio: number) {
     const { outputFiles } = shellProcess;
     const combined = buildOutputPreview(outputFiles.outputPath, { headRatio });
-    const stdout = buildOutputPreview(outputFiles.stdoutPath, { headRatio });
-    const stderr = buildOutputPreview(outputFiles.stderrPath, { headRatio });
 
     return {
       output: combined.content,
       output_file_path: outputFiles.outputPath,
       output_file_size: combined.size,
-      stderr: stderr.content,
-      stdout: stdout.content,
+      output_truncated: combined.truncated,
+      stderr: '',
+      stdout: combined.content,
     };
   }
 
   private closeOutputFiles(outputFiles: ShellOutputFiles): void {
     if (outputFiles.closed) return;
     outputFiles.closed = true;
-    for (const fd of [outputFiles.outputFd, outputFiles.stdoutFd, outputFiles.stderrFd]) {
-      try {
-        fs.closeSync(fd);
-      } catch {
-        // Ignore repeated close attempts.
-      }
+    try {
+      fs.closeSync(outputFiles.outputFd);
+    } catch {
+      // Ignore repeated close attempts.
     }
   }
 
@@ -248,7 +236,7 @@ export class ShellProcessManager {
 
     const now = this.options.now?.() ?? new Date();
     const root = path.resolve(
-      this.options.outputRoot ?? path.join(os.tmpdir(), 'lobehub-local-system', 'shell-outputs'),
+      this.options.outputRoot ?? path.join(os.tmpdir(), 'lobehub', 'shell-outputs'),
     );
     const dateDir = path.join(root, formatDate(now));
     fs.mkdirSync(dateDir, { mode: 0o700, recursive: true });

@@ -4,6 +4,7 @@ export interface FormatCommandResultParams {
   output?: string;
   outputFilePath?: string;
   outputFileSize?: number;
+  outputTruncated?: boolean;
   shellId?: string;
   stderr?: string;
   stdout?: string;
@@ -17,6 +18,7 @@ export const formatCommandResult = ({
   output,
   outputFilePath,
   outputFileSize,
+  outputTruncated,
   stdout,
   stderr,
   exitCode,
@@ -29,24 +31,26 @@ export const formatCommandResult = ({
   const hasNonZeroExit = exitCode !== undefined && exitCode !== 0;
   const failed = !success || hasNonZeroExit;
 
-  if (failed) {
+  if (!failed && exitCode === undefined) {
+    let message = `Command running in background with shell_id: ${shellId}`;
+    if (outputFilePath) message += `. Output is being written to: ${outputFilePath}`;
+    parts.push(message);
+  } else if (failed) {
     let header = 'Command failed';
     if (hasNonZeroExit) header += ` with exit code ${exitCode}`;
     if (error) header += `: ${error}`;
     parts.push(header);
-  } else if (exitCode === undefined) {
-    parts.push(`Command is still running after the wait window.\nshell_id: ${shellId}`);
   } else {
     parts.push('Command completed successfully.');
   }
 
-  if (outputFilePath) {
+  if (outputFilePath && outputTruncated && exitCode !== undefined) {
     const size = outputFileSize === undefined ? 'unknown size' : `${outputFileSize} bytes`;
-    parts.push(`Output file: ${outputFilePath} (${size})`);
+    parts.push(`Output too large (${size}). Full output saved to: ${outputFilePath}`);
   }
 
   if (output) {
-    parts.push(`Output:\n${output}`);
+    parts.push(`${outputTruncated && exitCode !== undefined ? 'Preview' : 'Output'}:\n${output}`);
   } else {
     if (stdout) parts.push(`Output:\n${stdout}`);
     if (stderr) parts.push(`Stderr:\n${stderr}`);

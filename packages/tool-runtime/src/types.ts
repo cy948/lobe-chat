@@ -190,6 +190,7 @@ export interface RunCommandState {
   output?: string;
   outputFilePath?: string;
   outputFileSize?: number;
+  outputTruncated?: boolean;
   running?: boolean;
   stderr?: string;
   stdout?: string;
@@ -203,6 +204,7 @@ export interface GetCommandOutputState {
   newOutput?: string;
   outputFilePath?: string;
   outputFileSize?: number;
+  outputTruncated?: boolean;
   running?: boolean;
   sizeDeltaSinceLastCheck?: number;
   success: boolean;

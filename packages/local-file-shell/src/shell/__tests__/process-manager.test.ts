@@ -36,15 +36,11 @@ function createShellProcess(
 
 function writeOutput(
   shellProcess: ShellProcess,
-  stream: 'stderr' | 'stdout',
+  _stream: 'stderr' | 'stdout',
   content: string,
 ): void {
   const buffer = Buffer.from(content);
   fs.writeSync(shellProcess.outputFiles.outputFd, buffer);
-  fs.writeSync(
-    stream === 'stdout' ? shellProcess.outputFiles.stdoutFd : shellProcess.outputFiles.stderrFd,
-    buffer,
-  );
 }
 
 describe('ShellProcessManager', () => {
@@ -69,7 +65,7 @@ describe('ShellProcessManager', () => {
       expect(result.error).toContain('not found');
     });
 
-    it('should retrieve stdout and stderr', async () => {
+    it('should retrieve merged stdout and stderr output', async () => {
       const process = createMockProcess();
       const shellProcess = createShellProcess(manager, 'test-1', process);
       writeOutput(shellProcess, 'stdout', 'line 1\nline 2\n');
@@ -81,7 +77,8 @@ describe('ShellProcessManager', () => {
       expect(result.success).toBe(true);
       expect(result.stdout).toContain('line 1');
       expect(result.stdout).toContain('line 2');
-      expect(result.stderr).toContain('error line');
+      expect(result.stdout).toContain('error line');
+      expect(result.stderr).toBe('');
       expect(result.exit_code).toBeUndefined();
     });
 
@@ -347,5 +344,35 @@ describe('ShellProcessManager', () => {
 
       expect(() => manager.cleanupAll()).not.toThrow();
     });
+  });
+});
+
+describe('ShellProcessManager default output root', () => {
+  it('should keep the default shell output path short and under the system temp dir', () => {
+    const manager = new ShellProcessManager({
+      now: () => new Date(2026, 5, 14, 12, 34, 56),
+    });
+    const outputFiles = manager.createOutputFiles('sh-1');
+
+    try {
+      expect(outputFiles.outputPath).toBe(
+        path.join(
+          os.tmpdir(),
+          'lobehub',
+          'shell-outputs',
+          '2026-06-14',
+          '123456',
+          'sh-1',
+          'output.log',
+        ),
+      );
+      expect(fs.existsSync(outputFiles.outputPath)).toBe(true);
+    } finally {
+      manager.cleanupAll();
+      fs.rmSync(path.join(os.tmpdir(), 'lobehub', 'shell-outputs', '2026-06-14', '123456'), {
+        force: true,
+        recursive: true,
+      });
+    }
   });
 });

@@ -45,7 +45,8 @@ describe('runCommand', () => {
     it('should capture stderr', async () => {
       const result = await runCommand({ command: 'echo error >&2' }, { processManager });
 
-      expect(result.stderr).toContain('error');
+      expect(result.stdout).toContain('error');
+      expect(result.stderr).toBe('');
     });
 
     it('should handle command failure', async () => {

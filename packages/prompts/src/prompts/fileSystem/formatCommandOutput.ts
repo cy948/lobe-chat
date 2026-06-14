@@ -5,7 +5,9 @@ export interface FormatCommandOutputParams {
   output?: string;
   outputFilePath?: string;
   outputFileSize?: number;
+  outputTruncated?: boolean;
   running?: boolean;
+  shellId?: string;
   sizeDeltaSinceLastCheck?: number;
   success: boolean;
 }
@@ -22,11 +24,16 @@ export const formatCommandOutput = ({
   output,
   outputFilePath,
   outputFileSize,
+  outputTruncated,
   running,
+  shellId,
   sizeDeltaSinceLastCheck,
   error,
 }: FormatCommandOutputParams): string => {
-  const message = success ? 'Command output snapshot retrieved.' : `Failed: ${error}`;
+  let message = success ? 'Command output snapshot retrieved.' : `Failed: ${error}`;
+  if (running && outputFilePath) {
+    message = `Command running in background with shell_id: ${shellId}. Output is being written to: ${outputFilePath}`;
+  }
 
   const parts: string[] = [message];
   if (exitCode !== undefined && exitCode !== 0) parts.push(`Exit code: ${exitCode}`);
@@ -37,11 +44,11 @@ export const formatCommandOutput = ({
   if (sizeDeltaSinceLastCheck !== undefined) {
     parts.push(`New bytes since last check: ${sizeDeltaSinceLastCheck}`);
   }
-  if (outputFilePath) {
+  if (outputFilePath && outputTruncated) {
     const size = outputFileSize === undefined ? 'unknown size' : `${outputFileSize} bytes`;
-    parts.push(`Output file: ${outputFilePath} (${size})`);
+    parts.push(`Output too large (${size}). Full output saved to: ${outputFilePath}`);
   }
-  if (output) parts.push(`Output:\n${output}`);
+  if (output) parts.push(`${outputTruncated ? 'Preview' : 'Output'}:\n${output}`);
   if (error && success) parts.push(`Error: ${error}`);
 
   return parts.join('\n\n');

@@ -34,12 +34,13 @@ export class ShellProcessManager {
 
   private processes = new Map<string, ShellProcess>();
 
-  constructor(
-    private readonly options: {
-      now?: () => Date;
-      outputRoot?: string;
-    } = {},
-  ) {}
+  private readonly outputRoot: string;
+
+  constructor(outputRoot?: string) {
+    this.outputRoot = path.resolve(
+      outputRoot ?? path.join(os.tmpdir(), 'lobehub', 'shell-outputs'),
+    );
+  }
 
   createShellId(): string {
     return `sh-${this.nextShellId++}`;
@@ -235,11 +236,8 @@ export class ShellProcessManager {
   private ensureOutputRunDir(): string {
     if (this.outputRunDir) return this.outputRunDir;
 
-    const now = this.options.now?.() ?? new Date();
-    const root = path.resolve(
-      this.options.outputRoot ?? path.join(os.tmpdir(), 'lobehub', 'shell-outputs'),
-    );
-    const dateDir = path.join(root, formatDate(now));
+    const now = new Date();
+    const dateDir = path.join(this.outputRoot, formatDate(now));
     fs.mkdirSync(dateDir, { mode: 0o700, recursive: true });
 
     const baseName = formatTime(now);

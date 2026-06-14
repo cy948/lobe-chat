@@ -13,7 +13,7 @@ describe('runCommand', () => {
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lobehub-shell-runner-'));
-    processManager = new ShellProcessManager({ outputRoot: tmpDir });
+    processManager = new ShellProcessManager(tmpDir);
   });
 
   afterEach(() => {
@@ -32,7 +32,7 @@ describe('runCommand', () => {
     });
 
     it('should assign readable incremental shell IDs within a manager', async () => {
-      const localManager = new ShellProcessManager({ outputRoot: tmpDir });
+      const localManager = new ShellProcessManager(tmpDir);
 
       const first = await runCommand({ command: 'echo first' }, { processManager: localManager });
       const second = await runCommand({ command: 'echo second' }, { processManager: localManager });

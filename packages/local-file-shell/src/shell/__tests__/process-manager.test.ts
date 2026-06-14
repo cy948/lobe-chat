@@ -48,7 +48,7 @@ describe('ShellProcessManager', () => {
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lobehub-shell-process-manager-'));
-    manager = new ShellProcessManager({ outputRoot: tmpDir });
+    manager = new ShellProcessManager(tmpDir);
   });
 
   afterEach(() => {
@@ -388,12 +388,12 @@ describe('ShellProcessManager', () => {
 
 describe('ShellProcessManager default output root', () => {
   it('should keep the default shell output path short and under the system temp dir', () => {
-    const manager = new ShellProcessManager({
-      now: () => new Date(2026, 5, 14, 12, 34, 56),
-    });
-    const outputFile = manager.createOutputFile('sh-1');
-
+    vi.useFakeTimers();
     try {
+      vi.setSystemTime(new Date(2026, 5, 14, 12, 34, 56));
+      const manager = new ShellProcessManager();
+      const outputFile = manager.createOutputFile('sh-1');
+
       expect(outputFile.path).toBe(
         path.join(
           os.tmpdir(),
@@ -406,8 +406,9 @@ describe('ShellProcessManager default output root', () => {
         ),
       );
       expect(fs.existsSync(outputFile.path)).toBe(true);
-    } finally {
       manager.cleanupAll();
+    } finally {
+      vi.useRealTimers();
       fs.rmSync(path.join(os.tmpdir(), 'lobehub', 'shell-outputs', '2026-06-14', '123456'), {
         force: true,
         recursive: true,

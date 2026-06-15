@@ -22,6 +22,7 @@ describe('formatCommandResult', () => {
   it('should format still-running command with output file path', () => {
     const result = formatCommandResult({
       outputFilePath: '/tmp/lobehub-shell/output.log',
+      outputFileSize: 1536,
       shellId: 'shell-123',
       success: true,
     });
@@ -29,7 +30,7 @@ describe('formatCommandResult', () => {
       "Command is still running after the wait window.
       shell_id: shell-123
 
-      Output is being written to: /tmp/lobehub-shell/output.log"
+      Full output saved to: /tmp/lobehub-shell/output.log (1.5KB)"
     `);
   });
 
@@ -52,7 +53,6 @@ describe('formatCommandResult', () => {
       exitCode: 0,
       output:
         'first lines\n... [omitted 12000 bytes; full output saved to: /tmp/lobehub-shell/output.log]\nlast lines',
-      outputFilePath: '/tmp/lobehub-shell/output.log',
       success: true,
     });
 
@@ -71,14 +71,37 @@ describe('formatCommandResult', () => {
       exitCode: 0,
       output: 'small output',
       outputFilePath: '/tmp/lobehub-shell/output.log',
+      outputFileSize: 1536,
       success: true,
     });
 
     expect(result).toMatchInlineSnapshot(`
       "Command completed successfully.
 
+      Full output saved to: /tmp/lobehub-shell/output.log (1.5KB)
+
       Output:
       small output"
+    `);
+  });
+
+  it('should format truncated command output file metadata', () => {
+    const result = formatCommandResult({
+      exitCode: 0,
+      output: 'preview output',
+      outputFilePath: '/tmp/lobehub-shell/output.log',
+      outputFileSize: 1536,
+      outputTruncated: true,
+      success: true,
+    });
+
+    expect(result).toMatchInlineSnapshot(`
+      "Command completed successfully.
+
+      Output too large (1.5KB). Full output saved to: /tmp/lobehub-shell/output.log
+
+      Output:
+      preview output"
     `);
   });
 

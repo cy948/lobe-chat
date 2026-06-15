@@ -14,6 +14,16 @@ const ANSI_ESCAPE = /\u001B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g;
 
 const stripAnsi = (str: string): string => str.replaceAll(ANSI_ESCAPE, '');
 
+const formatBytes = (bytes: number): string => {
+  const kb = bytes / 1024;
+  if (kb < 1) return `${bytes} bytes`;
+  if (kb < 1024) return `${kb.toFixed(1).replace(/\.0$/, '')}KB`;
+  const mb = kb / 1024;
+  if (mb < 1024) return `${mb.toFixed(1).replace(/\.0$/, '')}MB`;
+  const gb = mb / 1024;
+  return `${gb.toFixed(1).replace(/\.0$/, '')}GB`;
+};
+
 export const buildOutputPreview = (
   filePath: string,
   headRatio: number,
@@ -52,7 +62,7 @@ export const buildOutputPreview = (
       const tail = Buffer.alloc(Math.min(maxBytes, size));
       fs.readSync(fd, tail, 0, tail.length, Math.max(0, size - tail.length));
       return {
-        content: `... [showing last ${tail.length} of ${size} bytes; full output saved to: ${filePath}]\n${stripAnsi(tail.toString('utf8'))}`,
+        content: `... [showing last ${formatBytes(tail.length)} of ${formatBytes(size)}; full output saved to: ${filePath}]\n${stripAnsi(tail.toString('utf8'))}`,
         size,
         truncated: true,
       };
@@ -64,7 +74,7 @@ export const buildOutputPreview = (
     fs.readSync(fd, tail, 0, tailBytes, Math.max(0, size - tailBytes));
 
     return {
-      content: `${stripAnsi(head.toString('utf8'))}\n... [omitted ${omittedBytes} bytes; full output saved to: ${filePath}]\n${stripAnsi(tail.toString('utf8'))}`,
+      content: `${stripAnsi(head.toString('utf8'))}\n... [omitted ${formatBytes(omittedBytes)}; full output saved to: ${filePath}]\n${stripAnsi(tail.toString('utf8'))}`,
       size,
       truncated: true,
     };

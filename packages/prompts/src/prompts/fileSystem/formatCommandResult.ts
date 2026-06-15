@@ -1,8 +1,12 @@
+import { formatCommandOutputFileSize } from './formatCommandOutput';
+
 export interface FormatCommandResultParams {
   error?: string;
   exitCode?: number;
   output?: string;
   outputFilePath?: string;
+  outputFileSize?: number;
+  outputTruncated?: boolean;
   shellId?: string;
   success: boolean;
 }
@@ -13,6 +17,8 @@ export const formatCommandResult = ({
   error,
   output,
   outputFilePath,
+  outputFileSize,
+  outputTruncated,
   exitCode,
 }: FormatCommandResultParams): string => {
   const parts: string[] = [];
@@ -30,11 +36,18 @@ export const formatCommandResult = ({
     parts.push(header);
   } else if (exitCode === undefined) {
     parts.push(`Command is still running after the wait window.\nshell_id: ${shellId}`);
-    if (outputFilePath) parts.push(`Output is being written to: ${outputFilePath}`);
   } else {
     parts.push('Command completed successfully.');
   }
 
+  if (outputFilePath) {
+    const size = formatCommandOutputFileSize(outputFileSize);
+    parts.push(
+      outputTruncated
+        ? `Output too large (${size}). Full output saved to: ${outputFilePath}`
+        : `Full output saved to: ${outputFilePath} (${size})`,
+    );
+  }
   if (output) parts.push(`Output:\n${output}`);
 
   return parts.join('\n\n');

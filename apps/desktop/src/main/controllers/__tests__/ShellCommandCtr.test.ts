@@ -1,3 +1,5 @@
+import { writeSync } from 'node:fs';
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { App } from '@/core/App';
@@ -46,6 +48,7 @@ describe('ShellCommandCtr (thin wrapper)', () => {
   let ctr: ShellCommandCtr;
   let mockSpawn: any;
   let mockChildProcess: any;
+  let mockProcessOutput: string;
   let listeners: Map<string, Set<(...args: any[]) => void>>;
 
   const emitChildProcess = (event: string, ...args: any[]) => {
@@ -54,6 +57,7 @@ describe('ShellCommandCtr (thin wrapper)', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockProcessOutput = '';
     listeners = new Map();
 
     const childProcessModule = await import('node:child_process');
@@ -62,6 +66,9 @@ describe('ShellCommandCtr (thin wrapper)', () => {
     mockChildProcess = {
       stdout: { on: vi.fn() },
       stderr: { on: vi.fn() },
+      // ShellProcessManager registers and later removes child process listeners
+      // while racing exit/error/timeout and waiting for close. Keep enough
+      // EventEmitter semantics here so the test follows the real lifecycle.
       off: vi.fn((event: string, callback: (...args: any[]) => void) => {
         listeners.get(event)?.delete(callback);
         return mockChildProcess;
@@ -86,21 +93,23 @@ describe('ShellCommandCtr (thin wrapper)', () => {
       exitCode: null,
     };
 
-    mockSpawn.mockReturnValue(mockChildProcess);
+    mockSpawn.mockImplementation((_cmd: string, _args: string[], options: any) => {
+      const outputFd = Array.isArray(options?.stdio) ? options.stdio[1] : undefined;
+      if (typeof outputFd === 'number' && mockProcessOutput) {
+        writeSync(outputFd, mockProcessOutput);
+      }
+      return mockChildProcess;
+    });
     ctr = new ShellCommandCtr(mockApp);
   });
 
   it('should delegate handleRunCommand to shared runCommand', async () => {
+    mockProcessOutput = 'output\n';
     setTimeout(() => {
       mockChildProcess.exitCode = 0;
       emitChildProcess('exit', 0);
       emitChildProcess('close', 0);
     }, 10);
-    mockChildProcess.stdout.on.mockImplementation((event: string, callback: any) => {
-      if (event === 'data') setTimeout(() => callback(Buffer.from('output\n')), 5);
-      return mockChildProcess.stdout;
-    });
-    mockChildProcess.stderr.on.mockImplementation(() => mockChildProcess.stderr);
 
     const result = await ctr.handleRunCommand({
       command: 'echo test',
@@ -108,15 +117,11 @@ describe('ShellCommandCtr (thin wrapper)', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.stdout).toContain('output');
+    expect(result.output).toContain('output');
   });
 
   it('should delegate handleGetCommandOutput to processManager', async () => {
-    mockChildProcess.stdout.on.mockImplementation((event: string, callback: any) => {
-      if (event === 'data') setTimeout(() => callback(Buffer.from('bg output\n')), 5);
-      return mockChildProcess.stdout;
-    });
-    mockChildProcess.stderr.on.mockImplementation(() => mockChildProcess.stderr);
+    mockProcessOutput = 'bg output\n';
 
     const runResult = await ctr.handleRunCommand({
       command: 'test',
@@ -131,7 +136,7 @@ describe('ShellCommandCtr (thin wrapper)', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.stdout).toContain('bg output');
+    expect(result.output).toContain('bg output');
   });
 
   it('should delegate handleKillCommand to processManager', async () => {

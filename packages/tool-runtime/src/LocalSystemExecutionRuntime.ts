@@ -140,8 +140,8 @@ export class LocalSystemExecutionRuntime extends ComputerRuntime {
 
       case 'grepContent': {
         return {
-          cwd: params.directory,
-          filePattern: params.filePattern,
+          cwd: params.directory ?? params.path ?? params.scope ?? params.cwd,
+          filePattern: params.filePattern ?? params.glob,
           pattern: params.pattern,
         };
       }

@@ -152,26 +152,18 @@ describe('executeToolCall', () => {
   });
 
   it('should dispatch grepContent', async () => {
-    const workerResult = {
-      content: 'grep result',
-      state: { matches: [{ type: 'match' }] },
-      success: true,
-    };
-    const spy = vi
-      .spyOn(isolatedWorker, 'executeToolCallInWorker')
-      .mockResolvedValueOnce(workerResult);
+    const pattern = `findme-${process.pid}`;
+    await writeFile(path.join(tmpDir, 'grep.txt'), `${pattern} here`);
 
     const result = await executeToolCall(
       'grepContent',
-      JSON.stringify({ directory: tmpDir, pattern: 'findme' }),
+      // Use the manifest-facing `scope` field. `directory` is a runtime-only
+      // normalized shape and would hide scope->cwd forwarding regressions.
+      JSON.stringify({ pattern, scope: tmpDir }),
     );
 
-    expect(result).toEqual(workerResult);
-    expect(spy).toHaveBeenCalledWith(
-      'grepContent',
-      JSON.stringify({ cwd: tmpDir, pattern: 'findme' }),
-      undefined,
-    );
+    expect(result.success).toBe(true);
+    expect((result.state as { totalMatches: number }).totalMatches).toBe(1);
   });
 
   it('should dispatch searchFiles', async () => {

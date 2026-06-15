@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 
 /** Maximum preview bytes returned inline to prevent context explosion */
-export const INLINE_OUTPUT_MAX_BYTES = 8 * 1024;
+export const INLINE_OUTPUT_MAX_BYTES = 25 * 1024;
 
 export interface OutputPreview {
   content: string;

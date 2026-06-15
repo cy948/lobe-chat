@@ -10,7 +10,7 @@ import { buildOutputPreview } from './utils';
 
 const DEFAULT_OBSERVATION_TIMEOUT_MS = 30_000;
 const MAX_OBSERVATION_TIMEOUT_MS = 120_000;
-const RUN_COMMAND_HEAD_RATIO = 0.25;
+const RUN_COMMAND_HEAD_RATIO = 0.2;
 const GET_COMMAND_OUTPUT_HEAD_RATIO = 0;
 const KILL_SIGNAL: NodeJS.Signals = 'SIGKILL';
 

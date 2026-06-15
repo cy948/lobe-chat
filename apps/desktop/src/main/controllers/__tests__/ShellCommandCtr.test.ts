@@ -166,7 +166,7 @@ describe('ShellCommandCtr (thin wrapper)', () => {
 
     expect(mockCliCtr.runCliCommand).toHaveBeenCalledWith('status --json');
     expect(result.success).toBe(true);
-    expect(result.stdout).toContain('cli output');
+    expect(result.output).toContain('cli output');
     expect(mockSpawn).not.toHaveBeenCalled();
   });
 

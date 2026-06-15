@@ -25,7 +25,7 @@ interface RunCommandArgs {
 
 const RunCommand = memo<BuiltinRenderProps<RunCommandArgs, RunCommandState>>(
   ({ args, content, pluginState }) => {
-    const output = pluginState?.output || pluginState?.stdout || content;
+    const output = pluginState?.output || content;
     const command = getRunCommandDisplayCommand(args?.command);
 
     return (
@@ -41,7 +41,7 @@ const RunCommand = memo<BuiltinRenderProps<RunCommandArgs, RunCommandState>>(
             {command}
           </Highlighter>
           {output && <AnsiOutput text={output} />}
-          {pluginState?.stderr && <AnsiOutput text={pluginState.stderr} />}
+          {pluginState?.exitCode && pluginState.output && <AnsiOutput text={pluginState.output} />}
         </Block>
       </Flexbox>
     );

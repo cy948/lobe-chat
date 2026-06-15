@@ -3,9 +3,6 @@ export interface FormatCommandOutputParams {
   error?: string;
   exitCode?: number;
   output?: string;
-  outputFilePath?: string;
-  outputFileSize?: number;
-  outputTruncated?: boolean;
   success: boolean;
 }
 
@@ -14,28 +11,11 @@ const formatDuration = (durationMs: number): string => {
   return `${seconds}s`;
 };
 
-export const formatCommandOutputFileSize = (sizeInBytes: unknown): string => {
-  if (typeof sizeInBytes !== 'number' || !Number.isFinite(sizeInBytes)) return 'unknown size';
-
-  const kb = sizeInBytes / 1024;
-  if (kb < 1) return `${sizeInBytes} bytes`;
-  if (kb < 1024) return `${kb.toFixed(1).replace(/\.0$/, '')}KB`;
-
-  const mb = kb / 1024;
-  if (mb < 1024) return `${mb.toFixed(1).replace(/\.0$/, '')}MB`;
-
-  const gb = mb / 1024;
-  return `${gb.toFixed(1).replace(/\.0$/, '')}GB`;
-};
-
 export const formatCommandOutput = ({
   durationMs,
   success,
   exitCode,
   output,
-  outputFilePath,
-  outputFileSize,
-  outputTruncated,
   error,
 }: FormatCommandOutputParams): string => {
   const message = success ? 'Output retrieved.' : `Failed: ${error}`;
@@ -45,12 +25,7 @@ export const formatCommandOutput = ({
   if (durationMs !== undefined && Number.isFinite(durationMs)) {
     parts.push(`Duration: ${formatDuration(durationMs)}`);
   }
-  if (outputFilePath && outputTruncated) {
-    parts.push(
-      `Output too large (${formatCommandOutputFileSize(outputFileSize)}). Full output saved to: ${outputFilePath}`,
-    );
-  }
-  if (output) parts.push(`${outputTruncated ? 'Preview' : 'Output'}:\n${output}`);
+  if (output) parts.push(`Output:\n${output}`);
   if (error && success) parts.push(`Error: ${error}`);
 
   return parts.join('\n\n');

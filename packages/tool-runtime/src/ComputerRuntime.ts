@@ -325,8 +325,6 @@ export abstract class ComputerRuntime {
         exitCode: r.exitCode ?? r.exit_code,
         output: r.output,
         outputFilePath: r.outputFilePath ?? r.output_file_path,
-        outputFileSize: r.outputFileSize ?? r.output_file_size,
-        outputTruncated: r.outputTruncated ?? r.output_truncated,
         shellId: r.commandId || r.shell_id,
         success: commandSuccess,
       });
@@ -367,9 +365,6 @@ export abstract class ComputerRuntime {
         error: r.error,
         exitCode: r.exitCode ?? r.exit_code,
         output: r.newOutput || r.output,
-        outputFilePath: r.outputFilePath ?? r.output_file_path,
-        outputFileSize: r.outputFileSize ?? r.output_file_size,
-        outputTruncated: r.outputTruncated ?? r.output_truncated,
         success: outputSuccess,
       });
 

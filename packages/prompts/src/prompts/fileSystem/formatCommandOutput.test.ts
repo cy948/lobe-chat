@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatCommandOutput, formatCommandOutputFileSize } from './formatCommandOutput';
+import { formatCommandOutput } from './formatCommandOutput';
 
 describe('formatCommandOutput', () => {
   it('should format successful output without exit code', () => {
@@ -76,23 +76,19 @@ describe('formatCommandOutput', () => {
     `);
   });
 
-  it('should format truncated output with saved file metadata and preview', () => {
+  it('should format output as-is when it contains saved file metadata', () => {
     const result = formatCommandOutput({
-      output: 'head\n...\ntail',
-      outputFilePath: '/tmp/lobehub-shell/output.log',
-      outputFileSize: 20_000,
-      outputTruncated: true,
+      output:
+        'head\n... [omitted 12000 bytes; full output saved to: /tmp/lobehub-shell/output.log]\ntail',
       success: true,
     });
 
     expect(result).toMatchInlineSnapshot(`
       "Output retrieved.
 
-      Output too large (19.5KB). Full output saved to: /tmp/lobehub-shell/output.log
-
-      Preview:
+      Output:
       head
-      ...
+      ... [omitted 12000 bytes; full output saved to: /tmp/lobehub-shell/output.log]
       tail"
     `);
   });
@@ -100,9 +96,6 @@ describe('formatCommandOutput', () => {
   it('should keep small saved output as normal output', () => {
     const result = formatCommandOutput({
       output: 'small output',
-      outputFilePath: '/tmp/lobehub-shell/output.log',
-      outputFileSize: 12,
-      outputTruncated: false,
       success: true,
     });
 
@@ -117,7 +110,6 @@ describe('formatCommandOutput', () => {
   it('should not special-case missing exit code when formatting output', () => {
     const result = formatCommandOutput({
       output: 'still running',
-      outputFilePath: '/tmp/lobehub-shell/output.log',
       success: true,
     });
 
@@ -127,22 +119,5 @@ describe('formatCommandOutput', () => {
       Output:
       still running"
     `);
-  });
-
-  it('should format output file size with Claude Code-style units', () => {
-    const result = formatCommandOutput({
-      output: 'preview',
-      outputFilePath: '/tmp/lobehub-shell/output.log',
-      outputFileSize: 280_148,
-      outputTruncated: true,
-      success: true,
-    });
-
-    expect(result).toContain('Output too large (273.6KB).');
-  });
-
-  it('should treat invalid output file sizes as unknown size', () => {
-    expect(formatCommandOutputFileSize(undefined)).toBe('unknown size');
-    expect(formatCommandOutputFileSize(Number.NaN)).toBe('unknown size');
   });
 });

@@ -39,6 +39,7 @@ function createShellProcess(
 }
 
 function writeOutput(shellProcess: ShellProcess, content: string): void {
+  // Simulate child stdout/stderr writing into the inherited merged output fd.
   const buffer = Buffer.from(content);
   fs.writeSync(shellProcess.outputFile.fd, buffer);
 }
@@ -173,6 +174,9 @@ describe('ShellProcessManager', () => {
       const shellProcess = createShellProcess(manager, 'test-1', process);
       manager.register('test-1', shellProcess);
 
+      // A child process can emit "exit" before stdio has fully closed. The
+      // manager should wait for "close" before reading the final snapshot so
+      // late-flushed output is not missed.
       const pending = manager.getOutput({ shell_id: 'test-1', timeout: 100 });
 
       setTimeout(() => {

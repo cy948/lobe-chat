@@ -142,6 +142,7 @@ export class LocalSystemExecutionRuntime extends ComputerRuntime {
         return {
           cwd: params.directory ?? params.path ?? params.scope ?? params.cwd,
           filePattern: params.filePattern ?? params.glob,
+          output_mode: params.output_mode,
           pattern: params.pattern,
         };
       }

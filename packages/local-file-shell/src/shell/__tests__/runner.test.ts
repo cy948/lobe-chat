@@ -175,6 +175,9 @@ describe('runCommand', () => {
     it.skipIf(process.platform === 'win32')(
       'should kill nested background process tree',
       async () => {
+        // Reproduce the orphaned-child case: the shell command keeps a nested
+        // writer alive that appends to a marker file. After kill(), the marker
+        // size must stop changing, proving the whole process tree was killed.
         const markerPath = path.join(tmpDir, 'nested-process-marker.log');
         const bgResult = await runCommand(
           {
@@ -185,7 +188,14 @@ describe('runCommand', () => {
           { processManager },
         );
 
-        await waitUntil(() => fs.existsSync(markerPath) && fs.statSync(markerPath).size > 0);
+        const startedAt = Date.now();
+        while (
+          Date.now() - startedAt < 2000 &&
+          (!fs.existsSync(markerPath) || fs.statSync(markerPath).size === 0)
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        expect(fs.existsSync(markerPath) && fs.statSync(markerPath).size > 0).toBe(true);
 
         const result = processManager.kill(bgResult.shell_id!);
         expect(result.success).toBe(true);
@@ -267,14 +277,3 @@ describe('runCommand', () => {
     expect(result.success).toBe(true);
   });
 });
-
-const waitUntil = async (predicate: () => boolean, timeout = 2000): Promise<void> => {
-  const startedAt = Date.now();
-
-  while (Date.now() - startedAt < timeout) {
-    if (predicate()) return;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-
-  throw new Error('Timed out waiting for condition');
-};

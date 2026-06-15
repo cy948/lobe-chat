@@ -55,13 +55,20 @@ export async function grepContent({
       }
 
       const matches = stdout.split('\n').filter(Boolean);
+      const totalMatches =
+        output_mode === 'count'
+          ? matches.reduce((sum, line) => {
+              const count = Number.parseInt(line.slice(line.lastIndexOf(':') + 1), 10);
+              return sum + (Number.isNaN(count) ? 0 : count);
+            }, 0)
+          : matches.length;
 
       resolve({
         engine: 'rg',
         hint,
         matches,
         success: true,
-        total_matches: matches.length,
+        total_matches: totalMatches,
       });
     });
 

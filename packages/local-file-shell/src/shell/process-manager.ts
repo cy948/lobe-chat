@@ -277,17 +277,14 @@ export class ShellProcessManager {
   }
 
   closeOutputFiles(outputFiles: ShellOutputFiles): void {
-    this.closeOutputFile(outputFiles.stdout);
-    this.closeOutputFile(outputFiles.stderr);
-  }
-
-  closeOutputFile(outputFile: ShellOutputFile): void {
-    if (outputFile.fdClosed) return;
-    outputFile.fdClosed = true;
-    try {
-      fs.closeSync(outputFile.fd);
-    } catch {
-      // Ignore repeated close attempts.
+    for (const outputFile of [outputFiles.stdout, outputFiles.stderr]) {
+      if (outputFile.fdClosed) continue;
+      outputFile.fdClosed = true;
+      try {
+        fs.closeSync(outputFile.fd);
+      } catch {
+        // Ignore repeated close attempts.
+      }
     }
   }
 
@@ -320,6 +317,8 @@ const killProcessTree = (childProcess: ChildProcess): void => {
   childProcess.kill(KILL_SIGNAL);
 };
 
+// Keep the inline preview under the model-facing budget while preserving both
+// streams when stdout and stderr are both present.
 const allocateOutputPreviewBytes = (
   stdoutSize: number,
   stderrSize: number,

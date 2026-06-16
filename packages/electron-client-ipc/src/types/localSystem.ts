@@ -305,6 +305,7 @@ export interface GetCommandOutputResult {
    * `undefined` means the command is still running.
    */
   exit_code?: number;
+  output: string;
   output_files?: {
     stderr: { path: string; size: number; truncated: boolean };
     stdout: { path: string; size: number; truncated: boolean };

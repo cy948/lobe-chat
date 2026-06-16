@@ -195,7 +195,7 @@ describe('ShellProcessManager', () => {
       const process = createMockProcess();
       const shellProcess = createShellProcess(manager, 'test-1', process);
       manager.register('test-1', shellProcess);
-      manager.closeOutputFile(shellProcess.outputFiles.stdout);
+      manager.closeOutputFiles(shellProcess.outputFiles);
 
       const pending = manager.getOutput({ shell_id: 'test-1', timeout: 100 });
 

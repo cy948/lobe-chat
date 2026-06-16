@@ -300,7 +300,6 @@ export abstract class ComputerRuntime {
           error: result.error?.message,
           exitCode: result.result?.exitCode ?? result.result?.exit_code,
           isBackground: args.background || false,
-          output: result.result?.output,
           stderr: result.result?.stderr,
           stdout: result.result?.stdout,
           success: false,
@@ -326,11 +325,10 @@ export abstract class ComputerRuntime {
       const content = formatCommandResult({
         error: r.error,
         exitCode: r.exitCode ?? r.exit_code,
-        output: r.output,
         outputFiles,
         shellId: r.commandId || r.shell_id,
         stderr: r.stderr,
-        stdout: r.stdout,
+        stdout: r.stdout || r.output,
         success: commandSuccess,
       });
 
@@ -495,14 +493,12 @@ export abstract class ComputerRuntime {
     //   1. result.error.message (explicit error from service layer)
     //   2. JSON.stringify(result.error) (non-Error error objects)
     //   3. state.stderr (e.g. git commit failure — exit ≠ 0, error in stderr)
-    //   4. state.output (compat fallback for callers that only provide combined output)
-    //   5. state.error (runtime-level error message)
-    //   6. [UNKNOWN_EXEC_ERROR] Tool execution failed (last-resort fallback)
+    //   4. state.error (runtime-level error message)
+    //   5. [UNKNOWN_EXEC_ERROR] Tool execution failed (last-resort fallback)
     const errorText =
       result.error?.message ||
       (result.error !== undefined ? JSON.stringify(result.error) : undefined) ||
       (typeof state?.stderr === 'string' ? state.stderr : undefined) ||
-      (typeof state?.output === 'string' ? state.output : undefined) ||
       (typeof state?.error === 'string' ? state.error : undefined) ||
       '[UNKNOWN_EXEC_ERROR] Tool execution failed';
     return {

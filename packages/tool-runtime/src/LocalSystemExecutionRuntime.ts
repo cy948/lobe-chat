@@ -181,11 +181,11 @@ export class LocalSystemExecutionRuntime extends ComputerRuntime {
         // RunCommandResult has snake_case fields from local-file-shell
         return {
           result: {
-            durationMs: raw.duration_ms,
             error: raw.error,
             exitCode: raw.exit_code,
-            commandId: raw.shell_id,
             output: raw.output,
+            commandId: raw.shell_id,
+            durationMs: raw.duration_ms,
             outputFiles: raw.output_files,
             stderr: raw.stderr,
             stdout: raw.stdout,

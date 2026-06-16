@@ -21,8 +21,9 @@ describe('formatCommandResult', () => {
 
   it('should format still-running command with output file path', () => {
     const result = formatCommandResult({
-      outputFilePath: '/tmp/lobehub-shell/output.log',
-      outputFileSize: 1536,
+      outputFiles: {
+        stdout: { path: '/tmp/lobehub-shell/stdout.log', size: 1536, truncated: false },
+      },
       shellId: 'shell-123',
       success: true,
     });
@@ -30,7 +31,7 @@ describe('formatCommandResult', () => {
       "Command is still running after the wait window.
       shell_id: shell-123
 
-      Full output saved to: /tmp/lobehub-shell/output.log (1.5KB)"
+      Full stdout saved to: /tmp/lobehub-shell/stdout.log (1.5KB)"
     `);
   });
 
@@ -70,15 +71,16 @@ describe('formatCommandResult', () => {
     const result = formatCommandResult({
       exitCode: 0,
       output: 'small output',
-      outputFilePath: '/tmp/lobehub-shell/output.log',
-      outputFileSize: 1536,
+      outputFiles: {
+        stdout: { path: '/tmp/lobehub-shell/stdout.log', size: 1536, truncated: false },
+      },
       success: true,
     });
 
     expect(result).toMatchInlineSnapshot(`
       "Command completed successfully.
 
-      Full output saved to: /tmp/lobehub-shell/output.log (1.5KB)
+      Full stdout saved to: /tmp/lobehub-shell/stdout.log (1.5KB)
 
       Output:
       small output"
@@ -89,16 +91,16 @@ describe('formatCommandResult', () => {
     const result = formatCommandResult({
       exitCode: 0,
       output: 'preview output',
-      outputFilePath: '/tmp/lobehub-shell/output.log',
-      outputFileSize: 1536,
-      outputTruncated: true,
+      outputFiles: {
+        stdout: { path: '/tmp/lobehub-shell/stdout.log', size: 1536, truncated: true },
+      },
       success: true,
     });
 
     expect(result).toMatchInlineSnapshot(`
       "Command completed successfully.
 
-      Output too large (1.5KB). Full output saved to: /tmp/lobehub-shell/output.log
+      Stdout too large (1.5KB). Full stdout saved to: /tmp/lobehub-shell/stdout.log
 
       Output:
       preview output"

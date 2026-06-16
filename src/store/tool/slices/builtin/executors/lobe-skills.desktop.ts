@@ -28,8 +28,8 @@ const runtime = new SkillsExecutionRuntime({
       });
       return {
         exitCode: result.exit_code ?? 1,
-        output: result.stdout || '',
-        stderr: result.stderr || '',
+        output: result.stdout || result.output || '',
+        stderr: result.stderr,
         success: result.success,
       };
     },

@@ -110,15 +110,16 @@ describe('formatCommandOutput', () => {
   it('should format output file metadata', () => {
     const result = formatCommandOutput({
       output: 'preview output',
-      outputFilePath: '/tmp/lobehub-shell/output.log',
-      outputFileSize: 1536,
+      outputFiles: {
+        stdout: { path: '/tmp/lobehub-shell/stdout.log', size: 1536, truncated: false },
+      },
       success: true,
     });
 
     expect(result).toMatchInlineSnapshot(`
       "Output retrieved.
 
-      Full output saved to: /tmp/lobehub-shell/output.log (1.5KB)
+      Full stdout saved to: /tmp/lobehub-shell/stdout.log (1.5KB)
 
       Output:
       preview output"
@@ -128,16 +129,16 @@ describe('formatCommandOutput', () => {
   it('should format truncated output file metadata', () => {
     const result = formatCommandOutput({
       output: 'preview output',
-      outputFilePath: '/tmp/lobehub-shell/output.log',
-      outputFileSize: 1536,
-      outputTruncated: true,
+      outputFiles: {
+        stdout: { path: '/tmp/lobehub-shell/stdout.log', size: 1536, truncated: true },
+      },
       success: true,
     });
 
     expect(result).toMatchInlineSnapshot(`
       "Output retrieved.
 
-      Output too large (1.5KB). Full output saved to: /tmp/lobehub-shell/output.log
+      Stdout too large (1.5KB). Full stdout saved to: /tmp/lobehub-shell/stdout.log
 
       Output:
       preview output"

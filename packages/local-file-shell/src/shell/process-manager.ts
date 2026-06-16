@@ -142,6 +142,7 @@ export class ShellProcessManager {
     if (!shellProcess) {
       return {
         error: `Shell ID ${shell_id} not found`,
+        output: '',
         stderr: '',
         stdout: '',
         success: false,
@@ -228,6 +229,7 @@ export class ShellProcessManager {
     return {
       duration_ms: durationMs,
       exit_code: exitCode ?? undefined,
+      output: stdout + stderr,
       output_files: {
         stderr: {
           path: shellProcess.outputFiles.stderr.path,

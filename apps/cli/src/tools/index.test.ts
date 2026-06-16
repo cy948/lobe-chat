@@ -203,7 +203,7 @@ describe('executeToolCall', () => {
   it('should forward the gateway timeout to getCommandOutput polling', async () => {
     const spy = vi
       .spyOn(ShellProcessManager.prototype, 'getOutput')
-      .mockResolvedValue({ exit_code: 0, output: '', output_file_size: 0, success: true });
+      .mockResolvedValue({ exit_code: 0, output: '', success: true });
 
     // 3rd arg is the gateway per-call timeout; executeToolCall injects it into args
     await executeToolCall('getCommandOutput', JSON.stringify({ shell_id: 'sid' }), 5000);

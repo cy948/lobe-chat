@@ -275,6 +275,7 @@ export interface RunCommandResult {
   duration_ms?: number;
   error?: string;
   exit_code?: number;
+  output?: string;
   output_files?: {
     stderr: { path: string; size: number; truncated: boolean };
     stdout: { path: string; size: number; truncated: boolean };

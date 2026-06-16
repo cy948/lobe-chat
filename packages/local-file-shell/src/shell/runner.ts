@@ -70,6 +70,7 @@ export async function runCommand(
 
     if (run_in_background) {
       return {
+        output: '',
         output_files: processManager.getOutputFilesInfo(shellOutputFiles),
         shell_id: shellId,
         success: true,

@@ -4,13 +4,10 @@ export interface FormatCommandResultParams {
   error?: string;
   exitCode?: number;
   output?: string;
-  outputFilePath?: string;
   outputFiles?: {
     stderr?: { path: string; size?: number; truncated?: boolean };
     stdout?: { path: string; size?: number; truncated?: boolean };
   };
-  outputFileSize?: number;
-  outputTruncated?: boolean;
   shellId?: string;
   stderr?: string;
   stdout?: string;
@@ -23,9 +20,6 @@ export const formatCommandResult = ({
   error,
   output,
   outputFiles,
-  outputFilePath,
-  outputFileSize,
-  outputTruncated,
   stderr,
   stdout,
   exitCode,
@@ -49,14 +43,6 @@ export const formatCommandResult = ({
     parts.push('Command completed successfully.');
   }
 
-  if (outputFilePath) {
-    const size = formatCommandOutputFileSize(outputFileSize);
-    parts.push(
-      outputTruncated
-        ? `Output too large (${size}). Full output saved to: ${outputFilePath}`
-        : `Full output saved to: ${outputFilePath} (${size})`,
-    );
-  }
   if (outputFiles?.stdout?.path) {
     const size = formatCommandOutputFileSize(outputFiles.stdout.size);
     parts.push(

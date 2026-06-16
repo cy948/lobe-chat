@@ -492,7 +492,8 @@ export class SkillsExecutionRuntime {
    */
   private formatCommandOutput(command: string, result: CommandResult): BuiltinServerRuntimeOutput {
     const content = formatCommandResult({
-      output: result.output,
+      stderr: result.stderr,
+      stdout: result.output,
       success: result.success,
       exitCode: result.exitCode,
     });

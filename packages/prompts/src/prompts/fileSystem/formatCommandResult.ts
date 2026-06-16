@@ -3,7 +3,6 @@ import { formatCommandOutputFileSize } from './formatCommandOutput';
 export interface FormatCommandResultParams {
   error?: string;
   exitCode?: number;
-  output?: string;
   outputFiles?: {
     stderr?: { path: string; size?: number; truncated?: boolean };
     stdout?: { path: string; size?: number; truncated?: boolean };
@@ -18,7 +17,6 @@ export const formatCommandResult = ({
   success,
   shellId,
   error,
-  output,
   outputFiles,
   stderr,
   stdout,
@@ -59,7 +57,6 @@ export const formatCommandResult = ({
         : `Full stderr saved to: ${outputFiles.stderr.path} (${size})`,
     );
   }
-  if (output) parts.push(`Output:\n${output}`);
   if (stdout) parts.push(`Stdout:\n${stdout}`);
   if (stderr) parts.push(`Stderr:\n${stderr}`);
 

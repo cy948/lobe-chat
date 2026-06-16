@@ -38,13 +38,13 @@ describe('formatCommandResult', () => {
   it('should format successful command with output', () => {
     const result = formatCommandResult({
       exitCode: 0,
-      output: 'Hello World',
+      stdout: 'Hello World',
       success: true,
     });
     expect(result).toMatchInlineSnapshot(`
       "Command completed successfully.
 
-      Output:
+      Stdout:
       Hello World"
     `);
   });
@@ -52,7 +52,7 @@ describe('formatCommandResult', () => {
   it('should format command output when it contains saved file metadata', () => {
     const result = formatCommandResult({
       exitCode: 0,
-      output:
+      stdout:
         'first lines\n... [omitted 12000 bytes; full output saved to: /tmp/lobehub-shell/output.log]\nlast lines',
       success: true,
     });
@@ -60,7 +60,7 @@ describe('formatCommandResult', () => {
     expect(result).toMatchInlineSnapshot(`
       "Command completed successfully.
 
-      Output:
+      Stdout:
       first lines
       ... [omitted 12000 bytes; full output saved to: /tmp/lobehub-shell/output.log]
       last lines"
@@ -70,7 +70,7 @@ describe('formatCommandResult', () => {
   it('should format command output file metadata without large-output wording when not truncated', () => {
     const result = formatCommandResult({
       exitCode: 0,
-      output: 'small output',
+      stdout: 'small output',
       outputFiles: {
         stdout: { path: '/tmp/lobehub-shell/stdout.log', size: 1536, truncated: false },
       },
@@ -82,7 +82,7 @@ describe('formatCommandResult', () => {
 
       Full stdout saved to: /tmp/lobehub-shell/stdout.log (1.5KB)
 
-      Output:
+      Stdout:
       small output"
     `);
   });
@@ -90,7 +90,7 @@ describe('formatCommandResult', () => {
   it('should format truncated command output file metadata', () => {
     const result = formatCommandResult({
       exitCode: 0,
-      output: 'preview output',
+      stdout: 'preview output',
       outputFiles: {
         stdout: { path: '/tmp/lobehub-shell/stdout.log', size: 1536, truncated: true },
       },
@@ -102,7 +102,7 @@ describe('formatCommandResult', () => {
 
       Stdout too large (1.5KB). Full stdout saved to: /tmp/lobehub-shell/stdout.log
 
-      Output:
+      Stdout:
       preview output"
     `);
   });
@@ -127,13 +127,13 @@ describe('formatCommandResult', () => {
   it('should treat a non-zero exit code as failure even when envelope success is true', () => {
     const result = formatCommandResult({
       exitCode: 137,
-      output: 'partial output',
+      stdout: 'partial output',
       success: true,
     });
     expect(result).toMatchInlineSnapshot(`
       "Command failed with exit code 137
 
-      Output:
+      Stdout:
       partial output"
     `);
   });
@@ -150,13 +150,13 @@ describe('formatCommandResult', () => {
     const result = formatCommandResult({
       error: 'Command error',
       exitCode: 1,
-      output: 'Some output',
+      stdout: 'Some output',
       success: false,
     });
     expect(result).toMatchInlineSnapshot(`
       "Command failed with exit code 1: Command error
 
-      Output:
+      Stdout:
       Some output"
     `);
   });

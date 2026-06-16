@@ -12,6 +12,9 @@ const DEFAULT_OBSERVATION_TIMEOUT_MS = 30_000;
 const MAX_OBSERVATION_TIMEOUT_MS = 120_000;
 const RUN_COMMAND_HEAD_RATIO = 0.2;
 const GET_COMMAND_OUTPUT_HEAD_RATIO = 0;
+const OUTPUT_PREVIEW_TOTAL_MAX_BYTES = 22 * 1024;
+const OUTPUT_PREVIEW_STREAM_MAX_BYTES = 18 * 1024;
+const OUTPUT_PREVIEW_SECONDARY_MIN_BYTES = 4 * 1024;
 const KILL_SIGNAL: NodeJS.Signals = 'SIGKILL';
 
 export interface ShellOutputFile {
@@ -21,12 +24,17 @@ export interface ShellOutputFile {
   path: string;
 }
 
+export interface ShellOutputFiles {
+  stderr: ShellOutputFile;
+  stdout: ShellOutputFile;
+}
+
 export interface ShellProcess {
   closed?: Promise<void>;
   closedAt?: number;
   endedAt?: number;
   exitCode: number | null;
-  outputFile: ShellOutputFile;
+  outputFiles: ShellOutputFiles;
   process: ChildProcess;
   startedAt?: number;
 }
@@ -53,8 +61,17 @@ export class ShellProcessManager {
     return `sh-${this.nextShellId++}`;
   }
 
-  createOutputFile(shellId: string): ShellOutputFile {
-    const outputPath = path.join(this.outputRunDir, `${shellId}.log`);
+  createOutputFiles(shellId: string): ShellOutputFiles {
+    const outputDir = path.join(this.outputRunDir, shellId);
+    fs.mkdirSync(outputDir, { mode: 0o700, recursive: true });
+
+    return {
+      stderr: this.createOutputFile(path.join(outputDir, 'stderr.log')),
+      stdout: this.createOutputFile(path.join(outputDir, 'stdout.log')),
+    };
+  }
+
+  createOutputFile(outputPath: string): ShellOutputFile {
     const fd =
       process.platform === 'win32'
         ? fs.openSync(outputPath, 'w', 0o600)
@@ -71,6 +88,13 @@ export class ShellProcessManager {
     return {
       fd,
       path: outputPath,
+    };
+  }
+
+  getOutputFilesInfo(outputFiles: ShellOutputFiles): GetCommandOutputResult['output_files'] {
+    return {
+      stderr: this.getOutputFileInfo(outputFiles.stderr),
+      stdout: this.getOutputFileInfo(outputFiles.stdout),
     };
   }
 
@@ -94,7 +118,7 @@ export class ShellProcessManager {
             shellProcess.process.once('close', () => {
               shellProcess.closedAt ??= Date.now();
               shellProcess.endedAt ??= shellProcess.closedAt;
-              this.closeOutputFile(shellProcess.outputFile);
+              this.closeOutputFiles(shellProcess.outputFiles);
               resolve();
             });
           })
@@ -118,8 +142,8 @@ export class ShellProcessManager {
     if (!shellProcess) {
       return {
         error: `Shell ID ${shell_id} not found`,
-        output: '',
-        output_file_size: 0,
+        stderr: '',
+        stdout: '',
         success: false,
       };
     }
@@ -166,15 +190,33 @@ export class ShellProcessManager {
       await shellProcess.closed;
     }
 
-    const { outputFile } = shellProcess;
-    const outputPreview = buildOutputPreview(outputFile.path, headRatio);
-    let output = outputPreview.content;
+    const stdoutFileInfo = this.getOutputFileInfo(shellProcess.outputFiles.stdout);
+    const stderrFileInfo = this.getOutputFileInfo(shellProcess.outputFiles.stderr);
+    const previewBytes = allocateOutputPreviewBytes(stdoutFileInfo.size, stderrFileInfo.size);
+    const stdoutPreview = buildOutputPreview(
+      shellProcess.outputFiles.stdout.path,
+      headRatio,
+      previewBytes.stdout,
+    );
+    const stderrPreview = buildOutputPreview(
+      shellProcess.outputFiles.stderr.path,
+      headRatio,
+      previewBytes.stderr,
+    );
+    let stdout = stdoutPreview.content;
+    let stderr = stderrPreview.content;
 
     if (filter) {
       try {
         const regex = new RegExp(filter, 'm');
-        const lines = output.split('\n');
-        output = lines.filter((line) => regex.test(line)).join('\n');
+        stdout = stdout
+          .split('\n')
+          .filter((line) => regex.test(line))
+          .join('\n');
+        stderr = stderr
+          .split('\n')
+          .filter((line) => regex.test(line))
+          .join('\n');
       } catch {
         // Invalid filter regex, use unfiltered output
       }
@@ -186,10 +228,20 @@ export class ShellProcessManager {
     return {
       duration_ms: durationMs,
       exit_code: exitCode ?? undefined,
-      output,
-      output_file_path: outputFile.path,
-      output_file_size: outputPreview.size,
-      output_truncated: outputPreview.truncated,
+      output_files: {
+        stderr: {
+          path: shellProcess.outputFiles.stderr.path,
+          size: stderrPreview.size,
+          truncated: stderrPreview.truncated,
+        },
+        stdout: {
+          path: shellProcess.outputFiles.stdout.path,
+          size: stdoutPreview.size,
+          truncated: stdoutPreview.truncated,
+        },
+      },
+      stderr,
+      stdout,
       success: true,
     };
   }
@@ -202,7 +254,7 @@ export class ShellProcessManager {
 
     try {
       killProcessTree(shellProcess.process);
-      this.closeOutputFile(shellProcess.outputFile);
+      this.closeOutputFiles(shellProcess.outputFiles);
       this.processes.delete(shell_id);
       return { success: true };
     } catch (error) {
@@ -217,9 +269,14 @@ export class ShellProcessManager {
       } catch {
         // Ignore
       }
-      this.closeOutputFile(sp.outputFile);
+      this.closeOutputFiles(sp.outputFiles);
       this.processes.delete(id);
     }
+  }
+
+  closeOutputFiles(outputFiles: ShellOutputFiles): void {
+    this.closeOutputFile(outputFiles.stdout);
+    this.closeOutputFile(outputFiles.stderr);
   }
 
   closeOutputFile(outputFile: ShellOutputFile): void {
@@ -230,6 +287,23 @@ export class ShellProcessManager {
     } catch {
       // Ignore repeated close attempts.
     }
+  }
+
+  private getOutputFileInfo(
+    outputFile: ShellOutputFile,
+  ): NonNullable<GetCommandOutputResult['output_files']>['stdout'] {
+    let size = 0;
+    try {
+      size = fs.statSync(outputFile.path).size;
+    } catch {
+      // Keep the metadata shape stable even if the file was removed externally.
+    }
+
+    return {
+      path: outputFile.path,
+      size,
+      truncated: false,
+    };
   }
 }
 
@@ -242,4 +316,35 @@ const killProcessTree = (childProcess: ChildProcess): void => {
   }
 
   childProcess.kill(KILL_SIGNAL);
+};
+
+const allocateOutputPreviewBytes = (
+  stdoutSize: number,
+  stderrSize: number,
+): { stderr: number; stdout: number } => {
+  if (stdoutSize + stderrSize <= OUTPUT_PREVIEW_TOTAL_MAX_BYTES) {
+    return { stderr: stderrSize, stdout: stdoutSize };
+  }
+
+  if (stdoutSize <= 0) {
+    return { stderr: Math.min(stderrSize, OUTPUT_PREVIEW_STREAM_MAX_BYTES), stdout: 0 };
+  }
+
+  if (stderrSize <= 0) {
+    return { stderr: 0, stdout: Math.min(stdoutSize, OUTPUT_PREVIEW_STREAM_MAX_BYTES) };
+  }
+
+  const stdoutIsPrimary = stdoutSize >= stderrSize;
+  const primarySize = stdoutIsPrimary ? stdoutSize : stderrSize;
+  const secondarySize = stdoutIsPrimary ? stderrSize : stdoutSize;
+  const secondaryBudget = Math.min(secondarySize, OUTPUT_PREVIEW_SECONDARY_MIN_BYTES);
+  const primaryBudget = Math.min(
+    primarySize,
+    OUTPUT_PREVIEW_STREAM_MAX_BYTES,
+    OUTPUT_PREVIEW_TOTAL_MAX_BYTES - secondaryBudget,
+  );
+
+  return stdoutIsPrimary
+    ? { stderr: secondaryBudget, stdout: primaryBudget }
+    : { stderr: primaryBudget, stdout: secondaryBudget };
 };

@@ -301,12 +301,15 @@ export abstract class ComputerRuntime {
           exitCode: result.result?.exitCode ?? result.result?.exit_code,
           isBackground: args.background || false,
           output: result.result?.output,
+          stderr: result.result?.stderr,
+          stdout: result.result?.stdout,
           success: false,
         });
       }
 
       const r = result.result || {};
       const commandSuccess = typeof r.success === 'boolean' ? r.success : result.success;
+      const outputFiles = r.outputFiles ?? r.output_files;
 
       const state: RunCommandState = {
         commandId: r.commandId || r.shell_id,
@@ -314,9 +317,12 @@ export abstract class ComputerRuntime {
         exitCode: r.exitCode ?? r.exit_code,
         isBackground: args.background || false,
         output: r.output,
+        outputFiles,
         outputFilePath: r.outputFilePath ?? r.output_file_path,
         outputFileSize: r.outputFileSize ?? r.output_file_size,
         outputTruncated: r.outputTruncated ?? r.output_truncated,
+        stderr: r.stderr,
+        stdout: r.stdout,
         success: commandSuccess,
       };
 
@@ -324,10 +330,13 @@ export abstract class ComputerRuntime {
         error: r.error,
         exitCode: r.exitCode ?? r.exit_code,
         output: r.output,
+        outputFiles,
         outputFilePath: r.outputFilePath ?? r.output_file_path,
         outputFileSize: r.outputFileSize ?? r.output_file_size,
         outputTruncated: r.outputTruncated ?? r.output_truncated,
         shellId: r.commandId || r.shell_id,
+        stderr: r.stderr,
+        stdout: r.stdout,
         success: commandSuccess,
       });
 
@@ -350,15 +359,19 @@ export abstract class ComputerRuntime {
 
       const r = result.result || {};
       const outputSuccess = typeof r.success === 'boolean' ? r.success : result.success;
+      const outputFiles = r.outputFiles ?? r.output_files;
 
       const state: GetCommandOutputState = {
         durationMs: r.durationMs ?? r.duration_ms,
         error: r.error,
         exitCode: r.exitCode ?? r.exit_code,
         newOutput: r.newOutput || r.output,
+        outputFiles,
         outputFilePath: r.outputFilePath ?? r.output_file_path,
         outputFileSize: r.outputFileSize ?? r.output_file_size,
         outputTruncated: r.outputTruncated ?? r.output_truncated,
+        stderr: r.stderr,
+        stdout: r.stdout,
         success: outputSuccess,
       };
 
@@ -367,9 +380,12 @@ export abstract class ComputerRuntime {
         error: r.error,
         exitCode: r.exitCode ?? r.exit_code,
         output: r.newOutput || r.output,
+        outputFiles,
         outputFilePath: r.outputFilePath ?? r.output_file_path,
         outputFileSize: r.outputFileSize ?? r.output_file_size,
         outputTruncated: r.outputTruncated ?? r.output_truncated,
+        stderr: r.stderr,
+        stdout: r.stdout,
         success: outputSuccess,
       });
 

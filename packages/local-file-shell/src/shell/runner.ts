@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 
 import type { RunCommandParams, RunCommandResult } from '../types';
-import type { ShellOutputFile, ShellProcess, ShellProcessManager } from './process-manager';
+import type { ShellOutputFiles, ShellProcess, ShellProcessManager } from './process-manager';
 import { getShellConfig } from './utils';
 
 export interface RunCommandOptions {
@@ -33,23 +33,23 @@ export async function runCommand(
 
   const shellConfig = getShellConfig(command);
   const childEnv = extraEnv ? { ...process.env, ...extraEnv } : process.env;
-  let outputFile: ShellOutputFile | undefined;
+  let outputFiles: ShellOutputFiles | undefined;
 
   try {
     const shellId = processManager.createShellId();
-    const shellOutputFile = processManager.createOutputFile(shellId);
-    outputFile = shellOutputFile;
+    const shellOutputFiles = processManager.createOutputFiles(shellId);
+    outputFiles = shellOutputFiles;
     const childProcess = spawn(shellConfig.cmd, shellConfig.args, {
       cwd,
       detached: process.platform !== 'win32',
       env: childEnv,
       shell: false,
-      stdio: ['pipe', shellOutputFile.fd, shellOutputFile.fd],
+      stdio: ['pipe', shellOutputFiles.stdout.fd, shellOutputFiles.stderr.fd],
     });
 
     const shellProcess: ShellProcess = {
       exitCode: null,
-      outputFile: shellOutputFile,
+      outputFiles: shellOutputFiles,
       process: childProcess,
     };
 
@@ -65,12 +65,12 @@ export async function runCommand(
 
     processManager.register(shellId, shellProcess);
     // Close our fd copy only after error/close listeners are registered; spawn errors are asynchronous.
-    processManager.closeOutputFile(shellOutputFile);
+    processManager.closeOutputFiles(shellOutputFiles);
     logger?.info?.(`${logPrefix} Started session`, { background: run_in_background, shellId });
 
     if (run_in_background) {
       return {
-        output_file_path: shellOutputFile.path,
+        output_files: processManager.getOutputFilesInfo(shellOutputFiles),
         shell_id: shellId,
         success: true,
       };
@@ -86,7 +86,7 @@ export async function runCommand(
       shell_id: shellId,
     };
   } catch (error) {
-    if (outputFile) processManager.closeOutputFile(outputFile);
+    if (outputFiles) processManager.closeOutputFiles(outputFiles);
     return { error: (error as Error).message, success: false };
   }
 }

@@ -275,11 +275,13 @@ export interface RunCommandResult {
   duration_ms?: number;
   error?: string;
   exit_code?: number;
-  output?: string;
-  output_file_path?: string;
-  output_file_size?: number;
-  output_truncated?: boolean;
+  output_files?: {
+    stderr: { path: string; size: number; truncated: boolean };
+    stdout: { path: string; size: number; truncated: boolean };
+  };
   shell_id?: string;
+  stderr?: string;
+  stdout?: string;
   success: boolean;
 }
 
@@ -302,10 +304,12 @@ export interface GetCommandOutputResult {
    * `undefined` means the command is still running.
    */
   exit_code?: number;
-  output: string;
-  output_file_path?: string;
-  output_file_size: number;
-  output_truncated?: boolean;
+  output_files?: {
+    stderr: { path: string; size: number; truncated: boolean };
+    stdout: { path: string; size: number; truncated: boolean };
+  };
+  stderr: string;
+  stdout: string;
   success: boolean;
 }
 

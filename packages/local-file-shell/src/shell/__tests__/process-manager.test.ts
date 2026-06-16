@@ -33,15 +33,15 @@ function createShellProcess(
 ): ShellProcess {
   return {
     exitCode: process.exitCode,
-    outputFile: manager.createOutputFile(shellId),
+    outputFiles: manager.createOutputFiles(shellId),
     process,
   };
 }
 
 function writeOutput(shellProcess: ShellProcess, content: string): void {
-  // Simulate child stdout/stderr writing into the inherited merged output fd.
+  // Simulate child stdout writing into the inherited output fd.
   const buffer = Buffer.from(content);
-  fs.writeSync(shellProcess.outputFile.fd, buffer);
+  fs.writeSync(shellProcess.outputFiles.stdout.fd, buffer);
 }
 
 describe('ShellProcessManager', () => {
@@ -76,9 +76,9 @@ describe('ShellProcessManager', () => {
       const result = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
 
       expect(result.success).toBe(true);
-      expect(result.output).toContain('line 1');
-      expect(result.output).toContain('line 2');
-      expect(result.output).toContain('error line');
+      expect(result.stdout).toContain('line 1');
+      expect(result.stdout).toContain('line 2');
+      expect(result.stdout).toContain('error line');
       expect(result.exit_code).toBeUndefined();
     });
 
@@ -89,14 +89,14 @@ describe('ShellProcessManager', () => {
       manager.register('test-1', shellProcess);
 
       const first = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
-      expect(first.output).toContain('first');
+      expect(first.stdout).toContain('first');
 
       const second = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
-      expect(second.output).toContain('first');
+      expect(second.stdout).toContain('first');
 
       writeOutput(shellProcess, 'second\n');
       const third = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
-      expect(third.output).toContain('second');
+      expect(third.stdout).toContain('second');
     });
 
     it('should return the current output snapshot when observation timeout elapses', async () => {
@@ -121,7 +121,7 @@ describe('ShellProcessManager', () => {
 
         await vi.advanceTimersByTimeAsync(80);
         const result = await pending;
-        expect(result.output).toContain('delayed');
+        expect(result.stdout).toContain('delayed');
         expect(result.exit_code).toBeUndefined();
       } finally {
         vi.useRealTimers();
@@ -188,27 +188,27 @@ describe('ShellProcessManager', () => {
 
       const result = await pending;
       expect(result.exit_code).toBe(0);
-      expect(result.output).toContain('late output after exit');
+      expect(result.stdout).toContain('late output after exit');
     });
 
     it('should wait for close after the parent output fd has been released', async () => {
       const process = createMockProcess();
       const shellProcess = createShellProcess(manager, 'test-1', process);
       manager.register('test-1', shellProcess);
-      manager.closeOutputFile(shellProcess.outputFile);
+      manager.closeOutputFile(shellProcess.outputFiles.stdout);
 
       const pending = manager.getOutput({ shell_id: 'test-1', timeout: 100 });
 
       setTimeout(() => {
         (process as { exitCode: number | null }).exitCode = 0;
         process.emit('exit', 0);
-        fs.appendFileSync(shellProcess.outputFile.path, 'late child output after exit\n');
+        fs.appendFileSync(shellProcess.outputFiles.stdout.path, 'late child output after exit\n');
         process.emit('close', 0);
       }, 20);
 
       const result = await pending;
       expect(result.exit_code).toBe(0);
-      expect(result.output).toContain('late child output after exit');
+      expect(result.stdout).toContain('late child output after exit');
     });
 
     it('should filter output with regex', async () => {
@@ -220,8 +220,8 @@ describe('ShellProcessManager', () => {
       const result = await manager.getOutput({ filter: 'line 1', shell_id: 'test-1', timeout: 0 });
 
       expect(result.success).toBe(true);
-      expect(result.output).toContain('line 1');
-      expect(result.output).not.toContain('line 2');
+      expect(result.stdout).toContain('line 1');
+      expect(result.stdout).not.toContain('line 2');
     });
 
     it('should filter consecutive matching lines', async () => {
@@ -233,9 +233,9 @@ describe('ShellProcessManager', () => {
       const result = await manager.getOutput({ filter: '^match', shell_id: 'test-1', timeout: 0 });
 
       expect(result.success).toBe(true);
-      expect(result.output).toContain('match one');
-      expect(result.output).toContain('match two');
-      expect(result.output).not.toContain('skip');
+      expect(result.stdout).toContain('match one');
+      expect(result.stdout).toContain('match two');
+      expect(result.stdout).not.toContain('skip');
     });
 
     it('should handle invalid regex filter gracefully', async () => {
@@ -251,7 +251,7 @@ describe('ShellProcessManager', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.output).toContain('output');
+      expect(result.stdout).toContain('output');
     });
 
     it('should reflect completion via exit_code', async () => {
@@ -316,7 +316,7 @@ describe('ShellProcessManager', () => {
       const result = await manager.getOutput({ shell_id: 'test-1', timeout: 0 });
       expect(result.success).toBe(true);
       expect(result.exit_code).toBe(0);
-      expect(result.output).toContain('done');
+      expect(result.stdout).toContain('done');
     });
   });
 
@@ -413,12 +413,20 @@ describe('ShellProcessManager default output root', () => {
     try {
       vi.setSystemTime(new Date(2026, 5, 14, 12, 34, 56));
       const manager = new ShellProcessManager();
-      const outputFile = manager.createOutputFile('sh-1');
+      const outputFiles = manager.createOutputFiles('sh-1');
 
-      expect(outputFile.path).toBe(
-        path.join(os.tmpdir(), 'lobehub', 'shell', '2026-6-14', process.pid.toString(), 'sh-1.log'),
+      expect(outputFiles.stdout.path).toBe(
+        path.join(
+          os.tmpdir(),
+          'lobehub',
+          'shell',
+          '2026-6-14',
+          process.pid.toString(),
+          'sh-1',
+          'stdout.log',
+        ),
       );
-      expect(fs.existsSync(outputFile.path)).toBe(true);
+      expect(fs.existsSync(outputFiles.stdout.path)).toBe(true);
       manager.cleanupAll();
     } finally {
       vi.useRealTimers();

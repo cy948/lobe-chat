@@ -4,8 +4,14 @@ export interface FormatCommandOutputParams {
   exitCode?: number;
   output?: string;
   outputFilePath?: string;
+  outputFiles?: {
+    stderr?: { path: string; size?: number; truncated?: boolean };
+    stdout?: { path: string; size?: number; truncated?: boolean };
+  };
   outputFileSize?: number;
   outputTruncated?: boolean;
+  stderr?: string;
+  stdout?: string;
   success: boolean;
 }
 
@@ -30,9 +36,12 @@ export const formatCommandOutput = ({
   success,
   exitCode,
   output,
+  outputFiles,
   outputFilePath,
   outputFileSize,
   outputTruncated,
+  stderr,
+  stdout,
   error,
 }: FormatCommandOutputParams): string => {
   const message = success ? 'Output retrieved.' : `Failed: ${error}`;
@@ -50,7 +59,25 @@ export const formatCommandOutput = ({
         : `Full output saved to: ${outputFilePath} (${size})`,
     );
   }
+  if (outputFiles?.stdout?.path) {
+    const size = formatCommandOutputFileSize(outputFiles.stdout.size);
+    parts.push(
+      outputFiles.stdout.truncated
+        ? `Stdout too large (${size}). Full stdout saved to: ${outputFiles.stdout.path}`
+        : `Full stdout saved to: ${outputFiles.stdout.path} (${size})`,
+    );
+  }
+  if (outputFiles?.stderr?.path) {
+    const size = formatCommandOutputFileSize(outputFiles.stderr.size);
+    parts.push(
+      outputFiles.stderr.truncated
+        ? `Stderr too large (${size}). Full stderr saved to: ${outputFiles.stderr.path}`
+        : `Full stderr saved to: ${outputFiles.stderr.path} (${size})`,
+    );
+  }
   if (output) parts.push(`Output:\n${output}`);
+  if (stdout) parts.push(`Stdout:\n${stdout}`);
+  if (stderr) parts.push(`Stderr:\n${stderr}`);
   if (error && success) parts.push(`Error: ${error}`);
 
   return parts.join('\n\n');

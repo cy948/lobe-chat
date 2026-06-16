@@ -34,7 +34,8 @@ export default class ShellCommandCtr extends ControllerModule {
         const result = await cliCtr.runCliCommand(args);
         return {
           exit_code: result.exitCode,
-          output: result.stdout + result.stderr,
+          stderr: result.stderr,
+          stdout: result.stdout,
           success: result.exitCode === 0,
         };
       }

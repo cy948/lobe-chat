@@ -22,15 +22,17 @@ export interface RunCommandResult {
    * `undefined` means the command is still running.
    */
   exit_code?: number;
-  output?: string;
-  output_file_path?: string;
-  output_file_size?: number;
-  output_truncated?: boolean;
+  output_files?: {
+    stderr: { path: string; size: number; truncated: boolean };
+    stdout: { path: string; size: number; truncated: boolean };
+  };
   /**
    * Session identifier. Present for background commands and foreground commands
    * that can be resumed with `getCommandOutput`.
    */
   shell_id?: string;
+  stderr?: string;
+  stdout?: string;
   /**
    * True when the command/session request completed successfully.
    * Use `exit_code` to determine whether the underlying command has exited.
@@ -62,10 +64,12 @@ export interface GetCommandOutputResult {
    * `undefined` means the command is still running.
    */
   exit_code?: number;
-  output: string;
-  output_file_path?: string;
-  output_file_size: number;
-  output_truncated?: boolean;
+  output_files?: {
+    stderr: { path: string; size: number; truncated: boolean };
+    stdout: { path: string; size: number; truncated: boolean };
+  };
+  stderr: string;
+  stdout: string;
   /**
    * True when the output request completed successfully.
    * Use `exit_code` to determine whether the underlying command has exited.

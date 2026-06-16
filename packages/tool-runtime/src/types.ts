@@ -201,7 +201,6 @@ export interface GetCommandOutputState {
   durationMs?: number;
   error?: string;
   exitCode?: number;
-  newOutput?: string;
   outputFiles?: {
     stderr: { path: string; size: number; truncated: boolean };
     stdout: { path: string; size: number; truncated: boolean };

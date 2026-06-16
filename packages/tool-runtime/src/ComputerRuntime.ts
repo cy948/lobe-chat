@@ -357,7 +357,6 @@ export abstract class ComputerRuntime {
         durationMs: r.durationMs ?? r.duration_ms,
         error: r.error,
         exitCode: r.exitCode ?? r.exit_code,
-        newOutput: r.newOutput || r.output,
         outputFiles,
         running: r.running ?? false,
         stderr: r.stderr,

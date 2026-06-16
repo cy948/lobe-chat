@@ -201,7 +201,6 @@ export class LocalSystemExecutionRuntime extends ComputerRuntime {
             durationMs: raw.duration_ms,
             exitCode: raw.exit_code,
             error: raw.error,
-            newOutput: raw.output,
             outputFiles: raw.output_files,
             stderr: raw.stderr,
             stdout: raw.stdout,

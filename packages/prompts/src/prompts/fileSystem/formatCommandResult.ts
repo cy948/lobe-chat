@@ -17,9 +17,9 @@ export const formatCommandResult = ({
   success,
   shellId,
   error,
-  outputFiles,
-  stderr,
   stdout,
+  stderr,
+  outputFiles,
   exitCode,
 }: FormatCommandResultParams): string => {
   const parts: string[] = [];

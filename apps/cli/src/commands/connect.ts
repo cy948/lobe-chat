@@ -902,7 +902,9 @@ function bindGatewayClientHandlers(client: GatewayClient, ctx: GatewayHandlerCon
         registerAgentRun({
           agentType: request.agentType,
           child,
+          jwt: request.jwt,
           operationId: request.operationId,
+          serverUrl: getServerUrl(),
           topicId: request.topicId,
         });
       }

@@ -2111,6 +2111,8 @@ export class AiAgentService {
             cwd: deviceCwd,
           });
 
+          // Persist the actual dispatch device so interruptTask can route stop
+          // requests back to this lh connect daemon via cancelAgentRun.
           await this.topicModel.updateMetadata(topicId, {
             runningOperation: {
               ...runningOperation,
@@ -4723,7 +4725,7 @@ export class AiAgentService {
       throw new Error('Operation ID not found');
     }
 
-    // 2. Cancel remote hetero process if applicable.
+    // 2. Cancel device-dispatched hetero process if applicable.
     // Check topic.metadata.runningOperation for device + heteroType info seeded by execAgent.
     // This runs regardless of whether interruptOperation succeeds — the remote process
     // is independent of the local operation registry.

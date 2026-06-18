@@ -700,6 +700,8 @@ export const topicRouter = router({
                   url: z.string(),
                 })
                 .optional(),
+              deviceId: z.string().optional(),
+              heteroType: z.string().optional(),
               operationId: z.string(),
               scope: z.string().optional(),
               threadId: z.string().nullable().optional(),

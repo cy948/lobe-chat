@@ -1,3 +1,4 @@
+import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
 
 import {
@@ -20,6 +21,7 @@ export interface SpawnHeteroAgentRunParams {
 }
 
 export interface AgentRunAckResult {
+  child?: ChildProcess;
   reason?: string;
   status: 'accepted' | 'rejected';
 }
@@ -119,16 +121,12 @@ export function spawnHeteroAgentRun(
           `hetero exec stdin write failed (op=${operationId}): ${(err as Error).message}`,
         );
       }
-      settle({ status: 'accepted' });
+      settle({ child, status: 'accepted' });
     });
 
     child.once('error', (err) => {
       logger?.error?.(`hetero exec spawn failed (op=${operationId}): ${err.message}`);
       settle({ reason: err.message, status: 'rejected' });
-    });
-
-    child.on('exit', (code, signal) => {
-      logger?.info?.(`hetero exec exited (op=${operationId}) code=${code} signal=${signal}`);
     });
   });
 }

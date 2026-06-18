@@ -166,6 +166,8 @@ export interface ChatTopicMetadata {
       delivery?: 'fetch' | 'qstash';
       url: string;
     };
+    deviceId?: string;
+    heteroType?: string;
     operationId: string;
     scope?: string;
     threadId?: string | null;

@@ -30,6 +30,7 @@ import type {
   ChatAudioItem,
   ChatFileItem,
   ChatTopicBotContext,
+  ChatTopicMetadata,
   ChatVideoItem,
   ExecAgentParams,
   ExecAgentResult,
@@ -1288,18 +1289,15 @@ export class AiAgentService {
       // Seed topic.metadata.runningOperation so heteroIngest can validate the operation.
       // completionWebhook is stored so heteroFinish can call back to the IM bot-callback
       // endpoint even though the hetero path bypasses the normal hook registration flow.
+      const runningOperationMetadata: NonNullable<ChatTopicMetadata['runningOperation']> = {
+        assistantMessageId: assistantMessageRecord.id,
+        completionWebhook: hooks?.find((h) => h.type === 'onComplete')?.webhook,
+        operationId,
+        scope: appContext?.scope ?? undefined,
+        threadId: appContext?.threadId ?? undefined,
+      };
       await this.topicModel.updateMetadata(topicId, {
-        runningOperation: {
-          assistantMessageId: assistantMessageRecord.id,
-          completionWebhook: hooks?.find((h) => h.type === 'onComplete')?.webhook,
-          // Store deviceId + heteroType so interruptTask can cancel remote processes
-          ...(isRemoteHetero && remoteDeviceId
-            ? { deviceId: remoteDeviceId, heteroType }
-            : undefined),
-          operationId,
-          scope: appContext?.scope ?? undefined,
-          threadId: appContext?.threadId ?? undefined,
-        },
+        runningOperation: runningOperationMetadata,
       });
 
       // Remote hetero agents (openclaw / hermes) dispatch to the device identified
@@ -1378,6 +1376,14 @@ export class AiAgentService {
             userId: this.userId,
           })
           .catch((err) => log('execAgent: failed to init stream for remote hetero: %O', err));
+
+        await this.topicModel.updateMetadata(topicId, {
+          runningOperation: {
+            ...runningOperationMetadata,
+            deviceId: remoteDeviceId,
+            heteroType,
+          },
+        });
 
         // lh connect only handles tool_call_request (not agent_run_request),
         // so we use executeToolCall with the runHeteroTask tool instead of dispatchAgentRun.
@@ -1520,6 +1526,14 @@ export class AiAgentService {
             agentSystemContext: agentConfig.agencyConfig?.heterogeneousProvider?.systemContext,
             conversationHistory,
             cwd: deviceCwd,
+          });
+
+          await this.topicModel.updateMetadata(topicId, {
+            runningOperation: {
+              ...runningOperationMetadata,
+              deviceId: dispatchDeviceId,
+              heteroType,
+            },
           });
 
           const result = await deviceGateway.dispatchAgentRun({
@@ -3764,11 +3778,7 @@ export class AiAgentService {
         | { deviceId?: string; heteroType?: string; operationId?: string }
         | undefined;
 
-      if (
-        runningOp?.deviceId &&
-        runningOp.heteroType &&
-        isRemoteHeterogeneousType(runningOp.heteroType)
-      ) {
+      if (runningOp?.deviceId && runningOp.heteroType) {
         const taskId = runningOp.operationId ?? resolvedOperationId;
         log(
           'interruptTask: cancelling remote hetero process heteroType=%s deviceId=%s taskId=%s',

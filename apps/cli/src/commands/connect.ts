@@ -33,6 +33,7 @@ import {
   stopDaemon,
   writeStatus,
 } from '../daemon/manager';
+import { removeTask, saveTask } from '../daemon/taskRegistry';
 import { spawnHeteroAgentRun } from '../device/agentRun';
 import { registerDevice, resolveDeviceIdentity } from '../device/register';
 import { loadOrCreateConnectionId, loadSettings, normalizeUrl, saveSettings } from '../settings';
@@ -349,7 +350,24 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
         },
         { error, info },
       );
-      client.sendAgentRunAck({ operationId: request.operationId, ...ack });
+      const { child, ...ackPayload } = ack;
+      if (ack.status === 'accepted' && child?.pid !== undefined) {
+        const taskId = request.operationId;
+
+        saveTask({
+          agentType: request.agentType as 'claude-code' | 'codex',
+          operationId: request.operationId,
+          pid: child.pid,
+          startedAt: new Date().toISOString(),
+          taskId,
+          topicId: request.topicId,
+        });
+
+        child.once('exit', () => {
+          removeTask(taskId);
+        });
+      }
+      client.sendAgentRunAck({ operationId: request.operationId, ...ackPayload });
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       error(`agent_run_request failed: ${reason}`);

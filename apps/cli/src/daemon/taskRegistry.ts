@@ -4,7 +4,7 @@ import path from 'node:path';
 
 export interface TaskEntry {
   agentId?: string;
-  agentType: 'hermes' | 'openclaw';
+  agentType: 'claude-code' | 'codex' | 'hermes' | 'openclaw';
   operationId: string;
   pid: number;
   startedAt: string;

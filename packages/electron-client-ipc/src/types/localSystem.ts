@@ -258,9 +258,14 @@ export interface RunCommandParams {
 }
 
 export interface RunCommandResult {
+  duration_ms?: number;
   error?: string;
   exit_code?: number;
   output?: string;
+  output_files?: {
+    stderr: { path: string; size: number; truncated: boolean };
+    stdout: { path: string; size: number; truncated: boolean };
+  };
   shell_id?: string;
   stderr?: string;
   stdout?: string;
@@ -278,6 +283,7 @@ export interface GetCommandOutputParams {
 }
 
 export interface GetCommandOutputResult {
+  duration_ms?: number;
   error?: string;
   /**
    * Present only after the command has exited.
@@ -286,6 +292,10 @@ export interface GetCommandOutputResult {
    */
   exit_code?: number;
   output: string;
+  output_files?: {
+    stderr: { path: string; size: number; truncated: boolean };
+    stdout: { path: string; size: number; truncated: boolean };
+  };
   stderr: string;
   stdout: string;
   success: boolean;

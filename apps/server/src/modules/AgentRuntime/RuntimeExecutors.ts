@@ -4126,7 +4126,12 @@ export const createRuntimeExecutors = (
    */
   resolve_blocked_tools: async (instruction, state) => {
     const { payload } = instruction as Extract<AgentInstruction, { type: 'resolve_blocked_tools' }>;
-    const { parentMessageId, toolsCalling } = payload;
+    const {
+      blockedContent = 'Blocked by security/privacy.',
+      blockedReason = 'blocked_by_security_privacy',
+      parentMessageId,
+      toolsCalling,
+    } = payload;
     const { operationId, stepIndex, streamManager } = ctx;
     const events: AgentEvent[] = [];
     const newState = structuredClone(state);
@@ -4137,8 +4142,8 @@ export const createRuntimeExecutors = (
 
     for (const toolPayload of toolsCalling) {
       const result: ToolExecutionResultResponse = {
-        content: 'Blocked by security/privacy.',
-        error: 'blocked_by_security_privacy',
+        content: blockedContent,
+        error: blockedReason,
         executionTime: 0,
         state: { type: 'blocked' },
         success: false,

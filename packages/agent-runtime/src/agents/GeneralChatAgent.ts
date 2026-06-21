@@ -25,6 +25,10 @@ import {
   type SubAgentsBatchResultPayload,
 } from '../types';
 import { shouldCompress } from '../utils/tokenCounter';
+import {
+  getGraphPhaseToolPolicyFromMetadata,
+  GRAPH_PHASE_TOOLS_METADATA_KEY,
+} from './graphToolPolicy';
 
 /**
  * ChatAgent - The "Brain" of the chat agent
@@ -44,6 +48,54 @@ export class GeneralChatAgent implements Agent {
 
   constructor(config: GeneralAgentConfig) {
     this.config = config;
+  }
+
+  private getEffectiveTools(state: AgentState): any[] | undefined {
+    const tools = state.metadata?.[GRAPH_PHASE_TOOLS_METADATA_KEY];
+    return Array.isArray(tools) ? tools : state.tools;
+  }
+
+  private partitionToolsByGraphPhasePolicy(
+    toolsCalling: ChatToolPayload[],
+    state: AgentState,
+  ): {
+    allowedTools: ChatToolPayload[];
+    blockedContent?: string;
+    blockedReason?: string;
+    blockedTools: ChatToolPayload[];
+  } {
+    const policy = getGraphPhaseToolPolicyFromMetadata(state.metadata);
+    if (!policy) return { allowedTools: toolsCalling, blockedTools: [] };
+
+    const allowed = new Set(policy.allowedApiNames);
+    const allowedTools: ChatToolPayload[] = [];
+    const blockedTools: ChatToolPayload[] = [];
+
+    for (const toolCalling of toolsCalling) {
+      if (allowed.has(toolCalling.apiName)) {
+        allowedTools.push(toolCalling);
+      } else {
+        blockedTools.push(toolCalling);
+      }
+    }
+
+    if (blockedTools.length === 0) return { allowedTools, blockedTools };
+
+    const blockedNames = blockedTools
+      .map((tool) => `${tool.identifier}/${tool.apiName}`)
+      .join(', ');
+    const allowedNames = policy.allowedApiNames.join(', ') || '(none)';
+    const blockedContent =
+      `Tool call blocked by graph phase policy. Current graph phase "${policy.phase}" ` +
+      `allows only: ${allowedNames}. Blocked tool(s): ${blockedNames}. ` +
+      `Do not perform write, command, or other mutation actions in this phase; finish the current phase or wait for a later working phase before using these tools.`;
+
+    return {
+      allowedTools,
+      blockedContent,
+      blockedReason: 'blocked_by_graph_phase_tool_policy',
+      blockedTools,
+    };
   }
 
   /**
@@ -453,7 +505,7 @@ export class GeneralChatAgent implements Agent {
         const compressionOptions = {
           maxWindowToken: this.config.compressionConfig?.maxWindowToken,
           thresholdRatio: this.config.compressionConfig?.thresholdRatio,
-          tools: state.forceFinish ? undefined : state.tools,
+          tools: state.forceFinish ? undefined : this.getEffectiveTools(state),
         };
 
         if (compressionEnabled) {
@@ -489,13 +541,26 @@ export class GeneralChatAgent implements Agent {
           context.payload as GeneralAgentCallLLMResultPayload;
 
         if (hasToolsCalling && toolsCalling && toolsCalling.length > 0) {
+          const graphPolicyPartition = this.partitionToolsByGraphPhasePolicy(toolsCalling, state);
           // Check which tools need human intervention
           const [toolsNeedingIntervention, toolsToExecute] = await this.checkInterventionNeeded(
-            toolsCalling,
+            graphPolicyPartition.allowedTools,
             state,
           );
 
           const instructions: AgentInstruction[] = [];
+
+          if (graphPolicyPartition.blockedTools.length > 0) {
+            instructions.push({
+              payload: {
+                blockedContent: graphPolicyPartition.blockedContent,
+                blockedReason: graphPolicyPartition.blockedReason,
+                parentMessageId,
+                toolsCalling: graphPolicyPartition.blockedTools,
+              },
+              type: 'resolve_blocked_tools',
+            } satisfies AgentInstruction);
+          }
 
           // Execute tools that don't need intervention first
           // These will run immediately before any approval requests
@@ -652,7 +717,7 @@ export class GeneralChatAgent implements Agent {
             model: this.config.modelRuntimeConfig?.model,
             parentMessageId,
             provider: this.config.modelRuntimeConfig?.provider,
-            tools: state.tools,
+            tools: this.getEffectiveTools(state),
           } as GeneralAgentCallLLMInstructionPayload,
           state,
         );
@@ -690,7 +755,7 @@ export class GeneralChatAgent implements Agent {
             model: this.config.modelRuntimeConfig?.model,
             parentMessageId,
             provider: this.config.modelRuntimeConfig?.provider,
-            tools: state.tools,
+            tools: this.getEffectiveTools(state),
           } as GeneralAgentCallLLMInstructionPayload,
           state,
         );
@@ -707,7 +772,7 @@ export class GeneralChatAgent implements Agent {
             model: this.config.modelRuntimeConfig?.model,
             parentMessageId,
             provider: this.config.modelRuntimeConfig?.provider,
-            tools: state.tools,
+            tools: this.getEffectiveTools(state),
           } as GeneralAgentCallLLMInstructionPayload,
           state,
         );
@@ -740,7 +805,7 @@ export class GeneralChatAgent implements Agent {
             model: this.config.modelRuntimeConfig?.model,
             parentMessageId,
             provider: this.config.modelRuntimeConfig?.provider,
-            tools: state.tools,
+            tools: this.getEffectiveTools(state),
           } as GeneralAgentCallLLMInstructionPayload,
           state,
         );
@@ -761,7 +826,7 @@ export class GeneralChatAgent implements Agent {
             model: this.config.modelRuntimeConfig?.model,
             parentMessageId: compressionPayload.parentMessageId,
             provider: this.config.modelRuntimeConfig?.provider,
-            tools: state.tools,
+            tools: this.getEffectiveTools(state),
           } as GeneralAgentCallLLMInstructionPayload,
           type: 'call_llm',
         };

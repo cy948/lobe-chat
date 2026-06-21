@@ -5,6 +5,11 @@
  */
 export interface StateNode {
   /**
+   * Optional allowlist of tool API names for this graph node.
+   * Tools outside the allowlist are hidden from the model for this node.
+   */
+  allowedToolApiNames?: string[];
+  /**
    * JSON Schema for structured output. Forces LLM to produce conforming JSON.
    */
   outputSchema: Record<string, any>;
@@ -56,6 +61,19 @@ export interface ReasoningGraph {
 
 // ── Graph Runtime Context ──
 
+export interface GraphPhaseHandoff {
+  /** Node that just produced an accepted artifact */
+  from: string;
+  /** Accepted structured output from the previous phase */
+  output: Record<string, any>;
+  /** Node that is about to receive the handoff */
+  to: string;
+}
+
+export interface GraphPhaseToolPolicy {
+  allowedApiNames?: string[];
+}
+
 /**
  * Runtime context maintained by GraphAgent across steps.
  * Stored in AgentState.metadata to survive across runner() calls.
@@ -70,6 +88,8 @@ export interface GraphContext {
    * After the agent loop finishes, an extra LLM call extracts structured output.
    */
   extracting?: boolean;
+  /** Last accepted phase transition, injected into the next node prompt */
+  handoff?: GraphPhaseHandoff;
   /** The original user input/question */
   input: string;
   /**

@@ -8,6 +8,7 @@ import {
   AgentRuntime,
   findInMessages,
   GeneralChatAgent,
+  GraphAgent,
   isParkedStatus,
 } from '@lobechat/agent-runtime';
 import type { ISnapshotStore } from '@lobechat/agent-tracing';
@@ -57,6 +58,7 @@ import { LocalQueueServiceImpl } from '@/server/services/queue/impls';
 import { ToolExecutionService } from '@/server/services/toolExecution';
 import { BuiltinToolsExecutor } from '@/server/services/toolExecution/builtin';
 
+import { terminalBenchGraph } from '../aiAgent/terminalBenchGraph';
 import { isAbortError, throwIfAborted } from './abort';
 import { CompletionLifecycle } from './CompletionLifecycle';
 import { hookDispatcher } from './hooks';
@@ -88,6 +90,7 @@ if (process.env.VERCEL) {
 }
 
 const log = debug('lobe-server:agent-runtime-service');
+const isTerminalBenchGraphEnabled = () => process.env.TB_GRAPH_AGENT === '1';
 
 /**
  * Base delay before the first `verifyAsyncToolBarrier` re-check fires after a
@@ -296,7 +299,11 @@ export class AgentRuntimeService {
     this.traceRecorder = new OperationTraceRecorder(
       options?.snapshotStore ?? createDefaultSnapshotStore(),
     );
-    this.agentFactory = options?.agentFactory;
+    this.agentFactory =
+      options?.agentFactory ??
+      (isTerminalBenchGraphEnabled()
+        ? (config) => new GraphAgent({ ...config, graph: terminalBenchGraph })
+        : undefined);
     this.delegate = options?.delegate ?? {};
     this.serverDB = db;
     this.userId = userId;

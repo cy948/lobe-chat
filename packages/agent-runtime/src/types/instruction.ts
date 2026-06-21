@@ -275,6 +275,10 @@ export interface AgentInstructionResolveAbortedTools extends AgentInstructionBas
 
 export interface AgentInstructionResolveBlockedTools extends AgentInstructionBase {
   payload: {
+    /** Optional content to write into blocked tool result messages */
+    blockedContent?: string;
+    /** Optional machine-readable blocked reason */
+    blockedReason?: string;
     /** Parent message ID (assistant message) */
     parentMessageId: string;
     /** Tool calls that were blocked and need tool results */

@@ -6,9 +6,15 @@ import type {
   GeneralAgentCallLLMInstructionPayload,
   GeneralAgentConfig,
   GraphContext,
+  GraphPhaseToolPolicy,
   ReasoningGraph,
 } from '../types';
 import { GeneralChatAgent } from './GeneralChatAgent';
+import {
+  filterToolsForGraphPhase,
+  GRAPH_PHASE_TOOL_POLICY_METADATA_KEY,
+  GRAPH_PHASE_TOOLS_METADATA_KEY,
+} from './graphToolPolicy';
 
 const GRAPH_CONTEXT_KEY = '__graphContext';
 
@@ -162,12 +168,26 @@ export class GraphAgent implements Agent {
     if (node.type === 'agent') {
       // Agent node: task prompt with tools, no JSON schema constraint
       // The agent will use tools freely; structured output is extracted after the loop
+      const toolPolicy: GraphPhaseToolPolicy | undefined = node.allowedToolApiNames
+        ? { allowedApiNames: node.allowedToolApiNames }
+        : undefined;
       fullPrompt =
         renderedPrompt +
-        '\n\nIMPORTANT: You MUST use your available tools (web search, etc.) to research this. ' +
-        'Do NOT answer from memory. Search for real evidence and data first, ' +
-        'then provide your findings based on the tool results.';
-      tools = state.tools ?? [];
+        '\n\nIMPORTANT: Use your available tools to gather concrete evidence before concluding. ' +
+        'Do not answer from memory alone. Inspect the relevant environment, files, commands, ' +
+        'or external sources that are available to this agent, then base your findings on tool results.';
+      tools = filterToolsForGraphPhase(state.tools ?? [], toolPolicy) ?? [];
+      // Persist the filtered tool view so the inner chat loop stays within this phase boundary.
+      state.metadata = state.metadata ?? {};
+      state.metadata[GRAPH_PHASE_TOOLS_METADATA_KEY] = tools;
+      if (node.allowedToolApiNames) {
+        state.metadata[GRAPH_PHASE_TOOL_POLICY_METADATA_KEY] = {
+          allowedApiNames: node.allowedToolApiNames,
+          phase: gc.currentNode,
+        };
+      } else {
+        delete state.metadata[GRAPH_PHASE_TOOL_POLICY_METADATA_KEY];
+      }
     } else {
       // LLM node: structured output, no tools
       fullPrompt =
@@ -176,6 +196,10 @@ export class GraphAgent implements Agent {
         `\`\`\`json\n${JSON.stringify(node.outputSchema, null, 2)}\n\`\`\`\n` +
         `Only output valid JSON, no other text.`;
       tools = [];
+      if (state.metadata) {
+        delete state.metadata[GRAPH_PHASE_TOOLS_METADATA_KEY];
+        delete state.metadata[GRAPH_PHASE_TOOL_POLICY_METADATA_KEY];
+      }
     }
 
     gc.nodeActive = true;
@@ -200,6 +224,10 @@ export class GraphAgent implements Agent {
    */
   private startExtraction(state: AgentState, gc: GraphContext): AgentInstruction {
     const node = this.graph.states[gc.currentNode];
+    if (state.metadata) {
+      delete state.metadata[GRAPH_PHASE_TOOLS_METADATA_KEY];
+      delete state.metadata[GRAPH_PHASE_TOOL_POLICY_METADATA_KEY];
+    }
 
     const extractionPrompt =
       `Based on the research and information gathered above, ` +
@@ -231,21 +259,35 @@ export class GraphAgent implements Agent {
     const output = this.extractStructuredOutput(state);
     gc.store[currentNodeId] = output;
     gc.nodeActive = false;
-
-    // Terminal node → done
-    if (currentNodeId === this.graph.terminal) {
-      this.saveGraphContext(state, gc);
-      return {
-        reason: 'completed',
-        reasonDetail: `Graph "${this.graph.name}" completed at terminal node "${currentNodeId}"`,
-        type: 'finish',
-      };
+    if (state.metadata) {
+      delete state.metadata[GRAPH_PHASE_TOOLS_METADATA_KEY];
+      delete state.metadata[GRAPH_PHASE_TOOL_POLICY_METADATA_KEY];
     }
 
     // Evaluate transitions
     const nextNodeId = this.evaluateTransitions(gc, currentNodeId, output);
 
     if (!nextNodeId) {
+      if (currentNodeId === this.graph.terminal) {
+        this.saveGraphContext(state, gc);
+        if (this.hasBlockedBacktrackTransition(gc, currentNodeId, output)) {
+          return {
+            reason: 'error_recovery',
+            reasonDetail:
+              `Graph "${this.graph.name}" reached backtrack limit ` +
+              `(${this.graph.maxBacktracks}) at terminal node "${currentNodeId}" while ` +
+              `the terminal output still requested a backtrack: ${JSON.stringify(output)}`,
+            type: 'finish',
+          };
+        }
+
+        return {
+          reason: 'completed',
+          reasonDetail: `Graph "${this.graph.name}" completed at terminal node "${currentNodeId}"`,
+          type: 'finish',
+        };
+      }
+
       this.saveGraphContext(state, gc);
       return {
         reason: 'error_recovery',
@@ -297,9 +339,34 @@ export class GraphAgent implements Agent {
     return this.getNextState(currentNodeId);
   }
 
+  private hasBlockedBacktrackTransition(
+    gc: GraphContext,
+    currentNodeId: string,
+    output: Record<string, any>,
+  ): boolean {
+    if (gc.backtrackCount < this.graph.maxBacktracks) return false;
+
+    const currentIdx = Object.keys(this.graph.states).indexOf(currentNodeId);
+
+    return this.graph.transitions.some((t) => {
+      if (t.from !== currentNodeId) return false;
+
+      try {
+        const result = new Function('output', `return (${t.condition})`)(output);
+        if (!result) return false;
+
+        const targetIdx = Object.keys(this.graph.states).indexOf(t.to);
+        return targetIdx >= 0 && targetIdx < currentIdx;
+      } catch {
+        return false;
+      }
+    });
+  }
+
   private getNextState(currentNodeId: string): string | null {
     const keys = Object.keys(this.graph.states);
     const idx = keys.indexOf(currentNodeId);
+    if (currentNodeId === this.graph.terminal) return null;
     return idx >= 0 && idx + 1 < keys.length ? keys[idx + 1] : null;
   }
 

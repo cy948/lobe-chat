@@ -1,7 +1,11 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createDefaultSnapshotStore, shouldUseAgentS3Tracing } from '../snapshotStore';
+import {
+  createDefaultSnapshotStore,
+  shouldUseAgentFileTracing,
+  shouldUseAgentS3Tracing,
+} from '../snapshotStore';
 
 const s3Store = { kind: 's3' } as any;
 const fileStore = { kind: 'file' } as any;
@@ -9,9 +13,10 @@ const createS3 = vi.fn(() => s3Store);
 const createFile = vi.fn(() => fileStore);
 const factories = { createFile, createS3 };
 
-const setEnv = (nodeEnv: string, agentS3Tracing?: string) => {
+const setEnv = (nodeEnv: string, agentS3Tracing?: string, agentFileTracing?: string) => {
   vi.stubEnv('NODE_ENV', nodeEnv);
   vi.stubEnv('ENABLE_AGENT_S3_TRACING', agentS3Tracing);
+  vi.stubEnv('ENABLE_AGENT_FILE_TRACING', agentFileTracing);
 };
 
 describe('agent runtime snapshot store defaults', () => {
@@ -34,6 +39,17 @@ describe('agent runtime snapshot store defaults', () => {
     setEnv('development');
 
     expect(shouldUseAgentS3Tracing()).toBe(false);
+    expect(shouldUseAgentFileTracing()).toBe(true);
+    expect(createDefaultSnapshotStore(factories)).toBe(fileStore);
+    expect(createS3).not.toHaveBeenCalled();
+    expect(createFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets ENABLE_AGENT_FILE_TRACING=1 force local file tracing in production', () => {
+    setEnv('production', undefined, '1');
+
+    expect(shouldUseAgentS3Tracing()).toBe(false);
+    expect(shouldUseAgentFileTracing()).toBe(true);
     expect(createDefaultSnapshotStore(factories)).toBe(fileStore);
     expect(createS3).not.toHaveBeenCalled();
     expect(createFile).toHaveBeenCalledTimes(1);
@@ -43,6 +59,16 @@ describe('agent runtime snapshot store defaults', () => {
     setEnv('development', '1');
 
     expect(shouldUseAgentS3Tracing()).toBe(true);
+    expect(createDefaultSnapshotStore(factories)).toBe(s3Store);
+    expect(createS3).toHaveBeenCalledTimes(1);
+    expect(createFile).not.toHaveBeenCalled();
+  });
+
+  it('prefers explicit S3 tracing when both S3 and file tracing are enabled', () => {
+    setEnv('production', '1', '1');
+
+    expect(shouldUseAgentS3Tracing()).toBe(true);
+    expect(shouldUseAgentFileTracing()).toBe(true);
     expect(createDefaultSnapshotStore(factories)).toBe(s3Store);
     expect(createS3).toHaveBeenCalledTimes(1);
     expect(createFile).not.toHaveBeenCalled();

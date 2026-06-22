@@ -35,7 +35,7 @@ import { registerUpdateCommand } from './commands/update';
 import { registerUserCommand } from './commands/user';
 import { registerVerifyCommand } from './commands/verify';
 import { cliVersion } from './pkg';
-import { executeToolCallDirect } from './tools';
+import { executeToolCall } from './tools';
 
 export function createProgram() {
   const program = new Command();
@@ -57,7 +57,7 @@ export function createProgram() {
         options.timeout && options.timeout.trim()
           ? Number.parseInt(options.timeout, 10)
           : undefined;
-      const result = await executeToolCallDirect(
+      const result = await executeToolCall(
         options.api,
         argsStr,
         Number.isFinite(parsedTimeout) ? parsedTimeout : undefined,

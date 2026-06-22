@@ -17,7 +17,7 @@ const methodMap: Record<string, (args: any) => Promise<unknown>> = {
   runHeteroTask,
 };
 
-export async function executeToolCallDirect(
+export async function executeToolCall(
   apiName: string,
   argsStr: string,
   timeout?: number,
@@ -27,6 +27,8 @@ export async function executeToolCallDirect(
   state?: unknown;
   success: boolean;
 }> {
+  if (shouldRunInWorker(apiName)) return executeToolCallInWorker(apiName, argsStr, timeout);
+
   let args: Record<string, any>;
   try {
     args = JSON.parse(argsStr);
@@ -72,18 +74,4 @@ export async function executeToolCallDirect(
     log.error(`Tool call failed: ${apiName} - ${errorMsg}`);
     return { content: '', error: errorMsg, success: false };
   }
-}
-
-export async function executeToolCall(
-  apiName: string,
-  argsStr: string,
-  timeout?: number,
-): Promise<{
-  content: string;
-  error?: string;
-  state?: unknown;
-  success: boolean;
-}> {
-  if (shouldRunInWorker(apiName)) return executeToolCallInWorker(apiName, argsStr, timeout);
-  return executeToolCallDirect(apiName, argsStr, timeout);
 }

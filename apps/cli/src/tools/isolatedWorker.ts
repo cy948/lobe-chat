@@ -3,7 +3,6 @@ import * as childProcess from 'node:child_process';
 const ISOLATED_TOOL_APIS = new Set(['globFiles', 'searchFiles']);
 const TOOL_WORKER_ENV = 'LOBEHUB_CLI_TOOL_WORKER';
 const DEFAULT_WORKER_TIMEOUT_MS = 120_000;
-const DEFAULT_WORKER_OUTPUT_TAIL_BYTES = 256;
 
 const isToolWorkerProcess = () => process.env[TOOL_WORKER_ENV] === '1';
 
@@ -36,7 +35,6 @@ export async function executeToolCallInWorker(
       typeof timeout === 'number' && Number.isFinite(timeout)
         ? Math.min(Math.max(Math.trunc(timeout), 1000), 300_000)
         : DEFAULT_WORKER_TIMEOUT_MS;
-    const tailBytes = DEFAULT_WORKER_OUTPUT_TAIL_BYTES;
     const child = childProcess.spawn(
       process.execPath,
       [
@@ -56,8 +54,6 @@ export async function executeToolCallInWorker(
     );
 
     let stdout = '';
-    let stdoutTail = Buffer.alloc(0);
-    let stderrTail = Buffer.alloc(0);
     let stderr = '';
     let settled = false;
 
@@ -68,16 +64,7 @@ export async function executeToolCallInWorker(
       resolve(result);
     };
 
-    const appendTail = (tail: Buffer, chunk: string) => {
-      const buffer = Buffer.concat([tail, Buffer.from(chunk, 'utf8')]);
-      return buffer.length <= tailBytes ? buffer : buffer.subarray(buffer.length - tailBytes);
-    };
-
-    const summarizeOutput = () => {
-      const preferred = stderrTail.length > 0 ? stderrTail : stdoutTail;
-      if (preferred.length === 0) return undefined;
-      return preferred.toString('utf8');
-    };
+    const summarizeOutput = () => stderr.trim() || stdout.trim() || undefined;
 
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
@@ -92,11 +79,9 @@ export async function executeToolCallInWorker(
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', (chunk) => {
       stdout += chunk;
-      stdoutTail = appendTail(stdoutTail, chunk);
     });
     child.stderr.on('data', (chunk) => {
       stderr += chunk;
-      stderrTail = appendTail(stderrTail, chunk);
     });
     child.on('error', (error) => {
       finish({ content: '', error: error.message, success: false });
@@ -114,11 +99,11 @@ export async function executeToolCallInWorker(
           return;
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
-          const tail = summarizeOutput();
+          const workerOutput = summarizeOutput();
           finish({
             content: '',
-            error: tail
-              ? `Isolated tool worker returned invalid JSON: ${errorMsg}. Tail: ${tail}`
+            error: workerOutput
+              ? `Isolated tool worker returned invalid JSON: ${errorMsg}. Output: ${workerOutput}`
               : `Isolated tool worker returned invalid JSON: ${errorMsg}`,
             success: false,
           });
@@ -131,11 +116,11 @@ export async function executeToolCallInWorker(
         : typeof code === 'number'
           ? `exit code ${code}`
           : 'unknown exit';
-      const tail = summarizeOutput();
+      const workerOutput = summarizeOutput();
       finish({
         content: '',
-        error: tail
-          ? `Isolated tool worker failed with ${exitReason}: ${tail}`
+        error: workerOutput
+          ? `Isolated tool worker failed with ${exitReason}: ${workerOutput}`
           : `Isolated tool worker failed with ${exitReason}`,
         success: false,
       });

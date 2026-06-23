@@ -46,7 +46,7 @@ export function createProgram() {
     .version(cliVersion);
 
   const internalToolWorker = program
-    .command('internal-tool-worker')
+    .command('tool-worker')
     .description('Internal command for isolated tool execution')
     .requiredOption('--api <name>')
     .requiredOption('--args-b64 <value>')

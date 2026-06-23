@@ -2,12 +2,10 @@ import * as childProcess from 'node:child_process';
 
 const ISOLATED_TOOL_APIS = new Set(['globFiles', 'searchFiles']);
 const TOOL_WORKER_ENV = 'LOBEHUB_CLI_TOOL_WORKER';
-const DEFAULT_WORKER_TIMEOUT_MS = 120_000;
-
-const isToolWorkerProcess = () => process.env[TOOL_WORKER_ENV] === '1';
+const DEFAULT_WORKER_TIMEOUT_MS = 30_000;
 
 export const shouldRunInWorker = (apiName: string) =>
-  ISOLATED_TOOL_APIS.has(apiName) && !isToolWorkerProcess();
+  ISOLATED_TOOL_APIS.has(apiName) && process.env[TOOL_WORKER_ENV] !== '1';
 
 type ToolCallResult = {
   content: string;
@@ -39,7 +37,7 @@ export async function executeToolCallInWorker(
       process.execPath,
       [
         entrypoint,
-        'internal-tool-worker',
+        'tool-worker',
         '--api',
         apiName,
         '--args-b64',

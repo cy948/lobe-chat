@@ -17,6 +17,7 @@ import {
 } from './graphToolPolicy';
 
 const GRAPH_CONTEXT_KEY = '__graphContext';
+const GRAPH_EXIT_AFTER_ENV = 'TB_GRAPH_EXIT_AFTER';
 
 /**
  * GraphAgent — A graph-driven Agent that decorates GeneralChatAgent.
@@ -264,6 +265,16 @@ export class GraphAgent implements Agent {
       delete state.metadata[GRAPH_PHASE_TOOL_POLICY_METADATA_KEY];
     }
 
+    const earlyExitNode = this.getEarlyExitNode();
+    if (earlyExitNode && earlyExitNode === currentNodeId) {
+      this.saveGraphContext(state, gc);
+      return {
+        reason: 'completed',
+        reasonDetail: `Graph "${this.graph.name}" exited early after node "${currentNodeId}" via ${GRAPH_EXIT_AFTER_ENV}`,
+        type: 'finish',
+      };
+    }
+
     // Evaluate transitions
     const nextNodeId = this.evaluateTransitions(gc, currentNodeId, output);
 
@@ -421,6 +432,12 @@ export class GraphAgent implements Agent {
 
   private getGraphContext(state: AgentState): GraphContext | null {
     return (state.metadata?.[GRAPH_CONTEXT_KEY] as GraphContext) ?? null;
+  }
+
+  private getEarlyExitNode(): string | undefined {
+    const configuredNode = process.env[GRAPH_EXIT_AFTER_ENV];
+    if (!configuredNode) return undefined;
+    return this.graph.states[configuredNode] ? configuredNode : undefined;
   }
 
   private saveGraphContext(state: AgentState, gc: GraphContext): void {

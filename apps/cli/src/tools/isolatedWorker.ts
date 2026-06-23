@@ -1,6 +1,6 @@
 import * as childProcess from 'node:child_process';
 
-const ISOLATED_TOOL_APIS = new Set(['globFiles', 'searchFiles']);
+const ISOLATED_TOOL_APIS = new Set(['globFiles', 'grepContent', 'listFiles', 'searchFiles']);
 const TOOL_WORKER_ENV = 'LOBEHUB_CLI_TOOL_WORKER';
 const DEFAULT_WORKER_TIMEOUT_MS = 30_000;
 
@@ -23,7 +23,7 @@ export async function executeToolCallInWorker(
   if (!entrypoint) {
     return {
       content: '',
-      error: 'CLI entrypoint is unavailable for isolated tool execution',
+      error: `CLI entrypoint is unavailable for isolated tool execution: ${apiName}`,
       success: false,
     };
   }
@@ -62,13 +62,13 @@ export async function executeToolCallInWorker(
       resolve(result);
     };
 
-    const summarizeOutput = () => stderr.trim() || stdout.trim() || undefined;
+    const summarizeOutput = () => stderr.trim() || stdout.trim() || 'No Output';
 
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
       finish({
         content: '',
-        error: `Isolated tool worker timed out after ${workerTimeout}ms`,
+        error: `Isolated tool worker timed out for ${apiName} after ${workerTimeout}ms`,
         success: false,
       });
     }, workerTimeout);
@@ -82,13 +82,21 @@ export async function executeToolCallInWorker(
       stderr += chunk;
     });
     child.on('error', (error) => {
-      finish({ content: '', error: error.message, success: false });
+      finish({
+        content: '',
+        error: `Isolated tool worker failed for ${apiName}: ${error.message}`,
+        success: false,
+      });
     });
     child.on('close', (code, signal) => {
       if (code === 0 && !signal) {
         const output = stdout.trim();
         if (!output) {
-          finish({ content: '', error: 'Isolated tool worker produced no output', success: false });
+          finish({
+            content: '',
+            error: `Isolated tool worker produced no output for ${apiName}`,
+            success: false,
+          });
           return;
         }
 
@@ -100,9 +108,7 @@ export async function executeToolCallInWorker(
           const workerOutput = summarizeOutput();
           finish({
             content: '',
-            error: workerOutput
-              ? `Isolated tool worker returned invalid JSON: ${errorMsg}. Output: ${workerOutput}`
-              : `Isolated tool worker returned invalid JSON: ${errorMsg}`,
+            error: `Isolated tool worker returned invalid JSON for ${apiName}: ${errorMsg}. Output: ${workerOutput}`,
             success: false,
           });
           return;
@@ -117,9 +123,7 @@ export async function executeToolCallInWorker(
       const workerOutput = summarizeOutput();
       finish({
         content: '',
-        error: workerOutput
-          ? `Isolated tool worker failed with ${exitReason}: ${workerOutput}`
-          : `Isolated tool worker failed with ${exitReason}`,
+        error: `Isolated tool worker failed for ${apiName} with ${exitReason}: ${workerOutput}`,
         success: false,
       });
     });

@@ -83,7 +83,8 @@ export abstract class UnixFileSearch extends BaseFileSearch {
         return this.searchWithFd(options);
       }
       case 'find': {
-        return this.searchWithFind(options);
+        // Use the streaming fast-glob implementation for bounded high-risk scans.
+        return this.searchWithFastGlob(options);
       }
       default: {
         return this.searchWithFastGlob(options);
@@ -93,7 +94,7 @@ export abstract class UnixFileSearch extends BaseFileSearch {
 
   protected async searchWithFd(options: SearchFilesParams): Promise<FileResult[]> {
     const searchDir = options.onlyIn || options.directory || os.homedir() || '/';
-    const limit = options.limit || 30;
+    const limit = this.normalizePositiveLimit(options.limit) ?? 30;
 
     logger.debug('Performing fd search', { keywords: options.keywords, searchDir });
 
@@ -147,7 +148,7 @@ export abstract class UnixFileSearch extends BaseFileSearch {
 
   protected async searchWithFind(options: SearchFilesParams): Promise<FileResult[]> {
     const searchDir = options.onlyIn || options.directory || os.homedir() || '/';
-    const limit = options.limit || 30;
+    const limit = this.normalizePositiveLimit(options.limit) ?? 30;
 
     logger.debug('Performing find search', { keywords: options.keywords, searchDir });
 
@@ -208,7 +209,7 @@ export abstract class UnixFileSearch extends BaseFileSearch {
 
   protected async searchWithFastGlob(options: SearchFilesParams): Promise<FileResult[]> {
     const searchDir = options.onlyIn || options.directory || os.homedir() || '/';
-    const limit = options.limit || 30;
+    const limit = this.normalizePositiveLimit(options.limit) ?? 30;
 
     logger.debug('Performing fast-glob search', { keywords: options.keywords, searchDir });
 
@@ -217,7 +218,7 @@ export abstract class UnixFileSearch extends BaseFileSearch {
         ? `**/*${this.escapeGlobPattern(options.keywords)}*`
         : '**/*';
 
-      const files = await fg(pattern, {
+      const stream = fg.stream(pattern, {
         absolute: true,
         caseSensitiveMatch: false,
         cwd: searchDir,
@@ -226,12 +227,17 @@ export abstract class UnixFileSearch extends BaseFileSearch {
         ignore: this.getDefaultIgnorePatterns(),
         onlyFiles: true,
         suppressErrors: true,
-      });
+      }) as AsyncIterable<string | { path: string }>;
 
-      logger.debug(`fast-glob found ${files.length} files matching pattern`);
+      const files: string[] = [];
+      for await (const entry of stream) {
+        files.push(typeof entry === 'string' ? entry : entry.path);
+        if (files.length >= limit) break;
+      }
 
-      const limitedFiles = files.slice(0, limit);
-      return this.processFilePaths(limitedFiles, options, 'fast-glob');
+      logger.debug(`fast-glob collected ${files.length} bounded files matching pattern`);
+
+      return this.processFilePaths(files, options, 'fast-glob');
     } catch (error) {
       logger.error('fast-glob search failed:', error);
       throw new Error(`File search failed: ${(error as Error).message}`, { cause: error });
@@ -273,6 +279,7 @@ export abstract class UnixFileSearch extends BaseFileSearch {
 
   protected async globWithFd(params: GlobFilesParams): Promise<GlobFilesResult> {
     const searchPath = params.scope || params.cwd || os.homedir() || process.cwd();
+    const limit = this.normalizePositiveLimit(params.limit);
     const logPrefix = `[glob:fd: ${params.pattern}]`;
 
     logger.debug(`${logPrefix} Starting fd glob`, { searchPath });
@@ -291,6 +298,10 @@ export abstract class UnixFileSearch extends BaseFileSearch {
         '.git',
       ];
 
+      if (limit) {
+        args.push('--max-results', String(limit));
+      }
+
       const { stdout, exitCode } = await execa('fd', args, {
         reject: false,
         timeout: 30_000,
@@ -305,8 +316,9 @@ export abstract class UnixFileSearch extends BaseFileSearch {
         .trim()
         .split('\n')
         .filter((line) => line.trim());
+      const limitedFiles = limit ? files.slice(0, limit) : files;
 
-      const filesWithStats = await this.getFilesWithStats(files);
+      const filesWithStats = await this.getFilesWithStats(limitedFiles);
       const sortedFiles = filesWithStats.sort((a, b) => b.mtime - a.mtime).map((f) => f.path);
 
       logger.info(`${logPrefix} Glob completed`, { fileCount: sortedFiles.length });
@@ -326,6 +338,7 @@ export abstract class UnixFileSearch extends BaseFileSearch {
 
   protected async globWithFind(params: GlobFilesParams): Promise<GlobFilesResult> {
     const searchPath = params.scope || params.cwd || os.homedir() || process.cwd();
+    const limit = this.normalizePositiveLimit(params.limit);
     const logPrefix = `[glob:find: ${params.pattern}]`;
 
     logger.debug(`${logPrefix} Starting find glob`, { searchPath });
@@ -356,8 +369,9 @@ export abstract class UnixFileSearch extends BaseFileSearch {
         .trim()
         .split('\n')
         .filter((line) => line.trim());
+      const limitedFiles = limit ? files.slice(0, limit) : files;
 
-      const filesWithStats = await this.getFilesWithStats(files);
+      const filesWithStats = await this.getFilesWithStats(limitedFiles);
       const sortedFiles = filesWithStats.sort((a, b) => b.mtime - a.mtime).map((f) => f.path);
 
       logger.info(`${logPrefix} Glob completed`, { fileCount: sortedFiles.length });
@@ -377,21 +391,52 @@ export abstract class UnixFileSearch extends BaseFileSearch {
 
   protected async globWithFastGlob(params: GlobFilesParams): Promise<GlobFilesResult> {
     const searchPath = params.scope || params.cwd || os.homedir() || process.cwd();
+    const limit = this.normalizePositiveLimit(params.limit);
     const logPrefix = `[glob:fast-glob: ${params.pattern}]`;
 
     logger.debug(`${logPrefix} Starting fast-glob`, { searchPath });
 
     try {
-      const files = await fg(params.pattern, {
+      if (!limit) {
+        const files = await fg(params.pattern, {
+          absolute: true,
+          cwd: searchPath,
+          dot: true,
+          ignore: ['**/node_modules/**', '**/.git/**'],
+          onlyFiles: false,
+          stats: true,
+        });
+
+        const sortedFiles = (files as unknown as Array<{ path: string; stats: Stats }>)
+          .sort((a, b) => b.stats.mtime.getTime() - a.stats.mtime.getTime())
+          .map((f) => f.path);
+
+        logger.info(`${logPrefix} Glob completed`, { fileCount: sortedFiles.length });
+
+        return {
+          engine: 'fast-glob',
+          files: sortedFiles,
+          success: true,
+          total_files: sortedFiles.length,
+        };
+      }
+
+      const files: Array<{ path: string; stats: Stats }> = [];
+      const stream = fg.stream(params.pattern, {
         absolute: true,
         cwd: searchPath,
         dot: true,
         ignore: ['**/node_modules/**', '**/.git/**'],
         onlyFiles: false,
         stats: true,
-      });
+      }) as AsyncIterable<{ path: string; stats: Stats }>;
 
-      const sortedFiles = (files as unknown as Array<{ path: string; stats: Stats }>)
+      for await (const entry of stream) {
+        files.push(entry);
+        if (files.length >= limit) break;
+      }
+
+      const sortedFiles = files
         .sort((a, b) => b.stats.mtime.getTime() - a.stats.mtime.getTime())
         .map((f) => f.path);
 

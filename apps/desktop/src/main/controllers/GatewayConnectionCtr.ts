@@ -107,6 +107,8 @@ const LEGACY_API_ALIASES: Record<string, string> = {
   writeLocalFile: 'writeFile',
 };
 
+const DEFAULT_FILE_SEARCH_LIMIT = 100;
+
 /**
  * Parse a JSON string, returning `undefined` on failure. Used to surface the
  * structured shape of platform-agent tool results (which return pre-stringified
@@ -477,6 +479,10 @@ export default class GatewayConnectionCtr extends ControllerModule {
         const p = args as GlobFilesParams;
         return runtime.globFiles({
           directory: p.scope,
+          limit:
+            Number.isFinite(p.limit) && p.limit && p.limit > 0
+              ? Math.floor(p.limit)
+              : DEFAULT_FILE_SEARCH_LIMIT,
           pattern: p.pattern,
         });
       }

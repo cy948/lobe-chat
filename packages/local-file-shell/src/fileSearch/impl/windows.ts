@@ -98,7 +98,7 @@ export class WindowsSearchServiceImpl extends BaseFileSearch {
 
   private async searchWithFd(options: SearchFilesParams): Promise<FileResult[]> {
     const searchDir = options.onlyIn || options.directory || os.homedir() || 'C:\\';
-    const limit = options.limit || 30;
+    const limit = this.normalizePositiveLimit(options.limit) ?? 30;
 
     logger.debug('Performing fd search', { keywords: options.keywords, searchDir });
 
@@ -152,7 +152,7 @@ export class WindowsSearchServiceImpl extends BaseFileSearch {
 
   private async searchWithPowerShell(options: SearchFilesParams): Promise<FileResult[]> {
     const searchDir = options.onlyIn || options.directory || os.homedir() || 'C:\\';
-    const limit = options.limit || 30;
+    const limit = this.normalizePositiveLimit(options.limit) ?? 30;
 
     logger.debug('Performing PowerShell search', { keywords: options.keywords, searchDir });
 
@@ -203,7 +203,7 @@ export class WindowsSearchServiceImpl extends BaseFileSearch {
 
   private async searchWithFastGlob(options: SearchFilesParams): Promise<FileResult[]> {
     const searchDir = options.onlyIn || options.directory || os.homedir() || 'C:\\';
-    const limit = options.limit || 30;
+    const limit = this.normalizePositiveLimit(options.limit) ?? 30;
 
     logger.debug('Performing fast-glob search', { keywords: options.keywords, searchDir });
 
@@ -212,7 +212,7 @@ export class WindowsSearchServiceImpl extends BaseFileSearch {
         ? `**/*${this.escapeGlobPattern(options.keywords)}*`
         : '**/*';
 
-      const files = await fg(pattern, {
+      const stream = fg.stream(pattern, {
         absolute: true,
         caseSensitiveMatch: false,
         cwd: searchDir,
@@ -231,12 +231,17 @@ export class WindowsSearchServiceImpl extends BaseFileSearch {
         ],
         onlyFiles: true,
         suppressErrors: true,
-      });
+      }) as AsyncIterable<string | { path: string }>;
 
-      logger.debug(`fast-glob found ${files.length} files matching pattern`);
+      const files: string[] = [];
+      for await (const entry of stream) {
+        files.push(typeof entry === 'string' ? entry : entry.path);
+        if (files.length >= limit) break;
+      }
 
-      const limitedFiles = files.slice(0, limit);
-      return this.processFilePaths(limitedFiles, options, 'fast-glob');
+      logger.debug(`fast-glob collected ${files.length} bounded files matching pattern`);
+
+      return this.processFilePaths(files, options, 'fast-glob');
     } catch (error) {
       logger.error('fast-glob search failed:', error);
       throw new Error(`File search failed: ${(error as Error).message}`, { cause: error });
@@ -264,6 +269,7 @@ export class WindowsSearchServiceImpl extends BaseFileSearch {
 
   private async globWithFd(params: GlobFilesParams): Promise<GlobFilesResult> {
     const searchPath = params.scope || params.cwd || os.homedir() || process.cwd();
+    const limit = this.normalizePositiveLimit(params.limit);
     const logPrefix = `[glob:fd: ${params.pattern}]`;
 
     logger.debug(`${logPrefix} Starting fd glob`, { searchPath });
@@ -282,6 +288,10 @@ export class WindowsSearchServiceImpl extends BaseFileSearch {
         '.git',
       ];
 
+      if (limit) {
+        args.push('--max-results', String(limit));
+      }
+
       const { stdout, exitCode } = await execa('fd', args, {
         reject: false,
         timeout: 30_000,
@@ -296,8 +306,9 @@ export class WindowsSearchServiceImpl extends BaseFileSearch {
         .trim()
         .split('\r\n')
         .filter((line) => line.trim());
+      const limitedFiles = limit ? files.slice(0, limit) : files;
 
-      const filesWithStats = await this.getFilesWithStats(files);
+      const filesWithStats = await this.getFilesWithStats(limitedFiles);
       const sortedFiles = filesWithStats.sort((a, b) => b.mtime - a.mtime).map((f) => f.path);
 
       logger.info(`${logPrefix} Glob completed`, { fileCount: sortedFiles.length });
@@ -317,12 +328,39 @@ export class WindowsSearchServiceImpl extends BaseFileSearch {
 
   private async globWithFastGlob(params: GlobFilesParams): Promise<GlobFilesResult> {
     const searchPath = params.scope || params.cwd || os.homedir() || process.cwd();
+    const limit = this.normalizePositiveLimit(params.limit);
     const logPrefix = `[glob:fast-glob: ${params.pattern}]`;
 
     logger.debug(`${logPrefix} Starting fast-glob`, { searchPath });
 
     try {
-      const files = await fg(params.pattern, {
+      if (!limit) {
+        const files = await fg(params.pattern, {
+          absolute: true,
+          cwd: searchPath,
+          // Windows hidden files use attributes, not dot prefix
+          dot: false,
+          ignore: ['**/node_modules/**', '**/.git/**'],
+          onlyFiles: false,
+          stats: true,
+        });
+
+        const sortedFiles = (files as unknown as Array<{ path: string; stats: Stats }>)
+          .sort((a, b) => b.stats.mtime.getTime() - a.stats.mtime.getTime())
+          .map((f) => f.path);
+
+        logger.info(`${logPrefix} Glob completed`, { fileCount: sortedFiles.length });
+
+        return {
+          engine: 'fast-glob',
+          files: sortedFiles,
+          success: true,
+          total_files: sortedFiles.length,
+        };
+      }
+
+      const files: Array<{ path: string; stats: Stats }> = [];
+      const stream = fg.stream(params.pattern, {
         absolute: true,
         cwd: searchPath,
         // Windows hidden files use attributes, not dot prefix
@@ -330,9 +368,14 @@ export class WindowsSearchServiceImpl extends BaseFileSearch {
         ignore: ['**/node_modules/**', '**/.git/**'],
         onlyFiles: false,
         stats: true,
-      });
+      }) as AsyncIterable<{ path: string; stats: Stats }>;
 
-      const sortedFiles = (files as unknown as Array<{ path: string; stats: Stats }>)
+      for await (const entry of stream) {
+        files.push(entry);
+        if (files.length >= limit) break;
+      }
+
+      const sortedFiles = files
         .sort((a, b) => b.stats.mtime.getTime() - a.stats.mtime.getTime())
         .map((f) => f.path);
 

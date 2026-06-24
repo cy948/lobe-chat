@@ -31,6 +31,27 @@ describe('LocalSystemExecutor', () => {
       });
 
       expect(globFilesMock).toHaveBeenCalledWith({
+        limit: 100,
+        pattern: '**/*.{png,jpg,jpeg,gif,webp}',
+        scope: '/tmp/images',
+      });
+    });
+
+    it('should preserve an explicit limit when delegating glob search', async () => {
+      globFilesMock.mockResolvedValue({
+        files: ['/tmp/images/a.png'],
+        success: true,
+        total_files: 1,
+      });
+
+      await localSystemExecutor.globFiles({
+        limit: 12,
+        pattern: '**/*.{png,jpg,jpeg,gif,webp}',
+        scope: '/tmp/images',
+      });
+
+      expect(globFilesMock).toHaveBeenCalledWith({
+        limit: 12,
         pattern: '**/*.{png,jpg,jpeg,gif,webp}',
         scope: '/tmp/images',
       });

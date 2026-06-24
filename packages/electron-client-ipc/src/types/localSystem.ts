@@ -345,6 +345,8 @@ export interface GrepContentResult {
 
 // Glob types — same rationale as Grep above.
 export interface GlobFilesParams {
+  /** Maximum number of results to collect. */
+  limit?: number;
   pattern: string;
   /** Working directory scope. When `pattern` is relative, it is joined with this scope. Defaults to the current working directory. */
   scope?: string;

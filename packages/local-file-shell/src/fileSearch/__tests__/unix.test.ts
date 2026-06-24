@@ -18,8 +18,11 @@ vi.mock('../../logger', () => ({
 }));
 
 const fgMock = vi.fn();
+const fgStreamMock = vi.fn();
 vi.mock('fast-glob', () => ({
-  default: (...args: unknown[]) => fgMock(...args),
+  default: Object.assign((...args: unknown[]) => fgMock(...args), {
+    stream: (...args: unknown[]) => fgStreamMock(...args),
+  }),
 }));
 
 const execaMock = vi.fn();
@@ -40,11 +43,13 @@ vi.mock('node:fs/promises', () => ({
 describe('UnixFileSearch glob fallback root', () => {
   beforeEach(() => {
     fgMock.mockReset();
+    fgStreamMock.mockReset();
     execaMock.mockReset();
     // Force the Unix tool selection to fall through to fast-glob so we
     // don't have to mock fd/find availability checks.
     execaMock.mockRejectedValue(new Error('command not found'));
     fgMock.mockResolvedValue([]);
+    fgStreamMock.mockReturnValue((async function* () {})());
   });
 
   it('runs glob inside the user home directory when no scope is provided', async () => {
@@ -84,5 +89,70 @@ describe('UnixFileSearch glob fallback root', () => {
     expect(options.cwd).toBe('/repo/packages');
     expect(options.ignore).toContain('**/node_modules/**');
     expect(options.ignore).toContain('**/.git/**');
+  });
+
+  it('passes the execution limit through to fd glob', async () => {
+    const toolDetector: ToolDetector = {
+      getBestTool: vi.fn().mockResolvedValue('fd'),
+    };
+    execaMock.mockResolvedValue({
+      exitCode: 0,
+      stdout: '/repo/packages/a.ts\n/repo/packages/b.ts\n',
+    });
+
+    const impl = new LinuxSearchServiceImpl(toolDetector);
+    await impl.glob({ limit: 7, pattern: '**/*.ts', scope: '/repo/packages' });
+
+    expect(execaMock).toHaveBeenCalledWith(
+      'fd',
+      expect.arrayContaining(['--max-results', '7']),
+      expect.anything(),
+    );
+  });
+
+  it('does not force a glob execution limit when the caller omits it', async () => {
+    const toolDetector: ToolDetector = {
+      getBestTool: vi.fn().mockResolvedValue('fd'),
+    };
+    execaMock.mockResolvedValue({
+      exitCode: 0,
+      stdout: '/repo/packages/a.ts\n',
+    });
+
+    const impl = new LinuxSearchServiceImpl(toolDetector);
+    await impl.glob({ pattern: '**/*.ts', scope: '/repo/packages' });
+
+    const [, args] = execaMock.mock.calls[0] as [string, string[]];
+    expect(args).not.toContain('--max-results');
+  });
+
+  it('uses bounded fast-glob streaming for find search fallback', async () => {
+    const toolDetector: ToolDetector = {
+      getBestTool: vi.fn().mockResolvedValue('find'),
+    };
+    fgStreamMock.mockReturnValue(
+      (async function* () {
+        yield '/repo/packages/a.ts';
+        yield '/repo/packages/b.ts';
+        yield '/repo/packages/c.ts';
+      })(),
+    );
+
+    const impl = new LinuxSearchServiceImpl(toolDetector);
+    const results = await impl.search({ directory: '/repo/packages', keywords: 'a', limit: 2 });
+
+    expect(execaMock).not.toHaveBeenCalledWith('find', expect.anything(), expect.anything());
+    expect(fgStreamMock).toHaveBeenCalledWith(
+      '**/*a*',
+      expect.objectContaining({
+        cwd: '/repo/packages',
+        onlyFiles: true,
+      }),
+    );
+    expect(results).toHaveLength(2);
+    expect(results.map((result) => result.path)).toEqual([
+      '/repo/packages/a.ts',
+      '/repo/packages/b.ts',
+    ]);
   });
 });

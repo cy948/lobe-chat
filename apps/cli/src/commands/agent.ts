@@ -677,15 +677,18 @@ async function pollAgentRunStatus(
       return;
     }
 
-    const status = r.status || r.state || 'unknown';
+    const status = r.status || r.state || r.currentState?.status || 'unknown';
     if (status !== lastStatus) {
       lastStatus = status;
-      const steps = r.stepCount !== undefined ? ` · ${r.stepCount} step(s)` : '';
+      const stepCount = r.stepCount ?? r.currentState?.stepCount ?? r.stats?.totalSteps;
+      const steps = stepCount !== undefined ? ` · ${stepCount} step(s)` : '';
       log.info(`Run status: ${colorStatus(status)}${steps}`);
     }
 
     if (TERMINAL_RUN_STATUSES.has(status)) {
-      if (r.error) log.error(`Run error: ${r.error}`);
+      const error = r.error || r.currentState?.error;
+      if (error)
+        log.error(`Run error: ${typeof error === 'string' ? error : JSON.stringify(error)}`);
       return;
     }
   }

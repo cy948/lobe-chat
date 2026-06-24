@@ -35,6 +35,7 @@ import { registerThreadCommand } from './commands/thread';
 import { registerTopicCommand } from './commands/topic';
 import { registerUserCommand } from './commands/user';
 import { registerVerifyCommand } from './commands/verify';
+import { executeToolCall } from './tools';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
@@ -46,6 +47,27 @@ export function createProgram() {
     .name('lh')
     .description('LobeHub CLI - manage and connect to LobeHub services')
     .version(version);
+
+  const internalToolWorker = program
+    .command('tool-worker')
+    .description('Internal command for isolated tool execution')
+    .requiredOption('--api <name>')
+    .requiredOption('--args-b64 <value>')
+    .option('--timeout <ms>')
+    .action(async (options: { api: string; argsB64: string; timeout?: string }) => {
+      const argsStr = Buffer.from(options.argsB64, 'base64').toString('utf8');
+      const parsedTimeout =
+        options.timeout && options.timeout.trim()
+          ? Number.parseInt(options.timeout, 10)
+          : undefined;
+      const result = await executeToolCall(
+        options.api,
+        argsStr,
+        Number.isFinite(parsedTimeout) ? parsedTimeout : undefined,
+      );
+      process.stdout.write(JSON.stringify(result));
+    });
+  internalToolWorker.helpInformation = () => '';
 
   registerLoginCommand(program);
   registerLogoutCommand(program);

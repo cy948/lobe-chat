@@ -10,6 +10,12 @@ export interface StateNode {
    */
   allowedToolApiNames?: string[];
   /**
+   * Optional step budget for an agent node. When the node reaches the budget,
+   * GraphAgent stops further tool-loop exploration and extracts the node output
+   * from the information already gathered.
+   */
+  maxAgentSteps?: number;
+  /**
    * JSON Schema for structured output. Forces LLM to produce conforming JSON.
    */
   outputSchema: Record<string, any>;
@@ -98,6 +104,10 @@ export interface GraphContext {
    * When false, we're at a graph-level transition point.
    */
   nodeActive: boolean;
+  /** Global runtime step count when the current node started. */
+  nodeStartStepCount?: number;
+  /** Whether the current node is being summarized after hitting its step budget. */
+  nodeStepLimitExceeded?: boolean;
   /** Accumulated structured outputs from completed nodes: stateId → output */
   store: Record<string, Record<string, any>>;
   /** Visit count per node (for detecting backtracks) */

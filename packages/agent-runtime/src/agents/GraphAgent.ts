@@ -82,6 +82,11 @@ export class GraphAgent implements Agent {
         return this.innerAgent.runner(context, state);
       }
 
+      if (this.hasNodeStepLimitExceeded(state, gc, node.maxAgentSteps)) {
+        gc.nodeStepLimitExceeded = true;
+        return this.startExtraction(state, gc);
+      }
+
       const instruction = await this.innerAgent.runner(context, state);
 
       // Intercept finish — agent loop done, now extract structured output
@@ -205,6 +210,8 @@ export class GraphAgent implements Agent {
 
     gc.nodeActive = true;
     gc.extracting = false;
+    gc.nodeStartStepCount = state.stepCount;
+    gc.nodeStepLimitExceeded = false;
     this.saveGraphContext(state, gc);
 
     const messages = [...state.messages, { content: fullPrompt, role: 'user' as const }];
@@ -234,6 +241,10 @@ export class GraphAgent implements Agent {
       `Based on the research and information gathered above, ` +
       `extract and summarize your findings into a JSON object that conforms to this schema:\n` +
       `\`\`\`json\n${JSON.stringify(node.outputSchema, null, 2)}\n\`\`\`\n` +
+      (gc.nodeStepLimitExceeded
+        ? `The current graph node reached its step budget. Do not continue exploration or invent missing facts. ` +
+          `Use only the information already present in the conversation. If the schema provides a way to mark unknown, blocked, or later-phase-only work, use it for unresolved items.\n`
+        : '') +
       `Only output valid JSON, no other text.`;
 
     gc.extracting = true;
@@ -264,6 +275,7 @@ export class GraphAgent implements Agent {
       delete state.metadata[GRAPH_PHASE_TOOLS_METADATA_KEY];
       delete state.metadata[GRAPH_PHASE_TOOL_POLICY_METADATA_KEY];
     }
+    gc.nodeStepLimitExceeded = false;
 
     const earlyExitNode = this.getEarlyExitNode();
     if (earlyExitNode && earlyExitNode === currentNodeId) {
@@ -438,6 +450,17 @@ export class GraphAgent implements Agent {
     const configuredNode = process.env[GRAPH_EXIT_AFTER_ENV];
     if (!configuredNode) return undefined;
     return this.graph.states[configuredNode] ? configuredNode : undefined;
+  }
+
+  private hasNodeStepLimitExceeded(
+    state: AgentState,
+    gc: GraphContext,
+    maxAgentSteps?: number,
+  ): boolean {
+    if (!maxAgentSteps || maxAgentSteps <= 0) return false;
+
+    const nodeStartStepCount = gc.nodeStartStepCount ?? state.stepCount;
+    return state.stepCount - nodeStartStepCount >= maxAgentSteps;
   }
 
   private saveGraphContext(state: AgentState, gc: GraphContext): void {

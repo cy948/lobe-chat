@@ -53,6 +53,7 @@ const testGraph: ReasoningGraph = {
   name: 'test-graph',
   states: {
     inspection: {
+      maxAgentSteps: 2,
       outputSchema: {
         additionalProperties: false,
         properties: { plan: { type: 'string' } },
@@ -136,5 +137,50 @@ describe('GraphAgent', () => {
       inspection: { plan: 'inspect the repo' },
     });
     expect((state.metadata as any)[GRAPH_CONTEXT_KEY].nodeActive).toBe(false);
+  });
+
+  it('starts extraction when an agent node reaches its step budget', async () => {
+    const agent = new GraphAgent({
+      agentConfig: { maxSteps: 100 },
+      graph: testGraph,
+      operationId: 'graph-test-session',
+      modelRuntimeConfig: { model: 'gpt-4o-mini', provider: 'openai' },
+    });
+
+    const state = createMockState({
+      messages: [
+        { role: 'user', content: 'Inspect' },
+        { role: 'assistant', content: 'I found partial evidence.' },
+      ] as any,
+      modelRuntimeConfig: { model: 'gpt-4o-mini', provider: 'openai' },
+      metadata: {
+        [GRAPH_CONTEXT_KEY]: {
+          backtrackCount: 0,
+          currentNode: 'inspection',
+          extracting: false,
+          input: 'Solve the task',
+          nodeActive: true,
+          nodeStartStepCount: 3,
+          store: {},
+          visitCount: { inspection: 1 },
+        },
+      },
+      stepCount: 5,
+    });
+
+    const result = await agent.runner(createMockContext('tool_result'), state);
+
+    expect(result).toMatchObject({
+      payload: {
+        model: 'gpt-4o-mini',
+        provider: 'openai',
+        tools: [],
+      },
+      stepLabel: 'inspection:extract',
+      type: 'call_llm',
+    });
+    expect((result as any).payload.messages.at(-1).content).toContain('reached its step budget');
+    expect((state.metadata as any)[GRAPH_CONTEXT_KEY].extracting).toBe(true);
+    expect((state.metadata as any)[GRAPH_CONTEXT_KEY].nodeStepLimitExceeded).toBe(true);
   });
 });

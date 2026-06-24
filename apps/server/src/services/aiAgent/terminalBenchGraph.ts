@@ -23,6 +23,7 @@ export const terminalBenchGraph: ReasoningGraph = {
     inspection: {
       type: 'agent',
       allowedToolApiNames: inspectionAllowedToolApiNames,
+      maxAgentSteps: 20,
       prompt: inspectionPrompt,
       outputSchema: inspectionSchema,
     },

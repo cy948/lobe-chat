@@ -394,7 +394,10 @@ export class GraphAgent implements Agent {
   }
 
   private renderPrompt(template: string, gc: GraphContext): string {
-    return template.replaceAll(/\{\{(\w+)\.(\w+)\}\}/g, (_, stateId, field) => {
+    const rawContextNodes: string[] = [];
+    const seenRawContextNodes = new Set<string>();
+
+    const rendered = template.replaceAll(/\{\{(\w+)\.(\w+)\}\}/g, (_, stateId, field) => {
       if (stateId === 'input' && field === 'question') {
         return gc.input;
       }
@@ -402,9 +405,31 @@ export class GraphAgent implements Agent {
       const data = gc.store[stateId];
       if (!data) return `(${stateId} has no data yet)`;
       const val = data[field];
-      if (val === undefined) return `(${stateId}.${field} has no data)`;
+      if (val === undefined) {
+        const missingFieldTag = `<missing_field node="${stateId}" field="${field}" />`;
+        const rawValue = data._raw;
+
+        if (
+          typeof rawValue === 'string' &&
+          rawValue.length > 0 &&
+          !seenRawContextNodes.has(stateId)
+        ) {
+          seenRawContextNodes.add(stateId);
+          rawContextNodes.push(stateId);
+        }
+
+        return missingFieldTag;
+      }
       return typeof val === 'string' ? val : JSON.stringify(val, null, 2);
     });
+
+    if (rawContextNodes.length === 0) return rendered;
+
+    const rawContexts = rawContextNodes
+      .map((stateId) => `<raw_fields node="${stateId}">\n${gc.store[stateId]._raw}\n</raw_fields>`)
+      .join('\n');
+
+    return `${rendered}\n\n<raw_contexts>\n${rawContexts}\n</raw_contexts>`;
   }
 
   private extractStructuredOutput(state: AgentState): Record<string, any> {

@@ -183,4 +183,87 @@ describe('GraphAgent', () => {
     expect((state.metadata as any)[GRAPH_CONTEXT_KEY].extracting).toBe(true);
     expect((state.metadata as any)[GRAPH_CONTEXT_KEY].nodeStepLimitExceeded).toBe(true);
   });
+
+  it('appends raw fallback contexts once per node when referenced fields are missing', async () => {
+    const graph: ReasoningGraph = {
+      entry: 'inspection',
+      maxBacktracks: 0,
+      name: 'raw-fallback-graph',
+      states: {
+        inspection: {
+          outputSchema: {
+            additionalProperties: false,
+            properties: { plan: { type: 'string' } },
+            required: ['plan'],
+            type: 'object',
+          },
+          prompt: 'Inspect',
+          type: 'agent',
+        },
+        working: {
+          outputSchema: {
+            additionalProperties: false,
+            properties: { summary: { type: 'string' } },
+            required: ['summary'],
+            type: 'llm',
+          },
+          prompt:
+            'Use {{inspection.plan}} and {{inspection.summary}} and {{inspection._raw}} to continue.',
+          type: 'llm',
+        },
+      },
+      terminal: 'working',
+      transitions: [{ condition: 'true', from: 'inspection', to: 'working' }],
+    };
+
+    const agent = new GraphAgent({
+      agentConfig: { maxSteps: 100 },
+      graph,
+      operationId: 'graph-test-session',
+      modelRuntimeConfig: { model: 'gpt-4o-mini', provider: 'openai' },
+    });
+
+    const state = createMockState({
+      metadata: {
+        [GRAPH_CONTEXT_KEY]: {
+          backtrackCount: 0,
+          currentNode: 'working',
+          extracting: false,
+          input: 'Solve the task',
+          nodeActive: false,
+          store: {
+            inspection: {
+              _raw: 'raw inspection result',
+            },
+          },
+          visitCount: { inspection: 1, working: 1 },
+        },
+      },
+      modelRuntimeConfig: { model: 'gpt-4o-mini', provider: 'openai' },
+    });
+
+    const result = await agent.runner(createMockContext('init'), state);
+
+    expect(result).toMatchObject({
+      payload: {
+        model: 'gpt-4o-mini',
+        provider: 'openai',
+        tools: [],
+      },
+      stepLabel: 'working',
+      type: 'call_llm',
+    });
+
+    const prompt = (result as any).payload.messages.at(-1).content;
+
+    expect(prompt).toContain('<missing_field node="inspection" field="plan" />');
+    expect(prompt).toContain('<missing_field node="inspection" field="summary" />');
+    expect(prompt).toContain(
+      '<raw_contexts>\n<raw_fields node="inspection">\nraw inspection result\n</raw_fields>\n</raw_contexts>',
+    );
+    expect(prompt.match(/<raw_fields node="inspection">/g)).toHaveLength(1);
+    expect(prompt.indexOf('<missing_field node="inspection" field="summary" />')).toBeLessThan(
+      prompt.indexOf('<raw_contexts>'),
+    );
+  });
 });

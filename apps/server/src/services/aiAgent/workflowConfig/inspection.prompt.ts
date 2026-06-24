@@ -4,15 +4,15 @@ export const inspectionPrompt =
   'Use available read-only tools to understand what needs to be delivered, what files or commands matter, and what constraints are visible.\n\n' +
   'Do not edit files, run mutation commands, or implement the solution in this phase.\n\n' +
   'Return intent as a short stable statement of the task goal. Do not include commands, validation steps, or implementation detail in intent.\n\n' +
-  'Return subgoals as a short list of structured items. Each item must include name, type, description, relevant_files, and handoff_note.\n\n' +
+  'Return subgoals as a short list of structured items. Before writing subgoals, identify the authoritative facts from the original task and confirmed read-only evidence. Organize subgoals around those facts; do not replace them with a broader, safer, or more generic version of the task. Each item must include name, type, description, relevant_files, and handoff_note.\n\n' +
   'Use type delivery_contract for hard requirements such as paths, ports, APIs, output formats, service names, or verifier-facing files.\n' +
-  'For delivery_contract, preserve exact verifier-facing details: literal paths, hostnames, ports, RPC or API names, CLI arguments, output files, schema fields, service lifetime, background process expectations, observable behavior, numeric representation, units, precision, and required call ordering.\n' +
-  'Use type direct_action for work the next phase can execute, such as edits, commands, installs, service startup, or validation runs.\n' +
+  'For delivery_contract, preserve immutable verifier-facing details exactly: literal paths, hostnames, ports, RPC or API names, CLI arguments, output files, schema fields, known contaminated scope, placeholder rules, service lifetime, background process expectations, observable behavior, numeric representation, units, precision, and required call ordering. Behavioral protocols are contracts too: argument meanings, call sequence, persistence, waiting, side effects, and error-visible output belong here when tests observe them.\n' +
+  'Use type direct_action for work the next phase can execute, such as edits, commands, installs, service startup, or validation runs. A direct_action is a handoff item for working, not permission to perform the action during inspection.\n' +
   'Use type exploration_goal for flexible implementation goals where the approach can change.\n' +
   'Use type performance_target for measurable outcomes that require iteration or observation.\n' +
-  'Use type working_only_unknown for questions that need execution, mutation, validation, or runtime observation.\n\n' +
+  'Use type working_only_unknown for questions that need execution, mutation, validation, runtime observation, service startup, or repeated tuning. Do not keep probing these in inspection once the phase policy blocks them; transfer them clearly to working.\n\n' +
   'Separate hard constraints from tentative strategy. Do not present a guessed implementation path, algorithm, parameter value, or exploit technique as a delivery_contract unless the task makes it mandatory.\n' +
   'Do not broaden the authoritative scope. If the task points to specific files, datasets, inputs, or interfaces, keep that scope exact instead of inventing a general scan or extra deliverable.\n' +
-  'When an interface has behavioral semantics, capture the behavior, not only the symbol name: argument meanings, call sequence, persistence, waiting, side effects, and error-visible output all belong in the handoff.\n\n' +
+  'When blocked, budget-limited, or uncertain, still output one complete JSON object for intent and subgoals. Do not continue asking for more exploration, do not output the schema, and do not output multiple JSON objects.\n\n' +
   'In name, use a short stable label such as api-contract, implement-parser, or validation-run.\n' +
-  'In description, state the goal or constraint. In relevant_files, list known paths or use an empty list. In handoff_note, say what the next phase should preserve, do, test, or investigate.';
+  'In description, state the goal or constraint. In relevant_files, list known paths or use an empty list. In handoff_note, distinguish confirmed facts from unresolved risks, then say what working should preserve, do, test, or investigate.';

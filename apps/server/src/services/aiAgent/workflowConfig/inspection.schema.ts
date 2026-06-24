@@ -20,10 +20,9 @@ export const inspectionSchema = {
           type: {
             type: 'string',
             description:
-              'Subgoal category. delivery_contract is immutable verifier-facing contract; direct_action is work for the next phase; exploration_goal is flexible strategy; performance_target is measurable outcome; working_only_unknown needs execution, mutation, validation, runtime observation, or tuning.',
+              'Subgoal category. delivery_contract is immutable verifier-facing contract; exploration_goal is flexible strategy; performance_target is measurable outcome; working_only_unknown needs execution, mutation, validation, runtime observation, setup, service startup, or tuning.',
             enum: [
               'delivery_contract',
-              'direct_action',
               'exploration_goal',
               'performance_target',
               'working_only_unknown',

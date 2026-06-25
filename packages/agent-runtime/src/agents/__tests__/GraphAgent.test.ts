@@ -139,6 +139,47 @@ describe('GraphAgent', () => {
     expect((state.metadata as any)[GRAPH_CONTEXT_KEY].nodeActive).toBe(false);
   });
 
+  it('stores schema echo extraction output as raw fallback instead of structured data', async () => {
+    process.env.TB_GRAPH_EXIT_AFTER = 'inspection';
+
+    const agent = new GraphAgent({
+      agentConfig: { maxSteps: 100 },
+      graph: testGraph,
+      operationId: 'graph-test-session',
+      modelRuntimeConfig: { model: 'gpt-4o-mini', provider: 'openai' },
+    });
+
+    const schemaEcho = {
+      additionalProperties: false,
+      properties: {
+        plan: { type: 'string' },
+      },
+      required: ['plan'],
+      type: 'object',
+    };
+
+    const state = createMockState({
+      messages: [{ role: 'assistant', content: JSON.stringify(schemaEcho) }] as any,
+      metadata: {
+        [GRAPH_CONTEXT_KEY]: {
+          backtrackCount: 0,
+          currentNode: 'inspection',
+          extracting: true,
+          input: 'Solve the task',
+          nodeActive: true,
+          store: {},
+          visitCount: { inspection: 1 },
+        },
+      },
+    });
+
+    await agent.runner(createMockContext('llm_result'), state);
+
+    expect((state.metadata as any)[GRAPH_CONTEXT_KEY].store).toEqual({
+      inspection: { _raw: JSON.stringify(schemaEcho) },
+    });
+  });
+
   it('starts extraction when an agent node reaches its step budget', async () => {
     const agent = new GraphAgent({
       agentConfig: { maxSteps: 100 },
@@ -179,7 +220,20 @@ describe('GraphAgent', () => {
       stepLabel: 'inspection:extract',
       type: 'call_llm',
     });
-    expect((result as any).payload.messages.at(-1).content).toContain('reached its step budget');
+    expect((result as any).payload.messages.at(-1).content).toContain('reached its action budget');
+    expect((result as any).payload.messages.at(-1).content).toContain('Do not request tools');
+    expect((result as any).payload.messages.at(-1).content).toContain(
+      'This extraction step has no tools available',
+    );
+    expect((result as any).payload.messages.at(-1).content).toContain(
+      'brief natural-language explanation',
+    );
+    expect((result as any).payload.messages.at(-1).content).toContain(
+      'markdown fenced code block tagged json',
+    );
+    expect((result as any).payload.messages.at(-1).content).not.toContain(
+      'Only output valid JSON, no other text.',
+    );
     expect((state.metadata as any)[GRAPH_CONTEXT_KEY].extracting).toBe(true);
     expect((state.metadata as any)[GRAPH_CONTEXT_KEY].nodeStepLimitExceeded).toBe(true);
   });

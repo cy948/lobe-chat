@@ -239,13 +239,22 @@ export class GraphAgent implements Agent {
 
     const extractionPrompt =
       `Based on the research and information gathered above, ` +
-      `extract and summarize your findings into a JSON object that conforms to this schema:\n` +
+      `format the conclusions you already reached into a JSON object that conforms to this schema:\n` +
       `\`\`\`json\n${JSON.stringify(node.outputSchema, null, 2)}\n\`\`\`\n` +
+      `The goal is formatting, not new exploration or a new solution attempt. The schema is only a template, not the answer. Do not output the schema itself, ` +
+      `and do not output top-level "type", "properties", or "required" unless the task explicitly asks for a JSON Schema. ` +
+      `Fill the schema with concrete values from the conversation.\n` +
+      `If your last draft says you are about to write, implement, run, or continue work, ` +
+      `convert that into a handoff summary instead: preserve the final delivery contract, flexible approach, unresolved risks, and later-phase work.\n` +
+      `You may write a brief natural-language explanation before the final answer. Put the final JSON object in exactly one markdown fenced code block tagged json. ` +
+      `Do not put any other JSON code block in your response. Example format only, do not copy the example values:\n` +
+      `I converted the gathered notes into the requested fields.\n` +
+      `\`\`\`json\n{"fieldName":"concrete value from the conversation","items":[{"name":"known item","status":"unknown until working"}]}\n\`\`\`\n` +
       (gc.nodeStepLimitExceeded
-        ? `The current graph node reached its step budget. Do not continue exploration or invent missing facts. ` +
-          `Use only the information already present in the conversation. If the schema provides a way to mark unknown, blocked, or later-phase-only work, use it for unresolved items.\n`
-        : '') +
-      `Only output valid JSON, no other text.`;
+        ? `The current graph node reached its action budget. Do not request tools, do not describe another tool call, and do not continue implementation. ` +
+          `This extraction step has no tools available. Your only remaining task is to produce the phase handoff document and the fenced JSON object from information already present in the conversation. ` +
+          `If the schema provides a way to mark unknown, blocked, or later-phase-only work, use it for unresolved items.\n`
+        : '');
 
     gc.extracting = true;
     this.saveGraphContext(state, gc);
@@ -461,10 +470,29 @@ export class GraphAgent implements Agent {
     }
 
     try {
-      return JSON.parse(jsonStr);
+      const parsed = JSON.parse(jsonStr);
+      if (this.isSchemaEcho(parsed)) return { _raw: content };
+      return parsed;
     } catch {
       return { _raw: content };
     }
+  }
+
+  private isSchemaEcho(value: unknown): boolean {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+
+    const output = value as Record<string, unknown>;
+    if (!('type' in output) || !('properties' in output)) return false;
+
+    const hasConcreteFields = Object.keys(output).some(
+      (key) =>
+        key !== 'type' &&
+        key !== 'properties' &&
+        key !== 'required' &&
+        key !== 'additionalProperties',
+    );
+
+    return !hasConcreteFields;
   }
 
   private getGraphContext(state: AgentState): GraphContext | null {

@@ -323,39 +323,12 @@ export class WindowsSearchServiceImpl extends BaseFileSearch {
 
   private async globWithFastGlob(params: GlobFilesParams): Promise<GlobFilesResult> {
     const searchPath = params.scope || params.cwd || os.homedir() || process.cwd();
-    const limit = this.normalizePositiveLimit(params.limit);
     const logPrefix = `[glob:fast-glob: ${params.pattern}]`;
 
     logger.debug(`${logPrefix} Starting fast-glob`, { searchPath });
 
     try {
-      if (!limit) {
-        const files = await fg(params.pattern, {
-          absolute: true,
-          cwd: searchPath,
-          // Windows hidden files use attributes, not dot prefix
-          dot: false,
-          ignore: ['**/node_modules/**', '**/.git/**'],
-          onlyFiles: false,
-          stats: true,
-        });
-
-        const sortedFiles = (files as unknown as Array<{ path: string; stats: Stats }>)
-          .sort((a, b) => b.stats.mtime.getTime() - a.stats.mtime.getTime())
-          .map((f) => f.path);
-
-        logger.info(`${logPrefix} Glob completed`, { fileCount: sortedFiles.length });
-
-        return {
-          engine: 'fast-glob',
-          files: sortedFiles,
-          success: true,
-          total_files: sortedFiles.length,
-        };
-      }
-
-      const files: Array<{ path: string; stats: Stats }> = [];
-      const stream = fg.stream(params.pattern, {
+      const files = await fg(params.pattern, {
         absolute: true,
         cwd: searchPath,
         // Windows hidden files use attributes, not dot prefix
@@ -363,14 +336,9 @@ export class WindowsSearchServiceImpl extends BaseFileSearch {
         ignore: ['**/node_modules/**', '**/.git/**'],
         onlyFiles: false,
         stats: true,
-      }) as AsyncIterable<{ path: string; stats: Stats }>;
+      });
 
-      for await (const entry of stream) {
-        files.push(entry);
-        if (files.length >= limit) break;
-      }
-
-      const sortedFiles = files
+      const sortedFiles = (files as unknown as Array<{ path: string; stats: Stats }>)
         .sort((a, b) => b.stats.mtime.getTime() - a.stats.mtime.getTime())
         .map((f) => f.path);
 

@@ -53,10 +53,10 @@ const fileSearch: BaseFileSearch = createFileSearchModule();
 const normalizeLimit = (limit?: number) =>
   Number.isFinite(limit) && limit && limit > 0 ? Math.floor(limit) : DEFAULT_FILE_SEARCH_LIMIT;
 
-const globFilesWithFallbackFactory = async (params: GlobFilesParams) =>
+const globLocalFiles = async (params: GlobFilesParams) =>
   fileSearch.glob({ ...params, limit: normalizeLimit(params.limit) });
 
-const searchFilesWithFallbackFactory = async (params: SearchFilesParams) =>
+const searchLocalFiles = async (params: SearchFilesParams) =>
   fileSearch.search({ ...params, limit: normalizeLimit(params.limit) });
 
 /**
@@ -68,7 +68,7 @@ const searchFilesWithFallbackFactory = async (params: SearchFilesParams) =>
 const localSystemService: ILocalSystemService = {
   editLocalFile,
   getCommandOutput,
-  globFiles: globFilesWithFallbackFactory,
+  globFiles: globLocalFiles,
   grepContent,
   killCommand,
   listLocalFiles,
@@ -77,7 +77,7 @@ const localSystemService: ILocalSystemService = {
   readLocalFiles: unsupported('readLocalFiles'),
   renameLocalFile: unsupported('renameLocalFile'),
   runCommand,
-  searchLocalFiles: searchFilesWithFallbackFactory,
+  searchLocalFiles,
   writeFile: writeLocalFile,
 };
 

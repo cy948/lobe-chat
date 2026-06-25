@@ -163,6 +163,8 @@ const ExecAgentSchema = z
     existingMessageIds: z.array(z.string()).optional().default([]),
     /** File IDs of already-uploaded attachments to attach to the new user message */
     fileIds: z.array(z.string()).optional(),
+    /** Maximum runtime steps before force-finish */
+    maxSteps: z.number().min(1).max(1000).optional(),
     /** Parent message ID for regeneration/continue (skip user message creation, branch from this message) */
     parentMessageId: z.string().optional(),
     /** The user input/prompt */
@@ -639,6 +641,7 @@ export const aiAgentRouter = router({
       deviceId,
       existingMessageIds = [],
       fileIds,
+      maxSteps,
       parentMessageId,
       resumeApproval,
       trigger,
@@ -655,6 +658,7 @@ export const aiAgentRouter = router({
         deviceId,
         existingMessageIds,
         fileIds,
+        maxSteps,
         parentMessageId,
         prompt,
         // When parentMessageId is provided, this is a regeneration/continue or a

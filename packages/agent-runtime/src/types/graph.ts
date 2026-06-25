@@ -37,12 +37,24 @@ export interface StateNode {
  */
 export interface Transition {
   /**
+   * State-store node ids to clear when this transition is taken.
+   * Use this for backtracks where stale downstream outputs should not survive.
+   */
+  clearNodes?: string[];
+  /**
    * JS expression evaluated programmatically (NOT by LLM).
    * The `output` variable is injected with the current node's structured output.
    * Example: 'output.confidence < 0.4 && output.falsified.length > 0'
    */
   condition: string;
   from: string;
+  /**
+   * Optional explicit handoff from this transition's output to the next node.
+   * When omitted, no transition handoff is written.
+   */
+  handoff?: {
+    fields?: string[];
+  };
   to: string;
 }
 
@@ -94,6 +106,8 @@ export interface GraphContext {
    * After the agent loop finishes, an extra LLM call extracts structured output.
    */
   extracting?: boolean;
+  /** Number of extraction calls issued for the current node execution */
+  extractionAttempts?: number;
   /** Last accepted phase transition, injected into the next node prompt */
   handoff?: GraphPhaseHandoff;
   /** The original user input/question */

@@ -413,6 +413,50 @@ describe('agent command', () => {
       );
     });
 
+    it('should pass --max-steps to execAgent', async () => {
+      mockTrpcClient.aiAgent.execAgent.mutate.mockResolvedValue({
+        operationId: 'op-max-steps',
+        success: true,
+      });
+
+      const program = createProgram();
+      await program.parseAsync([
+        'node',
+        'test',
+        'agent',
+        'run',
+        '--agent-id',
+        'a1',
+        '--prompt',
+        'Hi',
+        '--max-steps',
+        '200',
+      ]);
+
+      expect(mockTrpcClient.aiAgent.execAgent.mutate).toHaveBeenCalledWith(
+        expect.objectContaining({ agentId: 'a1', maxSteps: 200, prompt: 'Hi' }),
+      );
+    });
+
+    it('should exit when --max-steps is invalid', async () => {
+      const program = createProgram();
+      await program.parseAsync([
+        'node',
+        'test',
+        'agent',
+        'run',
+        '--agent-id',
+        'a1',
+        '--prompt',
+        'Hi',
+        '--max-steps',
+        '0',
+      ]);
+
+      expect(log.error).toHaveBeenCalledWith(expect.stringContaining('--max-steps'));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
     it('should exit when neither --agent-id nor --slug provided', async () => {
       const program = createProgram();
       await program.parseAsync(['node', 'test', 'agent', 'run', '--prompt', 'Hello']);

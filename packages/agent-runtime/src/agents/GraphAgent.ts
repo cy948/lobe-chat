@@ -1,3 +1,5 @@
+import Ajv from 'ajv';
+
 import type {
   Agent,
   AgentInstruction,
@@ -8,6 +10,7 @@ import type {
   GraphContext,
   GraphPhaseToolPolicy,
   ReasoningGraph,
+  Transition,
 } from '../types';
 import { GeneralChatAgent } from './GeneralChatAgent';
 import {
@@ -18,6 +21,8 @@ import {
 
 const GRAPH_CONTEXT_KEY = '__graphContext';
 const GRAPH_EXIT_AFTER_ENV = 'TB_GRAPH_EXIT_AFTER';
+const MAX_EXTRACTION_ATTEMPTS = 3;
+const ajv = new Ajv({ allErrors: true, strict: false });
 
 /**
  * GraphAgent — A graph-driven Agent that decorates GeneralChatAgent.
@@ -131,6 +136,7 @@ export class GraphAgent implements Agent {
     const gc: GraphContext = {
       currentNode: this.graph.entry,
       nodeActive: false,
+      extractionAttempts: 0,
       store: {},
       backtrackCount: 0,
       visitCount: {},
@@ -161,6 +167,7 @@ export class GraphAgent implements Agent {
 
     const visits = (gc.visitCount[gc.currentNode] ?? 0) + 1;
     gc.visitCount[gc.currentNode] = visits;
+    gc.extractionAttempts = 0;
 
     if (visits > 1) {
       gc.backtrackCount++;
@@ -232,6 +239,8 @@ export class GraphAgent implements Agent {
    */
   private startExtraction(state: AgentState, gc: GraphContext): AgentInstruction {
     const node = this.graph.states[gc.currentNode];
+    const attemptNumber = (gc.extractionAttempts ?? 0) + 1;
+    gc.extractionAttempts = attemptNumber;
     if (state.metadata) {
       delete state.metadata[GRAPH_PHASE_TOOLS_METADATA_KEY];
       delete state.metadata[GRAPH_PHASE_TOOL_POLICY_METADATA_KEY];
@@ -244,9 +253,14 @@ export class GraphAgent implements Agent {
       `The goal is formatting, not new exploration or a new solution attempt. The schema is only a template, not the answer. Do not output the schema itself, ` +
       `and do not output top-level "type", "properties", or "required" unless the task explicitly asks for a JSON Schema. ` +
       `Fill the schema with concrete values from the conversation.\n` +
+      `Populate the full schema from the conversation. All required fields in the schema are mandatory. ` +
+      `Do not omit required fields, even on retries.\n` +
       `If your last draft says you are about to write, implement, run, or continue work, ` +
       `convert that into a handoff summary instead: preserve the final delivery contract, flexible approach, unresolved risks, and later-phase work.\n` +
       `You may write a brief natural-language explanation before the final answer. Put the final JSON object in exactly one markdown fenced code block tagged json. ` +
+      (attemptNumber > 1
+        ? `This is extraction attempt ${attemptNumber} of ${MAX_EXTRACTION_ATTEMPTS}. Try again from scratch and return the most complete schema-valid JSON object you can produce.\n`
+        : '') +
       `Do not put any other JSON code block in your response. Example format only, do not copy the example values:\n` +
       `I converted the gathered notes into the requested fields.\n` +
       `\`\`\`json\n{"fieldName":"concrete value from the conversation","items":[{"name":"known item","status":"unknown until working"}]}\n\`\`\`\n` +
@@ -276,8 +290,32 @@ export class GraphAgent implements Agent {
    */
   private onNodeComplete(state: AgentState, gc: GraphContext): AgentInstruction {
     const currentNodeId = gc.currentNode;
+    const node = this.graph.states[currentNodeId];
 
     const output = this.extractStructuredOutput(state);
+    const isStructured = this.isExtractionAcceptable(node?.outputSchema, output);
+    if (!isStructured) {
+      if ((gc.extractionAttempts ?? 0) < MAX_EXTRACTION_ATTEMPTS) {
+        gc.extracting = true;
+        this.saveGraphContext(state, gc);
+        return this.startExtraction(state, gc);
+      }
+
+      gc.store[currentNodeId] = output;
+      gc.nodeActive = false;
+      if (state.metadata) {
+        delete state.metadata[GRAPH_PHASE_TOOLS_METADATA_KEY];
+        delete state.metadata[GRAPH_PHASE_TOOL_POLICY_METADATA_KEY];
+      }
+      gc.nodeStepLimitExceeded = false;
+      this.saveGraphContext(state, gc);
+      return {
+        reason: 'error_recovery',
+        reasonDetail: `Graph "${this.graph.name}" could not extract structured output for node "${currentNodeId}" after ${MAX_EXTRACTION_ATTEMPTS} attempts`,
+        type: 'finish',
+      };
+    }
+
     gc.store[currentNodeId] = output;
     gc.nodeActive = false;
     if (state.metadata) {
@@ -297,9 +335,9 @@ export class GraphAgent implements Agent {
     }
 
     // Evaluate transitions
-    const nextNodeId = this.evaluateTransitions(gc, currentNodeId, output);
+    const transition = this.evaluateTransitions(gc, currentNodeId, output);
 
-    if (!nextNodeId) {
+    if (!transition) {
       if (currentNodeId === this.graph.terminal) {
         this.saveGraphContext(state, gc);
         if (this.hasBlockedBacktrackTransition(gc, currentNodeId, output)) {
@@ -328,18 +366,12 @@ export class GraphAgent implements Agent {
       };
     }
 
+    const nextNodeId = transition.to;
+
+    this.applyTransitionEffects(gc, transition, currentNodeId, output);
+
     // Move to next node
     gc.currentNode = nextNodeId;
-
-    // If backtracking, clear intermediate store entries
-    const nodeKeys = Object.keys(this.graph.states);
-    const fromIdx = nodeKeys.indexOf(currentNodeId);
-    const toIdx = nodeKeys.indexOf(nextNodeId);
-    if (toIdx < fromIdx) {
-      for (let i = toIdx; i <= fromIdx; i++) {
-        delete gc.store[nodeKeys[i]];
-      }
-    }
 
     this.saveGraphContext(state, gc);
     return this.startNode(gc, state);
@@ -349,7 +381,7 @@ export class GraphAgent implements Agent {
     gc: GraphContext,
     currentNodeId: string,
     output: Record<string, any>,
-  ): string | null {
+  ): Transition | null {
     const backtrackLimitReached = gc.backtrackCount >= this.graph.maxBacktracks;
 
     for (const t of this.graph.transitions) {
@@ -361,14 +393,57 @@ export class GraphAgent implements Agent {
           // when within the backtrack limit. Otherwise fall through to linear advance.
           const isBacktrack = (gc.visitCount[t.to] ?? 0) > 0;
           if (isBacktrack && backtrackLimitReached) continue;
-          return t.to;
+          return t;
         }
       } catch {
         // condition eval failed, skip
       }
     }
 
-    return this.getNextState(currentNodeId);
+    const nextState = this.getNextState(currentNodeId);
+    return nextState ? { condition: 'true', from: currentNodeId, to: nextState } : null;
+  }
+
+  private applyTransitionEffects(
+    gc: GraphContext,
+    transition: Transition,
+    currentNodeId: string,
+    output: Record<string, any>,
+  ): void {
+    if (transition.handoff) {
+      gc.handoff = {
+        from: currentNodeId,
+        output: this.pickHandoffOutput(output, transition.handoff.fields),
+        to: transition.to,
+      };
+    } else {
+      delete gc.handoff;
+    }
+
+    const nodesToClear =
+      transition.clearNodes ?? this.getDefaultBacktrackClearNodes(currentNodeId, transition.to);
+    for (const nodeId of nodesToClear) {
+      delete gc.store[nodeId];
+    }
+  }
+
+  private pickHandoffOutput(output: Record<string, any>, fields?: string[]): Record<string, any> {
+    if (!fields || fields.length === 0) return output;
+
+    const handoffOutput: Record<string, any> = {};
+    for (const field of fields) {
+      if (output[field] !== undefined) handoffOutput[field] = output[field];
+    }
+    return handoffOutput;
+  }
+
+  private getDefaultBacktrackClearNodes(currentNodeId: string, nextNodeId: string): string[] {
+    const nodeKeys = Object.keys(this.graph.states);
+    const fromIdx = nodeKeys.indexOf(currentNodeId);
+    const toIdx = nodeKeys.indexOf(nextNodeId);
+    if (toIdx < 0 || fromIdx < 0 || toIdx >= fromIdx) return [];
+
+    return nodeKeys.slice(toIdx, fromIdx + 1);
   }
 
   private hasBlockedBacktrackTransition(
@@ -407,6 +482,12 @@ export class GraphAgent implements Agent {
     const seenRawContextNodes = new Set<string>();
 
     const rendered = template.replaceAll(/\{\{(\w+)\.(\w+)\}\}/g, (_, stateId, field) => {
+      if (stateId === 'handoff') {
+        const val = gc.handoff?.[field as keyof GraphContext['handoff']];
+        if (val === undefined) return `(handoff has no ${field} yet)`;
+        return typeof val === 'string' ? val : JSON.stringify(val, null, 2);
+      }
+
       if (stateId === 'input' && field === 'question') {
         return gc.input;
       }
@@ -493,6 +574,30 @@ export class GraphAgent implements Agent {
     );
 
     return !hasConcreteFields;
+  }
+
+  private isExtractionAcceptable(
+    schema: Record<string, any> | undefined,
+    value: Record<string, any>,
+  ): boolean {
+    if (!schema) return false;
+
+    const decisionSchema = schema.properties?.decision;
+    if (decisionSchema) {
+      if (typeof value.decision !== 'string') return false;
+      const allowedDecisions = Array.isArray(decisionSchema.enum) ? decisionSchema.enum : null;
+      return !allowedDecisions || allowedDecisions.includes(value.decision);
+    }
+
+    return this.isSchemaEcho(value) ? false : this.isStructuredJson(schema, value);
+  }
+
+  private isStructuredJson(schema: Record<string, any>, value: Record<string, any>): boolean {
+    try {
+      return ajv.validate(schema, value) === true;
+    } catch {
+      return false;
+    }
   }
 
   private getGraphContext(state: AgentState): GraphContext | null {

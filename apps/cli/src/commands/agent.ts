@@ -242,6 +242,7 @@ export function registerAgentCommand(program: Command) {
       "Disable headless mode and wait for human approval on tool calls (default: headless — tools auto-run, matching the CLI's non-interactive nature)",
     )
     .option('--json', 'Output full JSON event stream')
+    .option('--max-steps <n>', 'Maximum runtime steps before force-finish')
     .option('-v, --verbose', 'Show detailed tool call info')
     .option('--replay <file>', 'Replay events from a saved JSON file (offline)')
     .option('--sse', 'Force SSE stream instead of WebSocket gateway')
@@ -252,6 +253,7 @@ export function registerAgentCommand(program: Command) {
         device?: string;
         headless?: boolean;
         json?: boolean;
+        maxSteps?: string;
         prompt?: string;
         replay?: string;
         slug?: string;
@@ -278,6 +280,15 @@ export function registerAgentCommand(program: Command) {
           log.error('--prompt is required.');
           process.exit(1);
           return;
+        }
+        let maxSteps: number | undefined;
+        if (options.maxSteps !== undefined) {
+          maxSteps = Number.parseInt(options.maxSteps, 10);
+          if (!Number.isInteger(maxSteps) || maxSteps <= 0) {
+            log.error('--max-steps must be a positive integer.');
+            process.exit(1);
+            return;
+          }
         }
 
         const client = await getTrpcClient();
@@ -321,6 +332,7 @@ export function registerAgentCommand(program: Command) {
         const input: Record<string, any> = { prompt: options.prompt, trigger: 'cli' };
         if (options.agentId) input.agentId = options.agentId;
         if (deviceId) input.deviceId = deviceId;
+        if (maxSteps !== undefined) input.maxSteps = maxSteps;
         if (options.slug) input.slug = options.slug;
         if (options.topicId) input.appContext = { topicId: options.topicId };
         if (options.autoStart === false) input.autoStart = false;

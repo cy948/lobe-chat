@@ -529,4 +529,240 @@ describe('GraphAgent', () => {
     expect(prompt).toContain('No process is listening on 8080.');
     expect(prompt).not.toContain('claimed complete');
   });
+
+  it('does not finish a terminal node when an explicit backtrack transition matches', async () => {
+    const graph: ReasoningGraph = {
+      entry: 'inspection',
+      maxBacktracks: 2,
+      name: 'terminal-backtrack-graph',
+      states: {
+        inspection: {
+          outputSchema: {
+            additionalProperties: false,
+            properties: { intent: { type: 'string' } },
+            required: ['intent'],
+            type: 'object',
+          },
+          prompt: 'Inspect',
+          type: 'agent',
+        },
+        working: {
+          outputSchema: {
+            additionalProperties: false,
+            properties: {
+              closure_state: {
+                type: 'object',
+              },
+              summary: { type: 'string' },
+            },
+            required: ['summary', 'closure_state'],
+            type: 'object',
+          },
+          prompt: 'Work with feedback {{handoff.output}}.',
+          type: 'agent',
+        },
+        verification: {
+          outputSchema: {
+            additionalProperties: false,
+            properties: {
+              checks: { type: 'array' },
+              decision: { enum: ['accept', 'needs_work'], type: 'string' },
+              feedback: {
+                properties: {
+                  blocking_gap: { type: 'string' },
+                  evidence_needed: { type: 'string' },
+                  preserve: { items: { type: 'string' }, type: 'array' },
+                },
+                required: ['preserve', 'blocking_gap', 'evidence_needed'],
+                type: 'object',
+              },
+            },
+            required: ['decision', 'checks'],
+            type: 'object',
+          },
+          prompt: 'Verify',
+          type: 'agent',
+        },
+      },
+      terminal: 'verification',
+      transitions: [
+        { condition: 'true', from: 'inspection', to: 'working' },
+        { condition: 'true', from: 'working', to: 'verification' },
+        {
+          clearNodes: ['working'],
+          condition: 'output.decision === "needs_work"',
+          from: 'verification',
+          handoff: { fields: ['feedback'] },
+          to: 'working',
+        },
+      ],
+    };
+
+    const agent = new GraphAgent({
+      agentConfig: { maxSteps: 100 },
+      graph,
+      operationId: 'graph-test-session',
+      modelRuntimeConfig: { model: 'gpt-4o-mini', provider: 'openai' },
+    });
+
+    const feedback = {
+      blocking_gap: 'Still missing direct proof.',
+      evidence_needed: 'Run the decisive verification.',
+      preserve: ['Keep the existing artifact.'],
+    };
+
+    const state = createMockState({
+      messages: [
+        {
+          role: 'assistant',
+          content: JSON.stringify({
+            checks: [
+              {
+                contract: 'direct verification',
+                note: 'No direct observed proof yet.',
+                status: 'unknown',
+              },
+            ],
+            decision: 'needs_work',
+            feedback,
+          }),
+        },
+      ] as any,
+      metadata: {
+        [GRAPH_CONTEXT_KEY]: {
+          backtrackCount: 0,
+          currentNode: 'verification',
+          extracting: true,
+          input: 'Finish the task',
+          nodeActive: true,
+          store: {
+            inspection: { intent: 'finish the task' },
+            working: {
+              closure_state: {
+                best_known_state: 'Partial progress',
+                live_blocker: 'Need direct proof',
+                must_preserve: ['Existing artifact'],
+              },
+              summary: 'Claimed done',
+            },
+          },
+          visitCount: { inspection: 1, verification: 1, working: 1 },
+        },
+      },
+      modelRuntimeConfig: { model: 'gpt-4o-mini', provider: 'openai' },
+    });
+
+    const result = await agent.runner(createMockContext('llm_result'), state);
+
+    expect(result).toMatchObject({
+      stepLabel: 'working',
+      type: 'call_llm',
+    });
+
+    const graphContext = (state.metadata as any)[GRAPH_CONTEXT_KEY];
+    expect(graphContext.store.working).toBeUndefined();
+    expect(graphContext.handoff).toEqual({
+      from: 'verification',
+      output: { feedback },
+      to: 'working',
+    });
+  });
+
+  it('finishes with error_recovery when terminal verification still requests needs_work after backtrack limit', async () => {
+    const graph: ReasoningGraph = {
+      entry: 'inspection',
+      maxBacktracks: 2,
+      name: 'terminal-backtrack-limit-graph',
+      states: {
+        inspection: {
+          outputSchema: {
+            additionalProperties: false,
+            properties: { intent: { type: 'string' } },
+            required: ['intent'],
+            type: 'object',
+          },
+          prompt: 'Inspect',
+          type: 'agent',
+        },
+        working: {
+          outputSchema: {
+            additionalProperties: false,
+            properties: {
+              summary: { type: 'string' },
+            },
+            required: ['summary'],
+            type: 'object',
+          },
+          prompt: 'Work',
+          type: 'agent',
+        },
+        verification: {
+          outputSchema: {
+            additionalProperties: false,
+            properties: {
+              checks: { type: 'array' },
+              decision: { enum: ['accept', 'needs_work'], type: 'string' },
+            },
+            required: ['decision', 'checks'],
+            type: 'object',
+          },
+          prompt: 'Verify',
+          type: 'agent',
+        },
+      },
+      terminal: 'verification',
+      transitions: [
+        { condition: 'true', from: 'inspection', to: 'working' },
+        { condition: 'true', from: 'working', to: 'verification' },
+        {
+          condition: 'output.decision === "needs_work"',
+          from: 'verification',
+          to: 'working',
+        },
+      ],
+    };
+
+    const agent = new GraphAgent({
+      agentConfig: { maxSteps: 100 },
+      graph,
+      operationId: 'graph-test-session',
+      modelRuntimeConfig: { model: 'gpt-4o-mini', provider: 'openai' },
+    });
+
+    const state = createMockState({
+      messages: [
+        {
+          role: 'assistant',
+          content: JSON.stringify({
+            checks: [{ contract: 'direct verification', status: 'unknown' }],
+            decision: 'needs_work',
+          }),
+        },
+      ] as any,
+      metadata: {
+        [GRAPH_CONTEXT_KEY]: {
+          backtrackCount: 2,
+          currentNode: 'verification',
+          extracting: true,
+          input: 'Finish the task',
+          nodeActive: true,
+          store: {
+            inspection: { intent: 'finish the task' },
+            working: { summary: 'Still incomplete' },
+          },
+          visitCount: { inspection: 1, verification: 3, working: 3 },
+        },
+      },
+      modelRuntimeConfig: { model: 'gpt-4o-mini', provider: 'openai' },
+    });
+
+    const result = await agent.runner(createMockContext('llm_result'), state);
+
+    expect(result).toMatchObject({
+      reason: 'error_recovery',
+      type: 'finish',
+    });
+    expect((result as any).reasonDetail).toContain('reached backtrack limit (2)');
+    expect((result as any).reasonDetail).toContain('"decision":"needs_work"');
+  });
 });

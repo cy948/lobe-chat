@@ -1177,7 +1177,7 @@ export class AgentRuntimeService {
 
         // Check if operation is complete
         if (!shouldContinue) {
-          const reason = this.determineCompletionReason(stepResult.newState);
+          const reason = this.determineCompletionReason(stepResult.newState, stepResult);
           invokeAgentSpan.setAttributes(
             buildInvokeAgentResultAttributes({ completionReason: reason }),
           );
@@ -2518,7 +2518,9 @@ export class AgentRuntimeService {
   /**
    * Determine operation completion reason
    */
-  private determineCompletionReason(state: AgentState): StepCompletionReason {
+  private determineCompletionReason(state: AgentState, stepResult?: any): StepCompletionReason {
+    const doneReason = stepResult?.events?.find?.((e: any) => e.type === 'done')?.reason;
+    if (doneReason === 'error_recovery') return 'error_recovery';
     if (state.status === 'done') return 'done';
     if (state.status === 'error') return 'error';
     if (state.status === 'interrupted') return 'interrupted';

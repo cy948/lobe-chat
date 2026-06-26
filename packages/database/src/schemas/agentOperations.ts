@@ -22,6 +22,7 @@ const completionReasons = [
   'done',
   'error',
   'interrupted',
+  'error_recovery',
   'max_steps',
   'cost_limit',
   'waiting_for_human',

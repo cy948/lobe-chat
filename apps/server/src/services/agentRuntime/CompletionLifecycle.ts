@@ -31,6 +31,8 @@ const toAgentSignalSnapshotEvents = (
   });
 };
 
+const isFailureReason = (reason: string) => reason === 'error' || reason === 'error_recovery';
+
 /**
  * Owns everything that happens once an operation reaches a terminal state:
  * building the lifecycle event payload, emitting completion AgentSignal source
@@ -81,6 +83,9 @@ export class CompletionLifecycle {
       case 'error': {
         return 'error';
       }
+      case 'error_recovery': {
+        return 'error';
+      }
       case 'interrupted': {
         return 'interrupted';
       }
@@ -104,6 +109,7 @@ export class CompletionLifecycle {
   private async persistCompletion(operationId: string, state: any, reason: string): Promise<void> {
     const completionReason: any =
       reason === 'max_steps' ||
+      reason === 'error_recovery' ||
       reason === 'cost_limit' ||
       reason === 'waiting_for_human' ||
       reason === 'waiting_for_async_tool'
@@ -201,55 +207,54 @@ export class CompletionLifecycle {
             : 'ABSENT',
         );
       }
-      const completionSignalEmission =
-        reason === 'error'
-          ? await emitAgentSignalSourceEvent(
-              {
-                payload: {
-                  agentId: metadata?.agentId,
-                  errorMessage: this.extractErrorMessage(state?.error),
-                  operationId,
-                  reason,
-                  serializedContext: undefined,
-                  topicId: metadata?.topicId,
-                  turnCount: state?.stepCount || 0,
-                },
-                sourceId: `${operationId}:complete:${reason}`,
-                sourceType: 'agent.execution.failed',
-              },
-              {
+      const completionSignalEmission = isFailureReason(reason)
+        ? await emitAgentSignalSourceEvent(
+            {
+              payload: {
                 agentId: metadata?.agentId,
-                db: this.serverDB,
-                userId: metadata?.userId || this.userId,
-                workspaceId: this.workspaceId,
+                errorMessage: this.extractErrorMessage(state?.error),
+                operationId,
+                reason,
+                serializedContext: undefined,
+                topicId: metadata?.topicId,
+                turnCount: state?.stepCount || 0,
               },
-              { ignoreError: true },
-            )
-          : await emitAgentSignalSourceEvent(
-              {
-                payload: {
-                  agentId: metadata?.agentId,
-                  operationId,
-                  // Self-iteration runs carry their finalState tool outcomes here
-                  // (the one point finalState is in hand) so the completion policy
-                  // can project receipts. Undefined for every other agent.
-                  selfIteration,
-                  serializedContext: undefined,
-                  steps: state?.stepCount || 0,
-                  topicId: metadata?.topicId,
-                  turnCount: state?.stepCount || 0,
-                },
-                sourceId: `${operationId}:complete:${reason}`,
-                sourceType: 'agent.execution.completed',
-              },
-              {
+              sourceId: `${operationId}:complete:${reason}`,
+              sourceType: 'agent.execution.failed',
+            },
+            {
+              agentId: metadata?.agentId,
+              db: this.serverDB,
+              userId: metadata?.userId || this.userId,
+              workspaceId: this.workspaceId,
+            },
+            { ignoreError: true },
+          )
+        : await emitAgentSignalSourceEvent(
+            {
+              payload: {
                 agentId: metadata?.agentId,
-                db: this.serverDB,
-                userId: metadata?.userId || this.userId,
-                workspaceId: this.workspaceId,
+                operationId,
+                // Self-iteration runs carry their finalState tool outcomes here
+                // (the one point finalState is in hand) so the completion policy
+                // can project receipts. Undefined for every other agent.
+                selfIteration,
+                serializedContext: undefined,
+                steps: state?.stepCount || 0,
+                topicId: metadata?.topicId,
+                turnCount: state?.stepCount || 0,
               },
-              { ignoreError: true },
-            );
+              sourceId: `${operationId}:complete:${reason}`,
+              sourceType: 'agent.execution.completed',
+            },
+            {
+              agentId: metadata?.agentId,
+              db: this.serverDB,
+              userId: metadata?.userId || this.userId,
+              workspaceId: this.workspaceId,
+            },
+            { ignoreError: true },
+          );
 
       log(
         '[completion-lifecycle] emission done op=%s reason=%s deduped=%s',
@@ -356,7 +361,7 @@ export class CompletionLifecycle {
         );
       }
 
-      if (reason === 'error') {
+      if (isFailureReason(reason)) {
         await hookDispatcher.dispatch(operationId, 'onError', event, metadata._hooks);
 
         const assistantMessageId = metadata?.assistantMessageId;

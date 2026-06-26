@@ -525,6 +525,58 @@ describe('AgentRuntimeService', () => {
       expect(mockQueueService.scheduleMessage).toHaveBeenCalled();
     });
 
+    it('should preserve error_recovery when a done event ends in graph failure recovery', async () => {
+      const dispatchSpy = vi.spyOn(hookDispatcher, 'dispatch').mockResolvedValue(undefined);
+      const emitSignalEventsSpy = vi
+        .spyOn((service as any).completionLifecycle, 'emitSignalEvents')
+        .mockResolvedValue([]);
+      const finalizeSpy = vi
+        .spyOn((service as any).traceRecorder, 'finalize')
+        .mockResolvedValue(undefined);
+
+      const mockStepResult = {
+        newState: { ...mockState, stepCount: 7, status: 'done' },
+        nextContext: undefined,
+        events: [
+          {
+            finalState: { ...mockState, stepCount: 7, status: 'done' },
+            reason: 'error_recovery',
+            reasonDetail:
+              'Graph reached backtrack limit while verification still requested needs_work',
+            type: 'done',
+          },
+        ],
+      };
+
+      const mockRuntime = { step: vi.fn().mockResolvedValue(mockStepResult) };
+      vi.spyOn(service as any, 'createAgentRuntime').mockReturnValue({ runtime: mockRuntime });
+
+      const result = await service.executeStep(mockParams);
+
+      expect(result.success).toBe(true);
+      expect(emitSignalEventsSpy).toHaveBeenCalledWith(
+        'test-operation-1',
+        mockStepResult.newState,
+        'error_recovery',
+      );
+      expect(finalizeSpy).toHaveBeenCalledWith(
+        'test-operation-1',
+        expect.objectContaining({
+          completionReason: 'error_recovery',
+          state: mockStepResult.newState,
+        }),
+      );
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        'test-operation-1',
+        'onComplete',
+        expect.objectContaining({
+          operationId: 'test-operation-1',
+          reason: 'error_recovery',
+        }),
+        undefined,
+      );
+    });
+
     it('should resume async tools with the last pending tool result as parentMessageId', async () => {
       const pendingTools = [
         {

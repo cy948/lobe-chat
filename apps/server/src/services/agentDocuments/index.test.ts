@@ -517,6 +517,46 @@ describe('AgentDocumentsService', () => {
     });
   });
 
+  describe('getAgentContextDocuments', () => {
+    it('should keep only topic-associated context documents when topicId is provided', async () => {
+      mockModel.findContextByAgent.mockResolvedValue([
+        {
+          content: 'topic content',
+          contentCharCount: 12,
+          documentId: 'documents-1',
+          filename: 'topic.md',
+          id: 'agent-doc-1',
+          policyLoad: 'always',
+          sourceType: 'agent',
+          title: 'Topic Doc',
+          updatedAt: new Date('2026-06-26T00:00:00Z'),
+        },
+        {
+          content: 'other content',
+          contentCharCount: 12,
+          documentId: 'documents-2',
+          filename: 'other.md',
+          id: 'agent-doc-2',
+          policyLoad: 'always',
+          sourceType: 'agent',
+          title: 'Other Doc',
+          updatedAt: new Date('2026-06-26T00:00:00Z'),
+        },
+      ]);
+      mockTopicDocumentModel.findByTopicId.mockResolvedValue([{ id: 'documents-1' }]);
+
+      const service = new AgentDocumentsService(db, userId);
+      const result = await service.getAgentContextDocuments('agent-1', { topicId: 'topic-1' });
+
+      expect(mockModel.findContextByAgent).toHaveBeenCalledWith('agent-1');
+      expect(mockTopicDocumentModel.findByTopicId).toHaveBeenCalledWith('topic-1');
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('agent-doc-1');
+      expect(result[0].filename).toBe('topic.md');
+      expect(result[0].title).toBe('Topic Doc');
+    });
+  });
+
   describe('getDocumentByFilename', () => {
     it('should read a document by filename', async () => {
       mockModel.findByFilename.mockResolvedValue({

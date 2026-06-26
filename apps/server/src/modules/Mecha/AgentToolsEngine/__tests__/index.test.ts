@@ -287,6 +287,27 @@ describe('createServerAgentToolsEngine', () => {
     expect(result.enabledToolIds).toContain(LobeAgentManifest.identifier);
   });
 
+  it('should physically drop lobe-agent when excludeIdentifiers requests it', () => {
+    const context = createMockContext();
+    const engine = createServerAgentToolsEngine(context, {
+      agentConfig: { plugins: [] },
+      excludeIdentifiers: new Set([LobeAgentManifest.identifier]),
+      model: 'deepseek-chat',
+      provider: 'deepseek',
+    });
+
+    const availablePlugins = engine.getAvailablePlugins();
+    expect(availablePlugins).not.toContain(LobeAgentManifest.identifier);
+
+    const result = engine.generateToolsDetailed({
+      model: 'deepseek-chat',
+      provider: 'deepseek',
+      toolIds: [],
+    });
+
+    expect(result.enabledToolIds).not.toContain(LobeAgentManifest.identifier);
+  });
+
   it('should enable KnowledgeBase when hasEnabledKnowledgeBases is true', () => {
     const context = createMockContext();
     const engine = createServerAgentToolsEngine(context, {

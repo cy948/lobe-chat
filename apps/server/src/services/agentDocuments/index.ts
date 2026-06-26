@@ -312,10 +312,20 @@ export class AgentDocumentsService {
     return this.projectDocuments(excludeArchivedToolResults(docs));
   }
 
-  async getAgentContextDocuments(agentId: string): Promise<AgentDocumentContextPayload[]> {
-    const docs = excludeArchivedToolResults(
+  async getAgentContextDocuments(
+    agentId: string,
+    options?: { topicId?: string | null },
+  ): Promise<AgentDocumentContextPayload[]> {
+    let docs = excludeArchivedToolResults(
       await this.agentDocumentModel.findContextByAgent(agentId),
     );
+
+    const topicId = options?.topicId ?? undefined;
+    if (topicId) {
+      const topicDocs = await this.topicDocumentModel.findByTopicId(topicId);
+      const topicDocumentIds = new Set(topicDocs.map((doc) => doc.id));
+      docs = docs.filter((doc) => topicDocumentIds.has(doc.documentId));
+    }
 
     const projectedDocs = await Promise.all(
       docs.map(async (doc) => {

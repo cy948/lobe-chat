@@ -996,7 +996,9 @@ export const createRuntimeExecutors = (
               ctx.userId,
               state.metadata?.workspaceId ?? ctx.workspaceId,
             );
-            const docs = await agentDocService.getAgentContextDocuments(agentId);
+            const docs = await agentDocService.getAgentContextDocuments(agentId, {
+              topicId: state.metadata?.topicId ?? undefined,
+            });
             if (docs.length > 0) {
               agentDocuments = toAgentContextDocuments(docs);
               log('Resolved %d agent documents for agent %s', agentDocuments.length, agentId);

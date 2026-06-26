@@ -133,6 +133,7 @@ export const createServerAgentToolsEngine = (
     canUseDevice = false,
     deviceContext,
     disableLocalSystem = false,
+    excludeIdentifiers,
     executionPlan,
     globalMemoryEnabled = false,
     hasAgentDocuments = false,
@@ -271,7 +272,13 @@ export const createServerAgentToolsEngine = (
     // filters the builtin source). Excluding the identifiers here drops
     // them from the combined `manifestSchemas` so the activator cannot
     // resolve them regardless of which manifest source declared them.
-    excludeIdentifiers: canUseDevice ? undefined : DEVICE_TOOL_IDENTIFIERS,
+    excludeIdentifiers:
+      canUseDevice && !excludeIdentifiers
+        ? undefined
+        : new Set([
+            ...(canUseDevice ? [] : [...DEVICE_TOOL_IDENTIFIERS]),
+            ...(excludeIdentifiers ?? []),
+          ]),
     enableChecker: createEnableChecker({
       // Allow lobe-activator to dynamically enable tools at runtime (e.g., lobe-creds, lobe-cron).
       // Only in agent mode; chat/custom modes can't let the activator bypass their fixed set.

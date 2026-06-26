@@ -1968,6 +1968,7 @@ export class AiAgentService {
         hasEnabledKnowledgeBases,
         isBotConversation,
         model,
+        excludeIdentifiers: new Set([LobeAgentManifest.identifier]),
         provider,
       });
 

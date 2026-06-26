@@ -5,7 +5,7 @@ export const verificationTransitions = [
     condition: 'output.decision === "needs_work"',
     clearNodes: ['working'],
     handoff: {
-      fields: ['checks'],
+      fields: ['feedback'],
     },
   },
 ];

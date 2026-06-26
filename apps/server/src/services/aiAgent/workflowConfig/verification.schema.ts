@@ -31,7 +31,7 @@ export const verificationSchema = {
           note: {
             type: 'string',
             description:
-              'Specific observed evidence, missing evidence, mismatch, or why source_of_truth does not require this inspection contract. When relevant, say whether unrelated-file-change or artifact-boundary checks were directly performed or remain unresolved.',
+              'Specific latest observed evidence, latest missing evidence, current mismatch, or why source_of_truth does not require this inspection contract. Distinguish current active gaps from earlier failures that were later repaired or superseded. When relevant, say whether unrelated-file-change or artifact-boundary checks were directly performed or remain unresolved.',
           },
         },
         required: ['contract', 'status', 'note'],
@@ -40,7 +40,7 @@ export const verificationSchema = {
           {
             contract: 'Web server serves hello.html on port 8080',
             status: 'unsatisfied',
-            note: 'source_of_truth requires curl http://server:8080/hello.html to return hello world, but no successful curl or listener evidence was observed.',
+            note: 'Latest verification evidence still lacks a successful curl or listener observation for the required endpoint, so this remains an active gap.',
           },
           {
             contract: 'Use nginx',
@@ -50,8 +50,56 @@ export const verificationSchema = {
         ],
       },
     },
+    feedback: {
+      type: 'object',
+      description:
+        'Structured backtrack feedback for working. Required when decision is needs_work. Omit when decision is accept.',
+      properties: {
+        preserve: {
+          type: 'array',
+          description:
+            'Concrete results, artifacts, or established facts from the last working pass that still hold and should be preserved.',
+          items: {
+            type: 'string',
+          },
+          minItems: 1,
+        },
+        blocking_gap: {
+          type: 'string',
+          description: 'Single most important gap currently blocking accept.',
+        },
+        evidence_needed: {
+          type: 'string',
+          description: 'Direct evidence or decisive check still needed to close the blocking gap.',
+        },
+      },
+      required: ['preserve', 'blocking_gap', 'evidence_needed'],
+      additionalProperties: false,
+      examples: [
+        {
+          preserve: ['Service starts and listens on port 8080'],
+          blocking_gap:
+            'Verification still lacks direct evidence that /hello.html returns hello world.',
+          evidence_needed:
+            'Run a successful curl against the required endpoint and observe the expected response.',
+        },
+      ],
+    },
   },
   required: ['decision', 'checks'],
+  oneOf: [
+    {
+      properties: {
+        decision: { const: 'accept' },
+      },
+    },
+    {
+      properties: {
+        decision: { const: 'needs_work' },
+      },
+      required: ['feedback'],
+    },
+  ],
   additionalProperties: false,
   examples: [
     {
@@ -60,7 +108,7 @@ export const verificationSchema = {
         {
           contract: 'Web server serves hello.html on port 8080',
           status: 'unsatisfied',
-          note: 'source_of_truth requires curl http://server:8080/hello.html to return hello world, but no successful curl or listener evidence was observed.',
+          note: 'Latest verification evidence still lacks a successful curl or listener observation for the required endpoint, so this remains an active gap.',
         },
         {
           contract: 'Use nginx',
@@ -68,6 +116,13 @@ export const verificationSchema = {
           note: 'inspection_handoff suggested nginx, but source_of_truth only requires a web server on port 8080.',
         },
       ],
+      feedback: {
+        preserve: ['Port 8080 listener is configured'],
+        blocking_gap:
+          'Verification still lacks direct evidence that hello.html is served with the required content.',
+        evidence_needed:
+          'Observe a successful curl to the required URL returning the expected body.',
+      },
     },
   ],
 };

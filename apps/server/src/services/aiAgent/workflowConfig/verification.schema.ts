@@ -12,7 +12,7 @@ export const verificationSchema = {
     checks: {
       type: 'array',
       description:
-        'Non-empty list of delivery-contract checks grounded in source_of_truth. Use inspection_handoff delivery_contract items as candidate checks, but correct or mark them not_required when they conflict with source_of_truth.',
+        'Non-empty list of delivery-contract checks grounded in source_of_truth. Use inspection_handoff delivery_contract items as candidate checks, but correct or mark them not_required when they conflict with source_of_truth. When the task includes bounded-edit, cleanup, repository-state, or no-unrelated-change boundaries, checks should cover those boundaries explicitly instead of only the main positive deliverable.',
       minItems: 1,
       items: {
         type: 'object',
@@ -31,7 +31,7 @@ export const verificationSchema = {
           note: {
             type: 'string',
             description:
-              'Specific observed evidence, missing evidence, mismatch, or why source_of_truth does not require this inspection contract.',
+              'Specific observed evidence, missing evidence, mismatch, or why source_of_truth does not require this inspection contract. When relevant, say whether unrelated-file-change or artifact-boundary checks were directly performed or remain unresolved.',
           },
         },
         required: ['contract', 'status', 'note'],

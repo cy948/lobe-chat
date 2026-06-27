@@ -72,6 +72,7 @@ describe('terminalBenchGraph workflow config', () => {
     expect(inspectionPrompt).toContain('In handoff.candidates');
     expect(inspectionPrompt).toContain('In handoff.risks');
     expect(inspectionPrompt).toContain('do not modify unrelated files');
+    expect(inspectionPrompt).toContain('multiple plausible contract interpretations');
   });
 
   it('gives working a short field-semantics interpretation preface', () => {
@@ -87,6 +88,9 @@ describe('terminalBenchGraph workflow config', () => {
       'feedback.blocking_gap names the main gap currently blocking accept',
     );
     expect(workingPrompt).toContain('feedback.evidence_needed names the direct evidence');
+    expect(workingPrompt).toContain(
+      'which prior route, interpretation, or assumption is no longer trustworthy',
+    );
   });
 
   it('teaches verification to require explicit boundary coverage', () => {
@@ -95,10 +99,13 @@ describe('terminalBenchGraph workflow config', () => {
       'If that boundary was not directly checked, do not mark the overall requirement satisfied',
     );
     expect(verificationPrompt).toContain('no-unrelated-change boundary');
+    expect(verificationPrompt).toContain('multiple plausible interpretations of source_of_truth');
 
     const checks = (verificationSchema.properties as any).checks;
     expect(checks.description).toContain('no-unrelated-change boundaries');
+    expect(checks.description).toContain('unresolved ambiguity');
     expect(checks.items.properties.note.description).toContain('unrelated-file-change');
+    expect(checks.items.properties.note.description).toContain('unresolved ambiguity');
   });
 
   it('backtracks from verification to working when decision is needs_work', async () => {

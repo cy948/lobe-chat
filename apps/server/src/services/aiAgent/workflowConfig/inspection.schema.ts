@@ -9,7 +9,7 @@ export const inspectionSchema = {
     subgoals: {
       type: 'array',
       description:
-        'Structured handoff items anchored to authoritative task facts and confirmed read-only evidence. Do not broaden the task scope.',
+        'Structured handoff items anchored to authoritative task facts and confirmed read-only evidence. Do not broaden the task scope. Preserve unresolved contract ambiguity explicitly when inspection cannot yet distinguish between multiple task-consistent interpretations.',
       items: {
         type: 'object',
         properties: {
@@ -31,7 +31,7 @@ export const inspectionSchema = {
           description: {
             type: 'string',
             description:
-              'State the goal or constraint using task-required facts and confirmed read-only evidence only. Preserve hard paths, ports, APIs, output formats, behavior protocols, service lifetime, known scope, and edit/artifact boundary constraints exactly when they are part of the task contract. For bounded edit, cleanup, or repository-state tasks, include both the positive requirement and the negative boundary, such as leaving unrelated files, branches, file regions, or generated artifacts untouched, whenever source_of_truth requires that boundary. Do not include candidate-route content here: no chosen recipe, guessed algorithm, exploit path, parser strategy, compiler trick, framework choice, or runtime workaround unless source_of_truth explicitly requires that exact route.',
+              'State the goal or constraint using task-required facts and confirmed read-only evidence only. Preserve hard paths, ports, APIs, output formats, behavior protocols, service lifetime, known scope, and edit/artifact boundary constraints exactly when they are part of the task contract. For bounded edit, cleanup, or repository-state tasks, include both the positive requirement and the negative boundary, such as leaving unrelated files, branches, file regions, or generated artifacts untouched, whenever source_of_truth requires that boundary. If inspection cannot yet resolve multiple plausible contract interpretations, preserve that ambiguity explicitly instead of collapsing to one interpretation. Do not include candidate-route content here: no chosen recipe, guessed algorithm, exploit path, parser strategy, compiler trick, framework choice, or runtime workaround unless source_of_truth explicitly requires that exact route.',
           },
           relevant_files: {
             type: 'array',
@@ -53,7 +53,7 @@ export const inspectionSchema = {
               candidates: {
                 type: 'array',
                 description:
-                  'Tentative routes, recipes, or approaches that working may try. These are not requirements unless source_of_truth explicitly requires that exact route. Do not use this field to silently widen a bounded edit into a broader cleanup or repo-wide rewrite.',
+                  'Tentative routes, recipes, or approaches that working may try. These are not requirements unless source_of_truth explicitly requires that exact route. Do not use this field to silently widen a bounded edit into a broader cleanup or repo-wide rewrite, and do not treat one unresolved interpretation as canonical merely because it currently looks most convenient.',
                 items: { type: 'string' },
               },
               risks: {

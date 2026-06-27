@@ -12,7 +12,7 @@ export const verificationSchema = {
     checks: {
       type: 'array',
       description:
-        'Non-empty list of delivery-contract checks grounded in source_of_truth. Use inspection_handoff delivery_contract items as candidate checks, but correct or mark them not_required when they conflict with source_of_truth. When the task includes bounded-edit, cleanup, repository-state, or no-unrelated-change boundaries, checks should cover those boundaries explicitly instead of only the main positive deliverable.',
+        'Non-empty list of delivery-contract checks grounded in source_of_truth. Use inspection_handoff delivery_contract items as candidate checks, but correct or mark them not_required when they conflict with source_of_truth. When the task includes bounded-edit, cleanup, repository-state, or no-unrelated-change boundaries, checks should cover those boundaries explicitly instead of only the main positive deliverable. Do not mark a contract satisfied when unresolved ambiguity, narrowed interpretation, or partial boundary coverage still leaves multiple plausible task-consistent outcomes.',
       minItems: 1,
       items: {
         type: 'object',
@@ -31,7 +31,7 @@ export const verificationSchema = {
           note: {
             type: 'string',
             description:
-              'Specific latest observed evidence, latest missing evidence, current mismatch, or why source_of_truth does not require this inspection contract. Distinguish current active gaps from earlier failures that were later repaired or superseded. When relevant, say whether unrelated-file-change or artifact-boundary checks were directly performed or remain unresolved.',
+              'Specific latest observed evidence, latest missing evidence, unresolved ambiguity, current mismatch, or why source_of_truth does not require this inspection contract. Distinguish current active gaps from earlier failures that were later repaired or superseded. When relevant, say whether unrelated-file-change or artifact-boundary checks were directly performed or remain unresolved.',
           },
         },
         required: ['contract', 'status', 'note'],
@@ -53,12 +53,12 @@ export const verificationSchema = {
     feedback: {
       type: 'object',
       description:
-        'Structured backtrack feedback for working. Required when decision is needs_work. Omit when decision is accept.',
+        'Structured backtrack feedback for working. Required when decision is needs_work. Omit when decision is accept. This is a latest-pass closure-failure handoff, not a next-step action plan.',
       properties: {
         preserve: {
           type: 'array',
           description:
-            'Concrete results, artifacts, or established facts from the last working pass that still hold and should be preserved.',
+            'Concrete results, artifacts, or established facts from the last working pass that still hold after the latest verification pass and should be preserved.',
           items: {
             type: 'string',
           },
@@ -66,11 +66,12 @@ export const verificationSchema = {
         },
         blocking_gap: {
           type: 'string',
-          description: 'Single most important gap currently blocking accept.',
+          description: 'Single most important current gap blocking accept.',
         },
         evidence_needed: {
           type: 'string',
-          description: 'Direct evidence or decisive check still needed to close the blocking gap.',
+          description:
+            'Direct evidence or decisive check still needed to close the current blocking gap.',
         },
       },
       required: ['preserve', 'blocking_gap', 'evidence_needed'],

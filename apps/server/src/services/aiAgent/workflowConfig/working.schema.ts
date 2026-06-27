@@ -14,16 +14,17 @@ export const workingSchema = {
         best_known_state: {
           type: 'string',
           description:
-            'Current strongest surviving frontier or closest-to-success state achieved so far.',
+            'Current strongest surviving frontier or closest-to-success state achieved so far. If a previous leading route was downgraded or partially invalidated, make that explicit here instead of preserving an outdated optimistic summary.',
         },
         live_blocker: {
           type: 'string',
-          description: 'Single most important issue currently blocking acceptance.',
+          description:
+            'Single most important contract-level issue currently blocking acceptance. When verification feedback exists, this should normally align with the active blocking_gap rather than a generic difficulty statement.',
         },
         must_preserve: {
           type: 'array',
           description:
-            'Concrete results, artifacts, or established facts that later passes must preserve even if the current preferred route changes. If nothing stable exists yet, say that explicitly as one item instead of leaving this empty.',
+            'Concrete results, artifacts, or established facts that later passes must preserve even if the current preferred route changes. Include boundary-sensitive facts such as allowed modified-file scope, directly confirmed subset definitions, or verified artifact behavior when they would be costly to rediscover. If nothing stable exists yet, say that explicitly as one item instead of leaving this empty.',
           items: {
             type: 'string',
           },

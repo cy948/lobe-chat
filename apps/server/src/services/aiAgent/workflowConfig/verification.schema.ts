@@ -7,12 +7,12 @@ export const verificationSchema = {
       type: 'string',
       enum: ['accept', 'needs_work'],
       description:
-        'accept only when every source_of_truth delivery requirement is satisfied. needs_work when any source_of_truth delivery requirement is unsatisfied or unknown.',
+        'accept only as a last resort after checking for active contract violations, unresolved ambiguity, and missing direct evidence. If any required boundary check is still unchecked or any required criterion is unsatisfied or unknown, decision must be needs_work.',
     },
     checks: {
       type: 'array',
       description:
-        'Non-empty list of delivery-contract checks grounded in source_of_truth. Use inspection_handoff delivery_contract items as candidate checks, but correct or mark them not_required when they conflict with source_of_truth. When the task includes bounded-edit, cleanup, repository-state, or no-unrelated-change boundaries, checks should cover those boundaries explicitly instead of only the main positive deliverable. Do not mark a contract satisfied when unresolved ambiguity, narrowed interpretation, widened cleanup scope, or partial boundary coverage still leaves multiple plausible task-consistent outcomes.',
+        'Non-empty list of delivery-contract checks grounded in source_of_truth. Use inspection_handoff delivery_contract items as candidate checks, but correct or mark them not_required when they conflict with source_of_truth. When the task includes bounded-edit, cleanup, repository-state, or no-unrelated-change boundaries, checks should cover those boundaries explicitly instead of only the main positive deliverable, including direct comparison of the modified-file or artifact set against the allowed scope when relevant. For dataset, taxonomy, field-mapping, or counting-definition tasks, checks should cover the exact chosen interpretation when ambiguity could change the answer. Do not mark a contract satisfied when unresolved ambiguity, narrowed interpretation, widened cleanup scope, or partial boundary coverage still leaves multiple plausible task-consistent outcomes.',
       minItems: 1,
       items: {
         type: 'object',
@@ -31,7 +31,7 @@ export const verificationSchema = {
           note: {
             type: 'string',
             description:
-              'Specific latest observed evidence, latest missing evidence, unresolved ambiguity, current mismatch, or why source_of_truth does not require this inspection contract. Distinguish current active gaps from earlier failures that were later repaired or superseded. When relevant, say whether unrelated-file-change or artifact-boundary checks were directly performed or remain unresolved, and whether broader cleanup outside the original scope was observed but not task-required.',
+              'Specific latest observed evidence, latest missing evidence, unresolved ambiguity, current mismatch, or why source_of_truth does not require this inspection contract. Distinguish current active gaps from earlier failures that were later repaired or superseded. When relevant, say whether unrelated-file-change or artifact-boundary checks were directly performed or remain unresolved, whether modified files or artifacts were directly compared against allowed scope, whether the chosen dataset subset / field mapping / token definition was directly confirmed, and whether broader cleanup outside the original scope was observed but not task-required.',
           },
         },
         required: ['contract', 'status', 'note'],
@@ -58,7 +58,7 @@ export const verificationSchema = {
         preserve: {
           type: 'array',
           description:
-            'Concrete results, artifacts, or established facts from the last working pass that still hold after the latest verification pass and should be preserved.',
+            'Concrete results, artifacts, or established facts from the last working pass that still hold after the latest verification pass and should be preserved. Include only items that verification still trusts.',
           items: {
             type: 'string',
           },
@@ -66,12 +66,13 @@ export const verificationSchema = {
         },
         blocking_gap: {
           type: 'string',
-          description: 'Single most important current gap blocking accept.',
+          description:
+            'Single most important current contract-level gap blocking accept. Name the active failure or unresolved ambiguity, not a vague request for more work.',
         },
         evidence_needed: {
           type: 'string',
           description:
-            'Direct evidence or decisive check still needed to close the current blocking gap.',
+            'Direct evidence or decisive check still needed to close the current blocking gap. If the current route itself looks invalid, say what must be disproved or corrected.',
         },
       },
       required: ['preserve', 'blocking_gap', 'evidence_needed'],

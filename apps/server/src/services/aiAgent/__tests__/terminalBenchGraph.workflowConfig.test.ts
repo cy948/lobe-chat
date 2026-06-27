@@ -8,6 +8,7 @@ import { inspectionSchema } from '../workflowConfig/inspection.schema';
 import { verificationPrompt } from '../workflowConfig/verification.prompt';
 import { verificationSchema } from '../workflowConfig/verification.schema';
 import { workingPrompt } from '../workflowConfig/working.prompt';
+import { workingSchema } from '../workflowConfig/working.schema';
 
 const GRAPH_CONTEXT_KEY = '__graphContext';
 
@@ -92,26 +93,64 @@ describe('terminalBenchGraph workflow config', () => {
     expect(workingPrompt).toContain(
       'which prior route, interpretation, or assumption is no longer trustworthy',
     );
+    expect(workingPrompt).toContain('do not repeat the same route unless the blocking evidence');
+    expect(workingPrompt).toContain('modified-file or artifact set');
+    expect(workingPrompt).toContain('subset, taxonomy, field mapping, or counting definition');
   });
 
-  it('teaches verification to require explicit boundary coverage', () => {
+  it('teaches verification to use hard negative gates and explicit boundary coverage', () => {
+    expect(verificationPrompt).toContain('Adopt an adversarial verification stance');
+    expect(verificationPrompt).toContain('Hard negative gates');
+    expect(verificationPrompt).toContain('modified-file or artifact set against the allowed scope');
     expect(verificationPrompt).toContain('bounded edit');
     expect(verificationPrompt).toContain(
       'If that boundary was not directly checked, do not mark the overall requirement satisfied',
     );
     expect(verificationPrompt).toContain('no-unrelated-change boundary');
+    expect(verificationPrompt).toContain(
+      'dataset subset, taxonomy, field mapping, counting definition, or token definition',
+    );
     expect(verificationPrompt).toContain('multiple plausible interpretations of source_of_truth');
     expect(verificationPrompt).toContain('broader cleanup as satisfying the task');
+    expect(verificationPrompt).toContain('name the exact active gap');
 
     const checks = (verificationSchema.properties as any).checks;
+    const decision = (verificationSchema.properties as any).decision;
+    const feedback = (verificationSchema.properties as any).feedback;
+    const closureState = (workingSchema.properties as any).closure_state;
+
+    expect(decision.description).toContain('last resort');
+    expect(decision.description).toContain('boundary check is still unchecked');
     expect(checks.description).toContain('no-unrelated-change boundaries');
+    expect(checks.description).toContain('modified-file or artifact set against the allowed scope');
+    expect(checks.description).toContain(
+      'dataset, taxonomy, field-mapping, or counting-definition',
+    );
     expect(checks.description).toContain('unresolved ambiguity');
     expect(checks.description).toContain('widened cleanup scope');
     expect(checks.items.properties.note.description).toContain('unrelated-file-change');
     expect(checks.items.properties.note.description).toContain(
+      'modified files or artifacts were directly compared against allowed scope',
+    );
+    expect(checks.items.properties.note.description).toContain(
+      'chosen dataset subset / field mapping / token definition',
+    );
+    expect(checks.items.properties.note.description).toContain(
       'broader cleanup outside the original scope',
     );
     expect(checks.items.properties.note.description).toContain('unresolved ambiguity');
+    expect(feedback.properties.preserve.description).toContain('verification still trusts');
+    expect(feedback.properties.blocking_gap.description).toContain('contract-level gap');
+    expect(feedback.properties.evidence_needed.description).toContain(
+      'current route itself looks invalid',
+    );
+    expect(closureState.properties.best_known_state.description).toContain('partially invalidated');
+    expect(closureState.properties.live_blocker.description).toContain(
+      'align with the active blocking_gap',
+    );
+    expect(closureState.properties.must_preserve.description).toContain(
+      'directly confirmed subset definitions',
+    );
   });
 
   it('backtracks from verification to working when decision is needs_work', async () => {

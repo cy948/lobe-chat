@@ -187,6 +187,87 @@ export function registerAgentCommand(program: Command) {
       },
     );
 
+  // ── graph ─────────────────────────────────────────────
+
+  const graph = agent.command('graph').description('Manage agent graph snapshots');
+
+  graph
+    .command('view [agentId]')
+    .description('View an agent graph snapshot')
+    .option('-s, --slug <slug>', 'Agent slug (e.g. inbox)')
+    .option('--json [fields]', 'Output JSON, optionally specify fields (comma-separated)')
+    .action(
+      async (
+        agentIdArg: string | undefined,
+        options: { json?: string | boolean; slug?: string },
+      ) => {
+        const client = await getTrpcClient();
+        const agentId = await resolveAgentId(client, { agentId: agentIdArg, slug: options.slug });
+        const result = await client.agent.getAgentConfigById.query({ agentId });
+
+        if (!result) {
+          log.error(`Agent not found: ${agentId}`);
+          process.exit(1);
+          return;
+        }
+
+        const snapshot = (result as any)?.chatConfig?.graphRuntime?.snapshot;
+
+        if (!snapshot) {
+          console.log('No graph snapshot configured.');
+          return;
+        }
+
+        if (options.json !== undefined) {
+          const fields = typeof options.json === 'string' ? options.json : undefined;
+          outputJson(snapshot, fields);
+          return;
+        }
+
+        console.log(JSON.stringify(snapshot, null, 2));
+      },
+    );
+
+  graph
+    .command('set [agentId]')
+    .description('Set an agent graph snapshot from a JSON file')
+    .option('-s, --slug <slug>', 'Agent slug (e.g. inbox)')
+    .option('-f, --file <path>', 'Path to graph snapshot JSON file')
+    .action(async (agentIdArg: string | undefined, options: { file?: string; slug?: string }) => {
+      if (!options.file) {
+        log.error('--file is required.');
+        process.exit(1);
+        return;
+      }
+
+      let snapshot: unknown;
+
+      try {
+        snapshot = JSON.parse(readFileSync(options.file, 'utf8'));
+      } catch (error) {
+        log.error(`Failed to read graph snapshot file: ${(error as Error).message}`);
+        process.exit(1);
+        return;
+      }
+
+      const client = await getTrpcClient();
+      const agentId = await resolveAgentId(client, { agentId: agentIdArg, slug: options.slug });
+
+      await client.agent.updateAgentConfig.mutate({
+        agentId,
+        value: {
+          chatConfig: {
+            graphRuntime: {
+              enabled: true,
+              snapshot,
+            },
+          },
+        },
+      });
+
+      console.log(`${pc.green('✓')} Updated graph snapshot for agent ${pc.bold(agentId)}`);
+    });
+
   // ── delete ────────────────────────────────────────────
 
   agent

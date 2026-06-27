@@ -24,6 +24,44 @@ export interface AgentSelfIterationChatConfig {
   };
 }
 
+export interface AgentReasoningGraphStateSnapshot {
+  allowedToolApiNames?: string[];
+  maxAgentSteps?: number;
+  outputSchema: Record<string, unknown>;
+  prompt: string;
+  type: 'agent' | 'llm';
+}
+
+export interface AgentReasoningGraphTransitionSnapshot {
+  clearNodes?: string[];
+  condition: string;
+  from: string;
+  handoff?: {
+    fields?: string[];
+  };
+  to: string;
+}
+
+export interface AgentReasoningGraphSnapshot {
+  description?: string;
+  entry: string;
+  maxBacktracks: number;
+  name: string;
+  states: Record<string, AgentReasoningGraphStateSnapshot>;
+  terminal: string;
+  transitions: AgentReasoningGraphTransitionSnapshot[];
+}
+
+export interface AgentGraphRuntimeConfig {
+  enabled?: boolean;
+  snapshot?: AgentReasoningGraphSnapshot;
+  source?: {
+    externalGraphId?: string;
+    externalVersion?: string;
+    managedBy?: string;
+  };
+}
+
 export interface LobeAgentChatConfig extends AgentMemoryChatConfig, AgentSelfIterationChatConfig {
   codexMaxReasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
   /**
@@ -93,6 +131,7 @@ export interface LobeAgentChatConfig extends AgentMemoryChatConfig, AgentSelfIte
   gpt5ReasoningEffort?: 'minimal' | 'low' | 'medium' | 'high';
   grok4_3ReasoningEffort?: 'none' | 'low' | 'medium' | 'high';
   grok4_20ReasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+  graphRuntime?: AgentGraphRuntimeConfig;
   /**
    * Number of historical messages
    */
@@ -215,6 +254,18 @@ export const SelfIterationChatConfigSchema = z.object({
     .optional(),
 });
 
+export const AgentGraphRuntimeConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  snapshot: z.custom<AgentReasoningGraphSnapshot>().optional(),
+  source: z
+    .object({
+      externalGraphId: z.string().optional(),
+      externalVersion: z.string().optional(),
+      managedBy: z.string().optional(),
+    })
+    .optional(),
+});
+
 export const AgentChatConfigSchema = z
   .object({
     codexMaxReasoningEffort: z.enum(['low', 'medium', 'high', 'xhigh']).optional(),
@@ -240,6 +291,7 @@ export const AgentChatConfigSchema = z
     gpt5_2ProReasoningEffort: z.enum(['medium', 'high', 'xhigh']).optional(),
     gpt5_2ReasoningEffort: z.enum(['none', 'low', 'medium', 'high', 'xhigh']).optional(),
     glm5_2ReasoningEffort: z.enum(['high', 'max']).optional(),
+    graphRuntime: AgentGraphRuntimeConfigSchema.optional(),
     grok4_20ReasoningEffort: z.enum(['low', 'medium', 'high', 'xhigh']).optional(),
     grok4_3ReasoningEffort: z.enum(['none', 'low', 'medium', 'high']).optional(),
     hy3ReasoningEffort: z.enum(['no_think', 'low', 'high']).optional(),

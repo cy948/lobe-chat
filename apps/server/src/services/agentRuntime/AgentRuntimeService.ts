@@ -58,9 +58,9 @@ import { LocalQueueServiceImpl } from '@/server/services/queue/impls';
 import { ToolExecutionService } from '@/server/services/toolExecution';
 import { BuiltinToolsExecutor } from '@/server/services/toolExecution/builtin';
 
-import { terminalBenchGraph } from '../aiAgent/terminalBenchGraph';
 import { isAbortError, throwIfAborted } from './abort';
 import { CompletionLifecycle } from './CompletionLifecycle';
+import { resolveGraphRuntimeConfig } from './graphRuntime';
 import { hookDispatcher } from './hooks';
 import { HumanInterventionHandler } from './HumanInterventionHandler';
 import { OperationTraceRecorder } from './OperationTraceRecorder';
@@ -90,8 +90,6 @@ if (process.env.VERCEL) {
 }
 
 const log = debug('lobe-server:agent-runtime-service');
-const isTerminalBenchGraphEnabled = () => process.env.TB_GRAPH_AGENT === '1';
-
 /**
  * Base delay before the first `verifyAsyncToolBarrier` re-check fires after a
  * sub-agent completion found the parent not yet resumable. Long enough for
@@ -299,11 +297,7 @@ export class AgentRuntimeService {
     this.traceRecorder = new OperationTraceRecorder(
       options?.snapshotStore ?? createDefaultSnapshotStore(),
     );
-    this.agentFactory =
-      options?.agentFactory ??
-      (isTerminalBenchGraphEnabled()
-        ? (config) => new GraphAgent({ ...config, graph: terminalBenchGraph })
-        : undefined);
+    this.agentFactory = options?.agentFactory;
     this.delegate = options?.delegate ?? {};
     this.serverDB = db;
     this.userId = userId;
@@ -2373,9 +2367,23 @@ export class AgentRuntimeService {
       userId: metadata?.userId,
     };
 
-    const agent = this.agentFactory
-      ? this.agentFactory(generalConfig)
-      : new GeneralChatAgent(generalConfig);
+    let agent: Agent;
+
+    if (this.agentFactory) {
+      agent = this.agentFactory(generalConfig);
+    } else {
+      const graphRuntime = resolveGraphRuntimeConfig(metadata?.agentConfig);
+
+      if (graphRuntime.error) {
+        throw new Error(`Invalid graph runtime configuration: ${graphRuntime.error}`);
+      }
+
+      if (graphRuntime.graphRuntime?.enabled && graphRuntime.graph) {
+        agent = new GraphAgent({ ...generalConfig, graph: graphRuntime.graph });
+      } else {
+        agent = new GeneralChatAgent(generalConfig);
+      }
+    }
 
     // Create streaming executor context
     const executorContext: RuntimeExecutorContext = {

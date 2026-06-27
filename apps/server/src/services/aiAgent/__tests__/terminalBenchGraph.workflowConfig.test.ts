@@ -73,6 +73,7 @@ describe('terminalBenchGraph workflow config', () => {
     expect(inspectionPrompt).toContain('In handoff.risks');
     expect(inspectionPrompt).toContain('do not modify unrelated files');
     expect(inspectionPrompt).toContain('multiple plausible contract interpretations');
+    expect(inspectionPrompt).toContain('sanitize everything similar that was discovered');
   });
 
   it('gives working a short field-semantics interpretation preface', () => {
@@ -100,11 +101,16 @@ describe('terminalBenchGraph workflow config', () => {
     );
     expect(verificationPrompt).toContain('no-unrelated-change boundary');
     expect(verificationPrompt).toContain('multiple plausible interpretations of source_of_truth');
+    expect(verificationPrompt).toContain('broader cleanup as satisfying the task');
 
     const checks = (verificationSchema.properties as any).checks;
     expect(checks.description).toContain('no-unrelated-change boundaries');
     expect(checks.description).toContain('unresolved ambiguity');
+    expect(checks.description).toContain('widened cleanup scope');
     expect(checks.items.properties.note.description).toContain('unrelated-file-change');
+    expect(checks.items.properties.note.description).toContain(
+      'broader cleanup outside the original scope',
+    );
     expect(checks.items.properties.note.description).toContain('unresolved ambiguity');
   });
 

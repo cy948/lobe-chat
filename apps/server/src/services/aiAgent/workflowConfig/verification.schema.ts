@@ -12,7 +12,7 @@ export const verificationSchema = {
     checks: {
       type: 'array',
       description:
-        'Non-empty list of delivery-contract checks grounded in source_of_truth. Use inspection_handoff delivery_contract items as candidate checks, but correct or mark them not_required when they conflict with source_of_truth. When the task includes bounded-edit, cleanup, repository-state, or no-unrelated-change boundaries, checks should cover those boundaries explicitly instead of only the main positive deliverable. Do not mark a contract satisfied when unresolved ambiguity, narrowed interpretation, or partial boundary coverage still leaves multiple plausible task-consistent outcomes.',
+        'Non-empty list of delivery-contract checks grounded in source_of_truth. Use inspection_handoff delivery_contract items as candidate checks, but correct or mark them not_required when they conflict with source_of_truth. When the task includes bounded-edit, cleanup, repository-state, or no-unrelated-change boundaries, checks should cover those boundaries explicitly instead of only the main positive deliverable. Do not mark a contract satisfied when unresolved ambiguity, narrowed interpretation, widened cleanup scope, or partial boundary coverage still leaves multiple plausible task-consistent outcomes.',
       minItems: 1,
       items: {
         type: 'object',
@@ -31,7 +31,7 @@ export const verificationSchema = {
           note: {
             type: 'string',
             description:
-              'Specific latest observed evidence, latest missing evidence, unresolved ambiguity, current mismatch, or why source_of_truth does not require this inspection contract. Distinguish current active gaps from earlier failures that were later repaired or superseded. When relevant, say whether unrelated-file-change or artifact-boundary checks were directly performed or remain unresolved.',
+              'Specific latest observed evidence, latest missing evidence, unresolved ambiguity, current mismatch, or why source_of_truth does not require this inspection contract. Distinguish current active gaps from earlier failures that were later repaired or superseded. When relevant, say whether unrelated-file-change or artifact-boundary checks were directly performed or remain unresolved, and whether broader cleanup outside the original scope was observed but not task-required.',
           },
         },
         required: ['contract', 'status', 'note'],

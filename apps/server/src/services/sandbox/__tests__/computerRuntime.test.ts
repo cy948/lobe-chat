@@ -38,7 +38,7 @@ describe('ComputerRuntime command status mapping', () => {
   it('uses command output result success when background task transport succeeds', async () => {
     const runtime = new TestComputerRuntime({
       result: {
-        output: 'failed',
+        stdout: 'failed',
         success: false,
       },
       success: true,
@@ -48,7 +48,7 @@ describe('ComputerRuntime command status mapping', () => {
 
     expect(result).toMatchObject({
       state: {
-        newOutput: 'failed',
+        stdout: 'failed',
         success: false,
       },
       success: true,

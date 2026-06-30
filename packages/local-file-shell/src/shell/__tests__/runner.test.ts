@@ -42,10 +42,10 @@ describe('runCommand', () => {
       localManager.cleanupAll();
     });
 
-    it('should capture merged output', async () => {
+    it('should capture stderr output separately', async () => {
       const result = await runCommand({ command: 'echo error >&2' }, { processManager });
 
-      expect(result.stdout).toContain('error');
+      expect(result.stderr).toContain('error');
     });
 
     it('should handle command failure', async () => {

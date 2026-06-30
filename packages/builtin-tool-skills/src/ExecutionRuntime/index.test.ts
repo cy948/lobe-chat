@@ -29,7 +29,7 @@ describe('SkillsExecutionRuntime', () => {
         const result = await runtime.execScript(args);
 
         expect(result.success).toBe(true);
-        expect(result.content).toBe('Command completed successfully.\n\nOutput:\nhello');
+        expect(result.content).toBe('Command completed successfully.\n\nStdout:\nhello');
         expect(result.state).toEqual({ command: 'echo hello', exitCode: 0, success: true });
       });
 
@@ -47,7 +47,7 @@ describe('SkillsExecutionRuntime', () => {
 
         expect(result.success).toBe(false);
         expect(result.content).toBe(
-          'Command failed with exit code 1\n\nOutput:\ncommand not found',
+          'Command failed with exit code 1\n\nStdout:\ncommand not found',
         );
         expect(result.state).toEqual({ command: 'echo hello', exitCode: 1, success: false });
       });
@@ -65,7 +65,9 @@ describe('SkillsExecutionRuntime', () => {
 
         const result = await runtime.execScript(args);
 
-        expect(result.content).toBe('Command completed successfully.\n\nOutput:\nstdout line');
+        expect(result.content).toBe(
+          'Command completed successfully.\n\nStdout:\nstdout line\n\nStderr:\nstderr line',
+        );
       });
 
       it('should return "(no output)" when output is empty', async () => {
@@ -110,7 +112,7 @@ describe('SkillsExecutionRuntime', () => {
         const result = await runtime.execScript(args);
 
         expect(result.success).toBe(true);
-        expect(result.content).toBe('Command completed successfully.\n\nOutput:\nok');
+        expect(result.content).toBe('Command completed successfully.\n\nStdout:\nok');
       });
 
       it('should return success: false when command fails with non-zero exit code', async () => {
@@ -126,7 +128,7 @@ describe('SkillsExecutionRuntime', () => {
         const result = await runtime.execScript(args);
 
         expect(result.success).toBe(false);
-        expect(result.content).toBe('Command failed with exit code 127\n\nOutput:\nnot found');
+        expect(result.content).toBe('Command failed with exit code 127\n\nStdout:\nnot found');
         expect(result.state).toEqual({ command: 'echo hello', exitCode: 127, success: false });
       });
 

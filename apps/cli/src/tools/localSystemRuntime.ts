@@ -16,13 +16,7 @@ import type {
 import { createFileSearchModule } from '@lobechat/local-file-shell';
 import { type ILocalSystemService, LocalSystemExecutionRuntime } from '@lobechat/tool-runtime';
 
-import {
-  editLocalFile,
-  grepContent,
-  listLocalFiles,
-  readLocalFile,
-  writeLocalFile,
-} from './file';
+import { editLocalFile, grepContent, listLocalFiles, readLocalFile, writeLocalFile } from './file';
 import { getCommandOutput, killCommand, runCommand } from './shell';
 
 /**
@@ -172,8 +166,13 @@ export async function runLocalSystemTool(
     }
 
     case 'grepContent': {
-      const resolved = resolveArgsWithScope(args as GrepContentParams, 'path');
-      return runtime.grepContent(resolved as never);
+      const p = args as GrepContentParams & { scope?: string };
+      return runtime.grepContent({
+        directory: p.cwd ?? p.scope,
+        filePattern: p.filePattern,
+        output_mode: p.output_mode,
+        pattern: p.pattern,
+      } as never);
     }
 
     case 'globFiles': {

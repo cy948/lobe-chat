@@ -74,8 +74,8 @@ describe('executeToolCall', () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain('dispatched');
-    const state = result.state as { output?: string };
-    expect(state.output).toContain('dispatched');
+    const state = result.state as { stdout?: string };
+    expect(state.stdout).toContain('dispatched');
   });
 
   it('should dispatch listFiles', async () => {
@@ -161,7 +161,7 @@ describe('executeToolCall', () => {
       'grepContent',
       // Use the manifest-facing `scope` field. `directory` is a runtime-only
       // normalized shape and would hide scope->cwd forwarding regressions.
-      JSON.stringify({ pattern, scope: tmpDir }),
+      JSON.stringify({ glob: '*.txt', output_mode: 'files_with_matches', pattern, scope: tmpDir }),
     );
 
     expect(result.success).toBe(true);
@@ -205,7 +205,7 @@ describe('executeToolCall', () => {
   it('should forward the gateway timeout to getCommandOutput polling', async () => {
     const spy = vi
       .spyOn(ShellProcessManager.prototype, 'getOutput')
-      .mockResolvedValue({ exit_code: 0, output: '', success: true });
+      .mockResolvedValue({ exit_code: 0, output: '', stderr: '', stdout: '', success: true });
 
     // 3rd arg is the gateway per-call timeout; executeToolCall injects it into args
     await executeToolCall('getCommandOutput', JSON.stringify({ shell_id: 'sid' }), 5000);

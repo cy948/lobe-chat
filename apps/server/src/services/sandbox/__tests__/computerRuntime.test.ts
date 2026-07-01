@@ -17,7 +17,8 @@ describe('ComputerRuntime command status mapping', () => {
     const runtime = new TestComputerRuntime({
       result: {
         exitCode: 2,
-        output: 'partial\nfailed',
+        stderr: 'failed',
+        stdout: 'partial',
         success: false,
       },
       success: true,
@@ -28,7 +29,8 @@ describe('ComputerRuntime command status mapping', () => {
     expect(result).toMatchObject({
       state: {
         exitCode: 2,
-        output: 'partial\nfailed',
+        stderr: 'failed',
+        stdout: 'partial',
         success: false,
       },
       success: true,

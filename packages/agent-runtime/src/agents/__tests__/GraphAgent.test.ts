@@ -584,7 +584,7 @@ describe('GraphAgent', () => {
       ]) {
         workInstruction = await agent.runner(createLlmResultContext(content), state);
       }
-      expect(workInstruction).toBeDefined();
+      if (!workInstruction) throw new Error('Expected work instruction');
       const prompt = getLastPrompt(workInstruction);
 
       expect(prompt).toContain('rawFallback');
@@ -636,10 +636,8 @@ describe('GraphAgent', () => {
 
       expect(planCall.stepLabel).toBe('plan');
       expect(planCall.payload.allowedToolNames).toEqual([readToolName, searchToolName]);
-      expect(planCall.payload.tools?.map((tool) => tool.function.name)).toEqual([
-        readToolName,
-        searchToolName,
-      ]);
+      const planTools = planCall.payload.tools as Array<{ function: { name: string } }> | undefined;
+      expect(planTools?.map((tool) => tool.function.name)).toEqual([readToolName, searchToolName]);
       expect(getGraphStore(state)?.[AGENT_GRAPH_ROOT_NODE_ID]).toEqual({
         query: '/goal refactor graph agent runtime',
       });

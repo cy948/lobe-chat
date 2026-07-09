@@ -736,6 +736,37 @@ export class GraphAgent implements Agent {
     return `${edge.from}->${edge.to}`;
   }
 
+  private toPromptValue(value: unknown, seen = new WeakSet<object>()): PromptValue {
+    if (
+      value === undefined ||
+      value === null ||
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean'
+    ) {
+      return value;
+    }
+
+    if (typeof value === 'bigint') return value.toString();
+
+    if (Array.isArray(value)) {
+      return value.map((item) => this.toPromptValue(item, seen));
+    }
+
+    if (!isRecord(value)) return undefined;
+
+    if (seen.has(value)) return '[Circular]';
+    seen.add(value);
+
+    const promptObject: PromptObject = {};
+    for (const [key, item] of Object.entries(value)) {
+      promptObject[key] = this.toPromptValue(item, seen);
+    }
+
+    seen.delete(value);
+    return promptObject;
+  }
+
   private resolveNodeInputContext(
     edge: Readonly<AgentGraphEdge>,
     input: ReducerInput,
@@ -744,7 +775,7 @@ export class GraphAgent implements Agent {
     const sourceOutput = this.storeSelectors.nodeStore(edge.from)(input.graphContext);
 
     if (!fields || fields.length === 0) {
-      return { value: sourceOutput ?? {} };
+      return { value: this.toPromptValue(sourceOutput ?? {}) };
     }
 
     const inputFields: PromptObject = {};
@@ -758,7 +789,7 @@ export class GraphAgent implements Agent {
       if (value !== undefined) {
         inputFields[field.field] = {
           desc: field.desc ?? registeredField?.desc ?? field.field,
-          value,
+          value: this.toPromptValue(value),
         };
         continue;
       }
@@ -767,7 +798,7 @@ export class GraphAgent implements Agent {
         rawFallback[field.from] = {
           reason:
             'Declared input fields were missing from this source output. Use this raw source output as fallback context.',
-          value: source._raw,
+          value: this.toPromptValue(source._raw),
         };
       }
     }

@@ -1,5 +1,6 @@
 import { type AgentState } from '@lobechat/agent-runtime';
 import { BRANDING_PROVIDER } from '@lobechat/business-const';
+import { ToolNameResolver } from '@lobechat/context-engine';
 import { consumeStreamUntilDone, ModelEmptyError } from '@lobechat/model-runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -312,6 +313,102 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
         'openai',
         'ws-1',
       );
+    });
+
+    it('should restrict context tools and resolved tool calls to allowedToolNames', async () => {
+      const toolNameResolver = new ToolNameResolver();
+      const readToolName = toolNameResolver.generate('workspace', 'read', 'builtin');
+      const writeToolName = toolNameResolver.generate('workspace', 'write', 'builtin');
+      const mockChat = vi.fn().mockImplementation(async (_payload: any, options: any) => {
+        await options?.callback?.onText?.('done');
+        await options?.callback?.onToolsCalling?.({
+          toolsCalling: [
+            {
+              function: { arguments: '{}', name: readToolName },
+              id: 'read-call',
+              type: 'function',
+            },
+            {
+              function: { arguments: '{}', name: writeToolName },
+              id: 'write-call',
+              type: 'function',
+            },
+          ],
+        });
+        return new Response('done');
+      });
+      vi.mocked(initModelRuntimeFromDB).mockResolvedValueOnce({ chat: mockChat } as any);
+      const engineSpy = vi.spyOn(ContextEngineering, 'serverMessagesEngine');
+      const executors = createRuntimeExecutors({
+        ...ctx,
+        agentConfig: { plugins: [], systemRole: 'test' },
+      });
+      const state = createMockState({
+        operationToolSet: {
+          enabledToolIds: ['workspace'],
+          manifestMap: {
+            workspace: {
+              api: [
+                { name: 'read', parameters: { type: 'object' } },
+                { name: 'write', parameters: { type: 'object' } },
+              ],
+              identifier: 'workspace',
+              meta: { title: 'Workspace' },
+              systemRole: 'Workspace tools include read and write.',
+              type: 'builtin',
+            },
+          },
+          sourceMap: { workspace: 'builtin' as const },
+          tools: [
+            { function: { name: readToolName }, type: 'function' },
+            { function: { name: writeToolName }, type: 'function' },
+          ],
+        },
+      });
+
+      try {
+        const result = await executors.call_llm!(
+          {
+            payload: {
+              allowedToolNames: [readToolName],
+              messages: [{ content: 'Hello', role: 'user' }],
+              model: 'gpt-4',
+              provider: 'openai',
+            },
+            type: 'call_llm' as const,
+          },
+          state,
+        );
+
+        expect(engineSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            toolsConfig: {
+              manifests: [
+                expect.objectContaining({
+                  api: [expect.objectContaining({ name: 'read' })],
+                  systemRole: undefined,
+                }),
+              ],
+              tools: ['workspace'],
+            },
+          }),
+        );
+        expect(mockChat).toHaveBeenCalledWith(
+          expect.objectContaining({
+            tools: [{ function: { name: readToolName }, type: 'function' }],
+          }),
+          expect.anything(),
+        );
+        expect(result.nextContext.payload.toolsCalling).toEqual([
+          expect.objectContaining({
+            apiName: 'read',
+            id: 'read-call',
+            identifier: 'workspace',
+          }),
+        ]);
+      } finally {
+        engineSpy.mockRestore();
+      }
     });
 
     it('should pass parentId from payload.parentMessageId to messageModel.create', async () => {

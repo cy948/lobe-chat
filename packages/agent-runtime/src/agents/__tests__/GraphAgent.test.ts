@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { ToolNameResolver } from '@lobechat/context-engine';
 import type { ReasoningGraph } from '@lobechat/types';
@@ -9,6 +11,7 @@ import type { AgentInstruction, AgentRuntimeContext, AgentState } from '../../ty
 import { GraphAgent } from '../GraphAgent';
 
 const GRAPH_RUNTIME_STATE_KEY = '__graphRuntimeState';
+const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 
 interface TestGraphRuntimeState {
   graphContext: {
@@ -97,12 +100,7 @@ const getLastPrompt = (instruction: AgentInstruction | AgentInstruction[]) => {
 };
 
 const loadGoalLoopGraph = (): ReasoningGraph => {
-  const graph = JSON.parse(
-    readFileSync(
-      'packages/agent-runtime/src/agents/__tests__/fixtures/goal-loop.graph.json',
-      'utf8',
-    ),
-  );
+  const graph = JSON.parse(readFileSync(join(TEST_DIR, 'fixtures/goal-loop.graph.json'), 'utf8'));
   const result = ReasoningGraphSchema.safeParse(graph);
 
   if (!result.success) {

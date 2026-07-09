@@ -91,9 +91,11 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
+          allowedToolNames: undefined,
           messages: state.messages,
           model: 'gpt-4o-mini',
           provider: 'openai',
+          tools: undefined,
         },
       });
     });
@@ -117,8 +119,10 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
+          allowedToolNames: undefined,
           messages: state.messages,
           message: { role: 'user', content: 'What is the weather?' },
+          tools: undefined,
         },
       });
     });
@@ -667,6 +671,8 @@ describe('GeneralChatAgent', () => {
         expect(result).toEqual({
           type: 'call_llm',
           payload: {
+            allowedToolNames: undefined,
+            assistantMessageId: undefined,
             messages: state.messages,
             model: 'gpt-4o-mini',
             parentMessageId: 'tool-msg-1',
@@ -702,6 +708,8 @@ describe('GeneralChatAgent', () => {
         expect(result).toEqual({
           type: 'call_llm',
           payload: {
+            allowedToolNames: undefined,
+            assistantMessageId: undefined,
             messages: state.messages,
             model: 'gpt-4o-mini',
             parentMessageId: 'tool-msg-1',
@@ -737,6 +745,8 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
+          allowedToolNames: undefined,
+          assistantMessageId: undefined,
           messages: state.messages,
           model: 'gpt-4o-mini',
           parentMessageId: 'tool-msg-1',
@@ -774,6 +784,7 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
+          allowedToolNames: undefined,
           assistantMessageId: 'msg_seeded_placeholder',
           messages: state.messages,
           model: 'gpt-4o-mini',
@@ -1100,6 +1111,8 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
+          allowedToolNames: undefined,
+          assistantMessageId: undefined,
           messages: state.messages,
           model: 'gpt-4o-mini',
           parentMessageId: 'tool-msg-2',
@@ -1681,6 +1694,7 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
+          allowedToolNames: undefined,
           messages: state.messages,
           model: 'gpt-4o-mini',
           parentMessageId: 'task-parent-msg',
@@ -1719,6 +1733,7 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
+          allowedToolNames: undefined,
           messages: state.messages,
           model: 'gpt-4o-mini',
           parentMessageId: 'task-parent-msg',
@@ -1779,6 +1794,7 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
+          allowedToolNames: undefined,
           messages: [
             ...state.messages,
             {
@@ -1828,6 +1844,7 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
+          allowedToolNames: undefined,
           messages: [
             ...state.messages,
             {
@@ -1903,6 +1920,7 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
+          allowedToolNames: undefined,
           createAssistantMessage: true,
           messages: compressedMessages,
           model: 'gpt-4o-mini',
@@ -1944,6 +1962,7 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
+          allowedToolNames: undefined,
           assistantMessageId: 'msg_seeded_placeholder',
           messages: compressedMessages,
           model: 'gpt-4o-mini',

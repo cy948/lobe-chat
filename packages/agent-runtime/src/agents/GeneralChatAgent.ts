@@ -46,11 +46,13 @@ export class GeneralChatAgent implements Agent {
     this.config = config;
   }
 
-  private getTools(state: AgentState, fallbackTools?: any[]): any[] {
-    return this.config.tools ?? state.tools ?? state.operationToolSet?.tools ?? fallbackTools ?? [];
+  private getTools(state: AgentState, fallbackTools?: any[]): any[] | undefined {
+    return this.config.tools ?? state.tools ?? state.operationToolSet?.tools ?? fallbackTools;
   }
 
-  private getToolNames(tools: Array<{ function?: { name?: unknown } }>): string[] | undefined {
+  private getToolNames(tools?: Array<{ function?: { name?: unknown } }>): string[] | undefined {
+    if (!tools) return undefined;
+
     const toolNames = tools
       .map((tool) => tool?.function?.name)
       .filter((name): name is string => typeof name === 'string');

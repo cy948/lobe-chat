@@ -30,6 +30,7 @@ export const FeatureFlagsSchema = z.object({
   rag_eval: FeatureFlagValue.optional(),
 
   // internal flag
+  agent_graph_config: FeatureFlagValue.optional(),
   agent_self_iteration: FeatureFlagValue.optional(),
   agent_onboarding: FeatureFlagValue.optional(),
   // Cloud feature flag. Keep here until cloud owns a separate runtime flag domain.
@@ -82,6 +83,7 @@ export const DEFAULT_FEATURE_FLAGS: IFeatureFlags = {
   knowledge_base: true,
   rag_eval: false,
 
+  agent_graph_config: isDev,
   agent_self_iteration: isDev,
   agent_onboarding: isDev,
   auth_captcha: true,
@@ -118,6 +120,7 @@ export const mapFeatureFlagsEnvToState = (config: IFeatureFlags, userId?: string
 
     enableKnowledgeBase: evaluateFeatureFlag(config.knowledge_base, userId),
     enableRAGEval: evaluateFeatureFlag(config.rag_eval, userId),
+    enableAgentGraphConfig: evaluateFeatureFlag(config.agent_graph_config, userId),
     enableAgentSelfIteration: evaluateFeatureFlag(config.agent_self_iteration, userId),
     enableAgentOnboarding: evaluateFeatureFlag(config.agent_onboarding, userId),
     enableAuthCaptcha: evaluateFeatureFlag(config.auth_captcha, userId),

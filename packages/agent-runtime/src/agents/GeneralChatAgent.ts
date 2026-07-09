@@ -46,6 +46,21 @@ export class GeneralChatAgent implements Agent {
     this.config = config;
   }
 
+  private getTools(state: AgentState, fallbackTools?: any[]): any[] {
+    return this.config.tools ?? state.tools ?? state.operationToolSet?.tools ?? fallbackTools ?? [];
+  }
+
+  private getToolNames(tools: Array<{ function?: { name?: unknown } }>): string[] | undefined {
+    const toolNames = tools
+      .map((tool) => tool?.function?.name)
+      .filter((name): name is string => typeof name === 'string');
+
+    if (toolNames.length > 0) return toolNames;
+    if (tools.length === 0) return [];
+
+    return tools === this.config.tools ? [] : undefined;
+  }
+
   /**
    * Get intervention configuration for a specific tool call
    */
@@ -375,6 +390,10 @@ export class GeneralChatAgent implements Agent {
     payload: GeneralAgentCallLLMInstructionPayload,
     state: AgentState,
   ): AgentInstruction {
+    const payloadWithToolNames = {
+      ...payload,
+      allowedToolNames: this.getToolNames(payload.tools),
+    };
     const compressionEnabled = this.config.compressionConfig?.enabled ?? true;
     // Mirror RuntimeExecutors.callLlm: when state.forceFinish is set, the
     // executor strips all tools via buildStepToolDelta (deactivatedToolIds: ['*']),
@@ -383,11 +402,11 @@ export class GeneralChatAgent implements Agent {
     const compressionOptions = {
       maxWindowToken: this.config.compressionConfig?.maxWindowToken,
       thresholdRatio: this.config.compressionConfig?.thresholdRatio,
-      tools: state.forceFinish ? undefined : payload.tools,
+      tools: state.forceFinish ? undefined : payloadWithToolNames.tools,
     };
 
     if (compressionEnabled) {
-      const messages = payload.messages;
+      const messages = payloadWithToolNames.messages;
       const compressionCheck = shouldCompress(messages, compressionOptions);
 
       if (compressionCheck.needsCompression) {
@@ -403,7 +422,7 @@ export class GeneralChatAgent implements Agent {
     }
 
     return {
-      payload,
+      payload: payloadWithToolNames,
       type: 'call_llm',
     };
   }
@@ -456,7 +475,7 @@ export class GeneralChatAgent implements Agent {
         const compressionOptions = {
           maxWindowToken: this.config.compressionConfig?.maxWindowToken,
           thresholdRatio: this.config.compressionConfig?.thresholdRatio,
-          tools: state.forceFinish ? undefined : state.tools,
+          tools: state.forceFinish ? undefined : this.getTools(state),
         };
 
         if (compressionEnabled) {
@@ -477,10 +496,14 @@ export class GeneralChatAgent implements Agent {
 
         // User input received, call LLM to generate response
         // At this point, messages may have been preprocessed with RAG/Search
+        const basePayload = context.payload as any;
+        const tools = this.getTools(state, basePayload?.tools);
         return {
           payload: {
-            ...(context.payload as any),
+            ...basePayload,
+            allowedToolNames: this.getToolNames(tools),
             messages: state.messages,
+            tools,
           } as GeneralAgentCallLLMInstructionPayload,
           type: 'call_llm',
         };
@@ -659,7 +682,7 @@ export class GeneralChatAgent implements Agent {
             model: this.config.modelRuntimeConfig?.model,
             parentMessageId,
             provider: this.config.modelRuntimeConfig?.provider,
-            tools: state.tools,
+            tools: this.getTools(state),
           } as GeneralAgentCallLLMInstructionPayload,
           state,
         );
@@ -701,7 +724,7 @@ export class GeneralChatAgent implements Agent {
             model: this.config.modelRuntimeConfig?.model,
             parentMessageId,
             provider: this.config.modelRuntimeConfig?.provider,
-            tools: state.tools,
+            tools: this.getTools(state),
           } as GeneralAgentCallLLMInstructionPayload,
           state,
         );
@@ -718,7 +741,7 @@ export class GeneralChatAgent implements Agent {
             model: this.config.modelRuntimeConfig?.model,
             parentMessageId,
             provider: this.config.modelRuntimeConfig?.provider,
-            tools: state.tools,
+            tools: this.getTools(state),
           } as GeneralAgentCallLLMInstructionPayload,
           state,
         );
@@ -751,7 +774,7 @@ export class GeneralChatAgent implements Agent {
             model: this.config.modelRuntimeConfig?.model,
             parentMessageId,
             provider: this.config.modelRuntimeConfig?.provider,
-            tools: state.tools,
+            tools: this.getTools(state),
           } as GeneralAgentCallLLMInstructionPayload,
           state,
         );
@@ -783,7 +806,8 @@ export class GeneralChatAgent implements Agent {
             model: this.config.modelRuntimeConfig?.model,
             parentMessageId: compressionPayload.parentMessageId,
             provider: this.config.modelRuntimeConfig?.provider,
-            tools: state.tools,
+            tools: this.getTools(state),
+            allowedToolNames: this.getToolNames(this.getTools(state)),
           } as GeneralAgentCallLLMInstructionPayload,
           type: 'call_llm',
         };

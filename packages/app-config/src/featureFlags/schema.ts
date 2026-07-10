@@ -29,6 +29,7 @@ export const FeatureFlagsSchema = z.object({
 
   rag_eval: FeatureFlagValue.optional(),
 
+  // internal flag
   agent_self_iteration: FeatureFlagValue.optional(),
   agent_onboarding: FeatureFlagValue.optional(),
   // Cloud feature flag. Keep here until cloud owns a separate runtime flag domain.

@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ToolNameResolver } from '@lobechat/context-engine';
@@ -11,7 +11,7 @@ import type { AgentInstruction, AgentRuntimeContext, AgentState } from '../../ty
 import { GraphAgent } from '../GraphAgent';
 
 const GRAPH_RUNTIME_STATE_KEY = '__graphRuntimeState';
-const TEST_DIR = dirname(fileURLToPath(import.meta.url));
+const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 interface TestGraphRuntimeState {
   graphContext: {
@@ -100,7 +100,9 @@ const getLastPrompt = (instruction: AgentInstruction | AgentInstruction[]) => {
 };
 
 const loadGoalLoopGraph = (): ReasoningGraph => {
-  const graph = JSON.parse(readFileSync(join(TEST_DIR, 'fixtures/goal-loop.graph.json'), 'utf8'));
+  const graph = JSON.parse(
+    readFileSync(path.join(TEST_DIR, 'fixtures/goal-loop.graph.json'), 'utf8'),
+  );
   const result = ReasoningGraphSchema.safeParse(graph);
 
   if (!result.success) {
@@ -654,7 +656,9 @@ describe('GraphAgent', () => {
 
       expect(getGraphStore(state)?.plan).toEqual({ goals });
       expect(getGraphState(state)).toMatchObject({ currentNode: 'work', phase: 'node_in' });
-      expect(expectCallLlm(workInstruction).stepLabel).toBe('work');
+      const workCall = expectCallLlm(workInstruction);
+      expect(workCall.stepLabel).toBe('work');
+      expect(workCall.payload.allowedToolNames).toBeUndefined();
       expect(getLastPrompt(workInstruction)).toContain('design schema');
       expect(getLastPrompt(workInstruction)).toContain(
         'Cover the plan-work-verify loop with tests.',
@@ -668,7 +672,10 @@ describe('GraphAgent', () => {
 
       expect(getGraphStore(state)?.work).toEqual({ summary: firstSummary });
       expect(getGraphState(state)).toMatchObject({ currentNode: 'verify', phase: 'node_in' });
-      expect(expectCallLlm(verifyInstruction).stepLabel).toBe('verify');
+      const verifyCall = expectCallLlm(verifyInstruction);
+      expect(verifyCall.stepLabel).toBe('verify');
+      expect(verifyCall.payload.allowedToolNames).toEqual([]);
+      expect(verifyCall.payload.tools).toEqual([]);
       expect(getLastPrompt(verifyInstruction)).toContain('design schema');
       expect(getLastPrompt(verifyInstruction)).toContain(firstSummary);
 
@@ -732,6 +739,64 @@ describe('GraphAgent', () => {
       });
       expect(getGraphState(state)).toMatchObject({ phase: 'fin', reason: 'completed' });
       expect(result).toMatchObject({ reason: 'completed', type: 'finish' });
+    });
+
+    it('should preserve node tool allow-list when delegating to GeneralChatAgent', async () => {
+      const agent = new GraphAgent({
+        agentConfig: { maxSteps: 100 },
+        graph: loadGoalLoopGraph(),
+        modelRuntimeConfig: { model: 'gpt-4', provider: 'openai' },
+        operationId: 'test-operation',
+      });
+      const state = createMockState({
+        messages: [{ content: '/goal inspect workspace', role: 'user' }],
+      });
+
+      expectCallLlm(await agent.runner(createContext('init'), state));
+
+      const instruction = await agent.runner(
+        createContext('tools_batch_result', { parentMessageId: 'tool-msg-1' }),
+        state,
+      );
+      const call = expectCallLlm(instruction);
+
+      expect(call.payload.allowedToolNames).toEqual([readToolName, searchToolName]);
+      expect(
+        call.payload.tools?.map((tool: { function: { name: string } }) => tool.function.name),
+      ).toEqual([readToolName, searchToolName]);
+    });
+
+    it('should not add a tool allow-list when delegating an unrestricted agent node', async () => {
+      const graph = loadGoalLoopGraph();
+      const planNode = graph.nodes.plan;
+      if (planNode.type !== 'agent') throw new Error('Expected plan to be an agent node');
+      const { allowedToolApiNames: _, ...unrestrictedPlan } = planNode;
+      graph.nodes.plan = unrestrictedPlan;
+      const agent = new GraphAgent({
+        agentConfig: { maxSteps: 100 },
+        graph,
+        modelRuntimeConfig: { model: 'gpt-4', provider: 'openai' },
+        operationId: 'test-operation',
+      });
+      const state = createMockState({
+        messages: [{ content: '/goal inspect workspace', role: 'user' }],
+      });
+
+      const initialCall = expectCallLlm(await agent.runner(createContext('init'), state));
+      expect(initialCall.payload.allowedToolNames).toBeUndefined();
+
+      const instruction = await agent.runner(
+        createContext('tools_batch_result', { parentMessageId: 'tool-msg-1' }),
+        state,
+      );
+      const delegatedCall = expectCallLlm(instruction);
+
+      expect(delegatedCall.payload.allowedToolNames).toBeUndefined();
+      expect(
+        delegatedCall.payload.tools?.map(
+          (tool: { function: { name: string } }) => tool.function.name,
+        ),
+      ).toEqual([readToolName, searchToolName, writeToolName]);
     });
 
     it('should stop before producing more runtime instructions when maxInstructionCount is reached', async () => {

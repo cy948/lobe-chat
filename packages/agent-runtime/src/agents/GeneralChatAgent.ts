@@ -50,17 +50,10 @@ export class GeneralChatAgent implements Agent {
     return this.config.tools ?? state.tools ?? state.operationToolSet?.tools ?? fallbackTools;
   }
 
-  private getToolNames(tools?: Array<{ function?: { name?: unknown } }>): string[] | undefined {
-    if (!tools) return undefined;
-
-    const toolNames = tools
-      .map((tool) => tool?.function?.name)
-      .filter((name): name is string => typeof name === 'string');
-
-    if (toolNames.length > 0) return toolNames;
-    if (tools.length === 0) return [];
-
-    return tools === this.config.tools ? [] : undefined;
+  private getAllowedToolNamesPayload() {
+    return this.config.allowedToolNames === undefined
+      ? {}
+      : { allowedToolNames: this.config.allowedToolNames };
   }
 
   /**
@@ -392,9 +385,9 @@ export class GeneralChatAgent implements Agent {
     payload: GeneralAgentCallLLMInstructionPayload,
     state: AgentState,
   ): AgentInstruction {
-    const payloadWithToolNames = {
+    const payloadWithAllowedToolNames = {
       ...payload,
-      allowedToolNames: this.getToolNames(payload.tools),
+      ...this.getAllowedToolNamesPayload(),
     };
     const compressionEnabled = this.config.compressionConfig?.enabled ?? true;
     // Mirror RuntimeExecutors.callLlm: when state.forceFinish is set, the
@@ -404,11 +397,11 @@ export class GeneralChatAgent implements Agent {
     const compressionOptions = {
       maxWindowToken: this.config.compressionConfig?.maxWindowToken,
       thresholdRatio: this.config.compressionConfig?.thresholdRatio,
-      tools: state.forceFinish ? undefined : payloadWithToolNames.tools,
+      tools: state.forceFinish ? undefined : payloadWithAllowedToolNames.tools,
     };
 
     if (compressionEnabled) {
-      const messages = payloadWithToolNames.messages;
+      const messages = payloadWithAllowedToolNames.messages;
       const compressionCheck = shouldCompress(messages, compressionOptions);
 
       if (compressionCheck.needsCompression) {
@@ -424,7 +417,7 @@ export class GeneralChatAgent implements Agent {
     }
 
     return {
-      payload: payloadWithToolNames,
+      payload: payloadWithAllowedToolNames,
       type: 'call_llm',
     };
   }
@@ -503,7 +496,7 @@ export class GeneralChatAgent implements Agent {
         return {
           payload: {
             ...basePayload,
-            allowedToolNames: this.getToolNames(tools),
+            ...this.getAllowedToolNamesPayload(),
             messages: state.messages,
             tools,
           } as GeneralAgentCallLLMInstructionPayload,
@@ -785,6 +778,7 @@ export class GeneralChatAgent implements Agent {
       case 'compression_result': {
         // Context compression completed, continue to call LLM
         const compressionPayload = context.payload as GeneralAgentCompressionResultPayload;
+        const tools = this.getTools(state);
 
         // A tool-first resume seeds an assistant placeholder that the first
         // post-tool LLM turn must fill. When that turn is large enough to
@@ -808,8 +802,8 @@ export class GeneralChatAgent implements Agent {
             model: this.config.modelRuntimeConfig?.model,
             parentMessageId: compressionPayload.parentMessageId,
             provider: this.config.modelRuntimeConfig?.provider,
-            tools: this.getTools(state),
-            allowedToolNames: this.getToolNames(this.getTools(state)),
+            tools,
+            ...this.getAllowedToolNamesPayload(),
           } as GeneralAgentCallLLMInstructionPayload,
           type: 'call_llm',
         };

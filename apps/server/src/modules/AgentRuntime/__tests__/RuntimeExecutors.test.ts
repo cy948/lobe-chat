@@ -349,8 +349,16 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
           manifestMap: {
             workspace: {
               api: [
-                { name: 'read', parameters: { type: 'object' } },
-                { name: 'write', parameters: { type: 'object' } },
+                {
+                  description: 'Read workspace files',
+                  name: 'read',
+                  parameters: { type: 'object' },
+                },
+                {
+                  description: 'Write workspace files',
+                  name: 'write',
+                  parameters: { type: 'object' },
+                },
               ],
               identifier: 'workspace',
               meta: { title: 'Workspace' },
@@ -399,7 +407,8 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
           }),
           expect.anything(),
         );
-        expect(result.nextContext.payload.toolsCalling).toEqual([
+        const nextPayload = result.nextContext?.payload as { toolsCalling: unknown[] };
+        expect(nextPayload.toolsCalling).toEqual([
           expect.objectContaining({
             apiName: 'read',
             id: 'read-call',
@@ -409,6 +418,76 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
       } finally {
         engineSpy.mockRestore();
       }
+    });
+
+    it('should keep step-activated tools when allowedToolNames is not set', async () => {
+      const toolNameResolver = new ToolNameResolver();
+      const readToolName = toolNameResolver.generate('workspace', 'read', 'builtin');
+      const calculateToolName = toolNameResolver.generate('calculator', 'calculate', 'builtin');
+      const mockChat = vi.fn().mockImplementation(async (_payload: any, options: any) => {
+        await options?.callback?.onText?.('done');
+        return new Response('done');
+      });
+      vi.mocked(initModelRuntimeFromDB).mockResolvedValueOnce({ chat: mockChat } as any);
+      const executors = createRuntimeExecutors(ctx);
+      const state = createMockState({
+        activatedStepTools: [
+          {
+            activatedAtStep: 0,
+            id: 'calculator',
+            manifest: {
+              api: [
+                {
+                  description: 'Calculate an expression',
+                  name: 'calculate',
+                  parameters: { type: 'object' },
+                },
+              ],
+              identifier: 'calculator',
+              meta: { title: 'Calculator' },
+              type: 'builtin',
+            },
+            source: 'discovery',
+          },
+        ],
+        operationToolSet: {
+          enabledToolIds: ['workspace'],
+          manifestMap: {
+            workspace: {
+              api: [
+                {
+                  description: 'Read workspace files',
+                  name: 'read',
+                  parameters: { type: 'object' },
+                },
+              ],
+              identifier: 'workspace',
+              meta: { title: 'Workspace' },
+              type: 'builtin',
+            },
+          },
+          sourceMap: { workspace: 'builtin' as const },
+          tools: [{ function: { name: readToolName }, type: 'function' }],
+        },
+      });
+
+      await executors.call_llm!(
+        {
+          payload: {
+            messages: [{ content: 'Hello', role: 'user' }],
+            model: 'gpt-4',
+            provider: 'openai',
+          },
+          type: 'call_llm' as const,
+        },
+        state,
+      );
+
+      expect(
+        mockChat.mock.calls[0][0].tools.map((tool: { function: { name: string } }) => {
+          return tool.function.name;
+        }),
+      ).toEqual([readToolName, calculateToolName]);
     });
 
     it('should pass parentId from payload.parentMessageId to messageModel.create', async () => {

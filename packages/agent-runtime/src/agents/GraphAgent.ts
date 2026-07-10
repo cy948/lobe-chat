@@ -335,18 +335,23 @@ export class GraphAgent implements Agent {
       };
     }
 
+    const tools = node.type === 'agent' ? this.getNodeTools(node, state) : [];
+    const allowedToolNames =
+      node.type === 'agent' && !node.allowedToolApiNames
+        ? undefined
+        : tools
+            .map((tool) => tool?.function?.name)
+            .filter((name): name is string => typeof name === 'string');
+
     if (!graphState.active) {
       const prompt = this.renderPrompt({
         input_context: this.resolveNodeInputContext(graphState.incomingEdge, input),
         output_contract: this.getOutputSchema(graphState.incomingEdge) as PromptObject,
         task_instruction: graphState.incomingEdge.instruction,
       });
-      const tools = node.type === 'agent' ? this.getNodeTools(node, state) : [];
       const callLlm = (prompt: string): AgentInstruction => {
         const payload: GeneralAgentCallLLMInstructionPayload = {
-          allowedToolNames: tools
-            .map((tool) => tool?.function?.name)
-            .filter((name): name is string => typeof name === 'string'),
+          allowedToolNames,
           messages: [...state.messages, { content: prompt, role: 'user' as const }],
           model: state.modelRuntimeConfig?.model ?? '',
           provider: state.modelRuntimeConfig?.provider ?? '',
@@ -404,11 +409,11 @@ export class GraphAgent implements Agent {
       };
     }
 
-    const instruction = await new GeneralChatAgent(
-      node.type === 'agent'
-        ? { ...this.generalConfig, tools: this.getNodeTools(node, state) }
-        : { ...this.generalConfig, tools: [] },
-    ).runner(context, state);
+    const instruction = await new GeneralChatAgent({
+      ...this.generalConfig,
+      allowedToolNames,
+      tools,
+    }).runner(context, state);
 
     if (this.hasFinishInstruction(instruction)) {
       return {

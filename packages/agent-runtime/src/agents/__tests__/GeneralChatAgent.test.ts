@@ -91,7 +91,6 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
-          allowedToolNames: undefined,
           messages: state.messages,
           model: 'gpt-4o-mini',
           provider: 'openai',
@@ -119,12 +118,45 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
-          allowedToolNames: undefined,
           messages: state.messages,
           message: { role: 'user', content: 'What is the weather?' },
           tools: undefined,
         },
       });
+    });
+
+    it('should not infer allowedToolNames from normal state tools', async () => {
+      const agent = new GeneralChatAgent({
+        agentConfig: { maxSteps: 100 },
+        operationId: 'test-session',
+        modelRuntimeConfig: mockModelRuntimeConfig,
+      });
+      const state = createMockState({
+        messages: [{ role: 'user', content: 'Use tools if needed' }] as any,
+        tools: [{ function: { name: 'workspace____read' }, type: 'function' }] as any,
+      });
+
+      const result = await agent.runner(createMockContext('user_input'), state);
+
+      expect((result as any).payload).not.toHaveProperty('allowedToolNames');
+      expect((result as any).payload.tools).toBe(state.tools);
+    });
+
+    it('should pass explicit allowedToolNames from config', async () => {
+      const agent = new GeneralChatAgent({
+        agentConfig: { maxSteps: 100 },
+        allowedToolNames: ['workspace____read'],
+        operationId: 'test-session',
+        modelRuntimeConfig: mockModelRuntimeConfig,
+        tools: [{ function: { name: 'workspace____read' }, type: 'function' }],
+      });
+      const state = createMockState({
+        messages: [{ role: 'user', content: 'Use read only' }] as any,
+      });
+
+      const result = await agent.runner(createMockContext('user_input'), state);
+
+      expect((result as any).payload.allowedToolNames).toEqual(['workspace____read']);
     });
 
     it('should trigger compression using thresholdRatio from compressionConfig', async () => {
@@ -671,7 +703,6 @@ describe('GeneralChatAgent', () => {
         expect(result).toEqual({
           type: 'call_llm',
           payload: {
-            allowedToolNames: undefined,
             assistantMessageId: undefined,
             messages: state.messages,
             model: 'gpt-4o-mini',
@@ -708,7 +739,6 @@ describe('GeneralChatAgent', () => {
         expect(result).toEqual({
           type: 'call_llm',
           payload: {
-            allowedToolNames: undefined,
             assistantMessageId: undefined,
             messages: state.messages,
             model: 'gpt-4o-mini',
@@ -745,7 +775,6 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
-          allowedToolNames: undefined,
           assistantMessageId: undefined,
           messages: state.messages,
           model: 'gpt-4o-mini',
@@ -784,7 +813,6 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
-          allowedToolNames: undefined,
           assistantMessageId: 'msg_seeded_placeholder',
           messages: state.messages,
           model: 'gpt-4o-mini',
@@ -1111,7 +1139,6 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
-          allowedToolNames: undefined,
           assistantMessageId: undefined,
           messages: state.messages,
           model: 'gpt-4o-mini',
@@ -1694,7 +1721,6 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
-          allowedToolNames: undefined,
           messages: state.messages,
           model: 'gpt-4o-mini',
           parentMessageId: 'task-parent-msg',
@@ -1733,7 +1759,6 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
-          allowedToolNames: undefined,
           messages: state.messages,
           model: 'gpt-4o-mini',
           parentMessageId: 'task-parent-msg',
@@ -1794,7 +1819,6 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
-          allowedToolNames: undefined,
           messages: [
             ...state.messages,
             {
@@ -1844,7 +1868,6 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
-          allowedToolNames: undefined,
           messages: [
             ...state.messages,
             {
@@ -1920,7 +1943,6 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
-          allowedToolNames: undefined,
           createAssistantMessage: true,
           messages: compressedMessages,
           model: 'gpt-4o-mini',
@@ -1962,7 +1984,6 @@ describe('GeneralChatAgent', () => {
       expect(result).toEqual({
         type: 'call_llm',
         payload: {
-          allowedToolNames: undefined,
           assistantMessageId: 'msg_seeded_placeholder',
           messages: compressedMessages,
           model: 'gpt-4o-mini',

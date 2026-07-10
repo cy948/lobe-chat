@@ -20,8 +20,7 @@ export interface AgentSettingsContentProps {
 
 const AgentSettingsContent = memo<AgentSettingsContentProps>(({ tab, loadingSkeleton }) => {
   const loading = useAgentStore(agentSelectors.isAgentConfigLoading);
-  const { enableAgentGraphConfig, enableAgentSelfIteration } =
-    useServerConfigStore(featureFlagsSelectors);
+  const { enableAgentSelfIteration } = useServerConfigStore(featureFlagsSelectors);
   const enableAgentGraphConfigLab = useUserStore(labPreferSelectors.enableAgentGraphConfig);
 
   if (loading) return loadingSkeleton;
@@ -30,9 +29,7 @@ const AgentSettingsContent = memo<AgentSettingsContentProps>(({ tab, loadingSkel
     <>
       {tab === ChatSettingsTabs.Opening && <AgentOpening />}
       {enableAgentSelfIteration && tab === ChatSettingsTabs.SelfIteration && <AgentSelfIteration />}
-      {enableAgentGraphConfig && enableAgentGraphConfigLab && tab === ChatSettingsTabs.Graph && (
-        <AgentGraphRuntime />
-      )}
+      {enableAgentGraphConfigLab && tab === ChatSettingsTabs.Graph && <AgentGraphRuntime />}
       {tab === ChatSettingsTabs.Connector && <AgentConnectors />}
     </>
   );

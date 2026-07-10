@@ -39,12 +39,10 @@ const Content = memo(() => {
   const config = useAgentStore(agentSelectors.currentAgentConfig, isEqual);
   const meta = useAgentStore(agentSelectors.currentAgentMeta, isEqual);
   const isHeterogeneous = useAgentStore(agentSelectors.isCurrentAgentHeterogeneous);
-  const { enableAgentGraphConfig, enableAgentSelfIteration } =
-    useServerConfigStore(featureFlagsSelectors);
+  const { enableAgentSelfIteration } = useServerConfigStore(featureFlagsSelectors);
   const enableAgentGraphConfigLab = useUserStore(labPreferSelectors.enableAgentGraphConfig);
   const [tab, setTab] = useState(ChatSettingsTabs.Opening);
-  const showGraphTab =
-    enableAgentGraphConfig && enableAgentGraphConfigLab && !isInbox && !isHeterogeneous;
+  const showGraphTab = enableAgentGraphConfigLab && !isInbox && !isHeterogeneous;
 
   const availableTabs = useMemo(
     () =>

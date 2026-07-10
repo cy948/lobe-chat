@@ -14,11 +14,7 @@ import AsyncError from '@/components/AsyncError';
 import { FORM_STYLE } from '@/const/layoutTokens';
 import SettingHeader from '@/routes/(main)/settings/features/SettingHeader';
 import { autoUpdateService } from '@/services/electron/autoUpdate';
-import {
-  featureFlagsSelectors,
-  serverConfigSelectors,
-  useServerConfigStore,
-} from '@/store/serverConfig';
+import { serverConfigSelectors, useServerConfigStore } from '@/store/serverConfig';
 import { useUserStore } from '@/store/user';
 import { labPreferSelectors, preferenceSelectors, settingsSelectors } from '@/store/user/selectors';
 
@@ -75,8 +71,6 @@ const Page = memo(() => {
   ]);
 
   const enableGatewayMode = useServerConfigStore(serverConfigSelectors.enableGatewayMode);
-  const { enableAgentGraphConfig: enableAgentGraphConfigFeature } =
-    useServerConfigStore(featureFlagsSelectors);
   const hasGatewayUrl = useServerConfigStore((s) => !!s.serverConfig.agentGatewayUrl);
 
   const [channel, setChannel] = useState<UpdateChannelValue>('stable');
@@ -180,23 +174,19 @@ const Page = memo(() => {
       label: tLabs('features.agentDocumentFloatingChatPanel.title'),
       minWidth: undefined,
     },
-    ...(enableAgentGraphConfigFeature
-      ? [
-          {
-            children: (
-              <Switch
-                checked={enableAgentGraphConfig}
-                loading={!isPreferenceInit}
-                onChange={(checked: boolean) => updateLab({ enableAgentGraphConfig: checked })}
-              />
-            ),
-            className: styles.labItem,
-            desc: tLabs('features.agentGraphConfig.desc'),
-            label: tLabs('features.agentGraphConfig.title'),
-            minWidth: undefined,
-          } satisfies FormItemProps,
-        ]
-      : []),
+    {
+      children: (
+        <Switch
+          checked={enableAgentGraphConfig}
+          loading={!isPreferenceInit}
+          onChange={(checked: boolean) => updateLab({ enableAgentGraphConfig: checked })}
+        />
+      ),
+      className: styles.labItem,
+      desc: tLabs('features.agentGraphConfig.desc'),
+      label: tLabs('features.agentGraphConfig.title'),
+      minWidth: undefined,
+    } satisfies FormItemProps,
     {
       children: (
         <Switch

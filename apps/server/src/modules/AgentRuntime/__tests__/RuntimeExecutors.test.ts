@@ -315,7 +315,7 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
       );
     });
 
-    it('should restrict context tools and resolved tool calls to allowedToolNames', async () => {
+    it('should restrict context tools while resolving fully-qualified tool calls', async () => {
       const toolNameResolver = new ToolNameResolver();
       const readToolName = toolNameResolver.generate('workspace', 'read', 'builtin');
       const writeToolName = toolNameResolver.generate('workspace', 'write', 'builtin');
@@ -412,6 +412,11 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
           expect.objectContaining({
             apiName: 'read',
             id: 'read-call',
+            identifier: 'workspace',
+          }),
+          expect.objectContaining({
+            apiName: 'write',
+            id: 'write-call',
             identifier: 'workspace',
           }),
         ]);

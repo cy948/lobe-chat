@@ -315,6 +315,106 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
       );
     });
 
+    it('should restrict context tools to allowedToolNames', async () => {
+      const toolNameResolver = new ToolNameResolver();
+      const readToolName = toolNameResolver.generate('workspace', 'read', 'builtin');
+      const writeToolName = toolNameResolver.generate('workspace', 'write', 'builtin');
+      const mockChat = vi.fn().mockImplementation(async (_payload: any, options: any) => {
+        await options?.callback?.onText?.('done');
+        await options?.callback?.onToolsCalling?.({
+          toolsCalling: [
+            {
+              function: { arguments: '{}', name: readToolName },
+              id: 'read-call',
+              type: 'function',
+            },
+          ],
+        });
+        return new Response('done');
+      });
+      vi.mocked(initModelRuntimeFromDB).mockResolvedValueOnce({ chat: mockChat } as any);
+      const engineSpy = vi.spyOn(ContextEngineering, 'serverMessagesEngine');
+      const executors = createRuntimeExecutors({
+        ...ctx,
+        agentConfig: { plugins: [], systemRole: 'test' },
+      });
+      const state = createMockState({
+        operationToolSet: {
+          enabledToolIds: ['workspace'],
+          manifestMap: {
+            workspace: {
+              api: [
+                {
+                  description: 'Read workspace files',
+                  name: 'read',
+                  parameters: { type: 'object' },
+                },
+                {
+                  description: 'Write workspace files',
+                  name: 'write',
+                  parameters: { type: 'object' },
+                },
+              ],
+              identifier: 'workspace',
+              meta: { title: 'Workspace' },
+              systemRole: 'Workspace tools include read and write.',
+              type: 'builtin',
+            },
+          },
+          sourceMap: { workspace: 'builtin' as const },
+          tools: [
+            { function: { name: readToolName }, type: 'function' },
+            { function: { name: writeToolName }, type: 'function' },
+          ],
+        },
+      });
+
+      try {
+        const result = await executors.call_llm!(
+          {
+            payload: {
+              allowedToolNames: [readToolName],
+              messages: [{ content: 'Hello', role: 'user' }],
+              model: 'gpt-4',
+              provider: 'openai',
+            },
+            type: 'call_llm' as const,
+          },
+          state,
+        );
+
+        expect(engineSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            toolsConfig: {
+              manifests: [
+                expect.objectContaining({
+                  api: [expect.objectContaining({ name: 'read' })],
+                  systemRole: undefined,
+                }),
+              ],
+              tools: ['workspace'],
+            },
+          }),
+        );
+        expect(mockChat).toHaveBeenCalledWith(
+          expect.objectContaining({
+            tools: [{ function: { name: readToolName }, type: 'function' }],
+          }),
+          expect.anything(),
+        );
+        const nextPayload = result.nextContext?.payload as { toolsCalling: unknown[] };
+        expect(nextPayload.toolsCalling).toEqual([
+          expect.objectContaining({
+            apiName: 'read',
+            id: 'read-call',
+            identifier: 'workspace',
+          }),
+        ]);
+      } finally {
+        engineSpy.mockRestore();
+      }
+    });
+
     it('should keep step-activated tools when allowedToolNames is not set', async () => {
       const toolNameResolver = new ToolNameResolver();
       const readToolName = toolNameResolver.generate('workspace', 'read', 'builtin');

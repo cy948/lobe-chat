@@ -1,0 +1,419 @@
+import type { AgentEvalRunListItem } from '@lobechat/types';
+import { Flexbox, Icon } from '@lobehub/ui';
+import { confirmModal, DropdownMenu } from '@lobehub/ui/base-ui';
+import { App, Card, Progress } from 'antd';
+import { createStaticStyles } from 'antd-style';
+import {
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  Ellipsis,
+  GitBranch,
+  Pencil,
+  Play,
+  Square,
+  Trash2,
+  XCircle,
+} from 'lucide-react';
+import { Fragment, memo } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import StatusBadge from '@/features/EvalCommon/StatusBadge';
+import { formatDuration } from '@/features/EvalCommon/utils';
+import WorkspaceLink from '@/features/Workspace/WorkspaceLink';
+import { useEvalStore } from '@/store/eval';
+
+const styles = createStaticStyles(({ css, cssVar }) => ({
+  arrowIcon: css`
+    flex-shrink: 0;
+    color: ${cssVar.colorTextTertiary};
+  `,
+  card: css`
+    transition: all 0.2s;
+
+    .ant-card-body {
+      padding: 20px;
+    }
+
+    &:hover {
+      border-color: ${cssVar.colorBorder};
+    }
+  `,
+  cardLink: css`
+    text-decoration: none;
+  `,
+  childCard: css`
+    position: relative;
+
+    &::before {
+      content: '';
+
+      position: absolute;
+      inset-block: -12px 50%;
+      inset-inline-start: -13px;
+
+      width: 1px;
+
+      background: ${cssVar.colorBorderSecondary};
+    }
+
+    &::after {
+      content: '';
+
+      position: absolute;
+      inset-block-start: 50%;
+      inset-inline-start: -13px;
+
+      width: 12px;
+      border-block-start: 1px solid ${cssVar.colorBorderSecondary};
+    }
+  `,
+  dropdownTrigger: css`
+    cursor: pointer;
+
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+
+    color: ${cssVar.colorTextTertiary};
+
+    transition: all 0.2s;
+
+    &:hover {
+      color: ${cssVar.colorText};
+      background: ${cssVar.colorFillSecondary};
+    }
+  `,
+  meta: css`
+    font-size: 12px;
+    color: ${cssVar.colorTextTertiary};
+  `,
+  lineage: css`
+    overflow: hidden;
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+
+    max-width: 100%;
+
+    font-size: 12px;
+    color: ${cssVar.colorTextTertiary};
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  `,
+  metaHighlight: css`
+    font-size: 12px;
+    color: ${cssVar.colorTextSecondary};
+  `,
+  monoText: css`
+    font-family: monospace;
+  `,
+  name: css`
+    overflow: hidden;
+
+    font-size: 14px;
+    font-weight: 500;
+    color: ${cssVar.colorText};
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  `,
+  passRate: css`
+    font-family: monospace;
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: ${cssVar.colorText};
+  `,
+  passRateLabel: css`
+    font-size: 10px;
+    color: ${cssVar.colorTextTertiary};
+  `,
+  separator: css`
+    color: ${cssVar.colorBorder};
+  `,
+  stat: css`
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+    font-size: 13px;
+  `,
+  statError: css`
+    color: ${cssVar.colorError};
+  `,
+  statSuccess: css`
+    color: ${cssVar.colorSuccess};
+  `,
+  statWarning: css`
+    color: ${cssVar.colorWarning};
+  `,
+}));
+
+interface RunCardProps {
+  benchmarkId: string;
+  childCount?: number;
+  depth?: number;
+  experimentId?: string;
+  onEdit?: (run: AgentEvalRunListItem) => void;
+  onFork?: (run: AgentEvalRunListItem) => void;
+  onRefresh?: () => Promise<void>;
+  parentName?: string;
+  run: AgentEvalRunListItem;
+}
+
+const RunCard = memo<RunCardProps>(
+  ({
+    benchmarkId,
+    childCount = 0,
+    depth = 0,
+    experimentId,
+    parentName,
+    run,
+    onRefresh,
+    onEdit,
+    onFork,
+  }) => {
+    const { t } = useTranslation('eval');
+    const { message } = App.useApp();
+    const deleteRun = useEvalStore((s) => s.deleteRun);
+    const startRun = useEvalStore((s) => s.startRun);
+    const abortRun = useEvalStore((s) => s.abortRun);
+
+    const metrics = run.metrics;
+    const totalCases = metrics?.totalCases ?? 0;
+    const passedCases = metrics?.passedCases ?? 0;
+    const failedCases = metrics?.failedCases ?? 0;
+    const errorCases = metrics?.errorCases ?? 0;
+    const completedCases = passedCases + failedCases + errorCases;
+    const progress = totalCases > 0 ? (completedCases / totalCases) * 100 : 0;
+    const passRate = metrics?.passRate != null ? metrics.passRate * 100 : 0;
+    const hasStats = (run.status === 'completed' || run.status === 'running') && completedCases > 0;
+    const canStart = run.status === 'idle' || run.status === 'failed' || run.status === 'aborted';
+    const isActive = run.status === 'running' || run.status === 'pending';
+    const isChildRun = depth > 0;
+
+    const formatDate = (date?: Date | string) => {
+      if (!date) return '';
+      const d = date instanceof Date ? date : new Date(date);
+      return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+    };
+
+    const handleStart = (e?: React.MouseEvent) => {
+      e?.preventDefault();
+      e?.stopPropagation();
+      confirmModal({
+        content: t('run.actions.start.confirm'),
+        okText: t('run.actions.start'),
+        onOk: async () => {
+          try {
+            await startRun(run.id, run.status !== 'idle');
+            await onRefresh?.();
+          } catch (error) {
+            message.error(error instanceof Error ? error.message : t('run.error.start'));
+          }
+        },
+        title: t('run.actions.start'),
+      });
+    };
+
+    const handleAbort = (e?: React.MouseEvent) => {
+      e?.preventDefault();
+      e?.stopPropagation();
+      confirmModal({
+        content: t('run.actions.abort.confirm'),
+        okText: t('run.actions.abort'),
+        okButtonProps: { danger: true },
+        onOk: async () => {
+          await abortRun(run.id);
+          await onRefresh?.();
+        },
+        title: t('run.actions.abort'),
+      });
+    };
+
+    const handleDelete = (e?: React.MouseEvent) => {
+      e?.preventDefault();
+      e?.stopPropagation();
+      confirmModal({
+        content: t('run.actions.delete.confirm'),
+        okButtonProps: { danger: true },
+        okText: t('run.actions.delete'),
+        onOk: async () => {
+          await deleteRun(run.id);
+          await onRefresh?.();
+        },
+        title: t('run.actions.delete'),
+      });
+    };
+
+    const handleEdit = (e?: React.MouseEvent) => {
+      e?.preventDefault();
+      e?.stopPropagation();
+      onEdit?.(run);
+    };
+
+    const menuItems = [
+      ...(canStart
+        ? [
+            {
+              icon: <Play size={14} />,
+              key: 'start',
+              label: t('run.actions.start'),
+              onClick: () => handleStart(),
+            },
+            { type: 'divider' as const },
+          ]
+        : []),
+      {
+        icon: <Pencil size={14} />,
+        key: 'edit',
+        label: t('run.actions.edit'),
+        onClick: () => handleEdit(),
+      },
+      ...(experimentId
+        ? [
+            {
+              icon: <ArrowRight size={14} />,
+              key: 'fork',
+              label: t('run.actions.fork'),
+              onClick: () => onFork?.(run),
+            },
+          ]
+        : []),
+      ...(isActive
+        ? [
+            {
+              danger: true,
+              icon: <Square size={14} />,
+              key: 'abort',
+              label: t('run.actions.abort'),
+              onClick: () => handleAbort(),
+            },
+          ]
+        : []),
+      { type: 'divider' as const },
+      {
+        danger: true,
+        icon: <Trash2 size={14} />,
+        key: 'delete',
+        label: t('run.actions.delete'),
+        onClick: () => handleDelete(),
+      },
+    ];
+
+    return (
+      <WorkspaceLink className={styles.cardLink} to={`/eval/bench/${benchmarkId}/runs/${run.id}`}>
+        <Card
+          className={`${styles.card} ${isChildRun ? styles.childCard : ''}`}
+          style={isChildRun ? { marginInlineStart: depth * 24 } : undefined}
+        >
+          <Flexbox horizontal align="center" gap={16}>
+            {/* Left: Info */}
+            <Flexbox flex={1} gap={4} style={{ minWidth: 0 }}>
+              <Flexbox horizontal align="center" gap={8}>
+                <span className={styles.name}>{run.name}</span>
+                <StatusBadge status={run.status} />
+              </Flexbox>
+              {(parentName || childCount > 0) && (
+                <span className={styles.lineage}>
+                  <Icon icon={GitBranch} size={12} />
+                  {parentName
+                    ? t('run.lineage.forkedFrom', { parent: parentName })
+                    : t('run.lineage.forks', { count: childCount })}
+                </span>
+              )}
+              <Flexbox horizontal align="center" className={styles.meta} gap={4}>
+                {[
+                  run.createdAt && { text: formatDate(run.createdAt) },
+                  run.datasetName && { text: run.datasetName },
+                  run.targetAgent?.title && { text: run.targetAgent.title },
+                  run.targetAgent?.model && {
+                    className: styles.monoText,
+                    text: run.targetAgent.model,
+                  },
+                  metrics?.duration != null && {
+                    className: styles.metaHighlight,
+                    text: formatDuration(metrics.duration),
+                  },
+                  metrics?.totalCost != null && {
+                    className: styles.metaHighlight,
+                    text: `$${metrics.totalCost.toFixed(2)}`,
+                  },
+                ]
+                  .filter((item): item is { className?: string; text: string } => Boolean(item))
+                  .map((item, i) => (
+                    <Fragment key={i}>
+                      {i > 0 && <span className={styles.separator}>/</span>}
+                      <span className={item.className}>{item.text}</span>
+                    </Fragment>
+                  ))}
+              </Flexbox>
+            </Flexbox>
+
+            {/* Progress (only for incomplete runs) */}
+            {totalCases > 0 && run.status !== 'completed' && (
+              <Flexbox gap={4} style={{ width: 160 }}>
+                <Flexbox horizontal align="center" justify="space-between">
+                  <span className={styles.meta}>
+                    {completedCases}/{totalCases}
+                  </span>
+                  <span className={styles.meta}>{progress.toFixed(0)}%</span>
+                </Flexbox>
+                <Progress percent={progress} showInfo={false} size="small" />
+              </Flexbox>
+            )}
+
+            {/* Pass / Fail / Error counts */}
+            {hasStats && (
+              <Flexbox horizontal align="center" gap={10}>
+                <span className={`${styles.stat} ${styles.statSuccess}`}>
+                  <Icon icon={CheckCircle2} size={14} />
+                  {passedCases}
+                </span>
+                <span className={`${styles.stat} ${styles.statError}`}>
+                  <Icon icon={XCircle} size={14} />
+                  {failedCases}
+                </span>
+                {errorCases > 0 && (
+                  <span className={`${styles.stat} ${styles.statWarning}`}>
+                    <Icon icon={AlertTriangle} size={14} />
+                    {errorCases}
+                  </span>
+                )}
+              </Flexbox>
+            )}
+
+            {/* Pass rate */}
+            {hasStats && (
+              <Flexbox align="flex-end" gap={0} style={{ minWidth: 56 }}>
+                <span className={styles.passRate}>{passRate.toFixed(0)}%</span>
+                <span className={styles.passRateLabel}>{t('run.metrics.passRate.short')}</span>
+              </Flexbox>
+            )}
+
+            {/* Actions dropdown */}
+            <DropdownMenu items={menuItems} placement="bottomRight" trigger={['click']}>
+              <span
+                className={styles.dropdownTrigger}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+              >
+                <Ellipsis size={16} />
+              </span>
+            </DropdownMenu>
+
+            <Icon className={styles.arrowIcon} icon={ArrowRight} size={16} />
+          </Flexbox>
+        </Card>
+      </WorkspaceLink>
+    );
+  },
+);
+
+export default RunCard;

@@ -18,6 +18,7 @@ export interface AgentEvalDataset {
   identifier: string;
   metadata?: Record<string, unknown> | null;
   name: string;
+  sourceExperimentId?: string | null;
   updatedAt: Date;
   userId?: string | null;
 }
@@ -36,6 +37,7 @@ export interface AgentEvalDatasetListItem {
   identifier: string;
   name: string;
   // Computed statistics for UI
+  sourceExperimentId?: string | null;
   testCaseCount?: number;
   updatedAt: Date;
 

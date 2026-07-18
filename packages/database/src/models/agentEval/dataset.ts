@@ -4,6 +4,11 @@ import { agentEvalDatasets, agentEvalTestCases, type NewAgentEvalDataset } from 
 import { type LobeChatDatabase } from '../../type';
 import { buildWorkspaceWhere } from '../../utils/workspace';
 
+interface QueryDatasetsFilters {
+  benchmarkId?: string;
+  sourceExperimentId?: string;
+}
+
 export class AgentEvalDatasetModel {
   private userId: string;
   private db: LobeChatDatabase;
@@ -53,11 +58,17 @@ export class AgentEvalDatasetModel {
    * Query datasets (system + user/workspace-owned) with test case counts
    * @param benchmarkId - Optional benchmark filter
    */
-  query = async (benchmarkId?: string) => {
+  query = async (filters?: QueryDatasetsFilters) => {
+    const { benchmarkId, sourceExperimentId } = filters || {};
     const conditions = [this.ownership()];
 
     if (benchmarkId) {
       conditions.push(eq(agentEvalDatasets.benchmarkId, benchmarkId));
+    }
+
+    if (sourceExperimentId) {
+      conditions.push(eq(agentEvalDatasets.sourceExperimentId, sourceExperimentId));
+      conditions.push(this.mutableOwnership());
     }
 
     return this.db
@@ -71,6 +82,7 @@ export class AgentEvalDatasetModel {
         identifier: agentEvalDatasets.identifier,
         metadata: agentEvalDatasets.metadata,
         name: agentEvalDatasets.name,
+        sourceExperimentId: agentEvalDatasets.sourceExperimentId,
         testCaseCount: count(agentEvalTestCases.id).as('testCaseCount'),
         updatedAt: agentEvalDatasets.updatedAt,
         userId: agentEvalDatasets.userId,

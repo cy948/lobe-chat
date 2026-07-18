@@ -1,9 +1,14 @@
 'use client';
 
-import type { AgentEvalRunListItem } from '@lobechat/types';
+import type {
+  AgentEvalBenchmark,
+  AgentEvalDatasetListItem,
+  AgentEvalRunListItem,
+} from '@lobechat/types';
 import { formatCost } from '@lobechat/utils';
-import { type DropdownItem, DropdownMenu, Flexbox, Icon, Text } from '@lobehub/ui';
-import { Button, confirmModal } from '@lobehub/ui/base-ui';
+import { Flexbox, Icon, Text } from '@lobehub/ui';
+import { Button, confirmModal, type DropdownItem, DropdownMenu } from '@lobehub/ui/base-ui';
+import { Badge } from 'antd';
 import { createStaticStyles, cssVar } from 'antd-style';
 import {
   CircleDollarSign,
@@ -15,17 +20,17 @@ import {
   Trash2,
   Trophy,
   User,
+  type LucideIcon,
 } from 'lucide-react';
-import { type LucideIcon } from 'lucide-react';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { EvalStatCard, formatDuration, formatDurationMinutes } from '@/features/EvalCommon';
 import { useWorkspaceAwareNavigate } from '@/features/Workspace/useWorkspaceAwareNavigate';
 import { useEvalStore } from '@/store/eval';
 
 import { createBenchmarkEditModal } from '../../../../features/BenchmarkEditModal';
 import Sparkline from '../../../../features/Sparkline';
-import { formatDuration, formatDurationMinutes } from '../../../../utils';
 
 const RANK_COLORS = [cssVar.colorPrimary, cssVar.colorSuccess, cssVar.colorTextQuaternary];
 
@@ -58,28 +63,6 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
     height: 40px;
     border-radius: ${cssVar.borderRadiusLG};
   `,
-  statCard: css`
-    flex: 1;
-
-    min-width: 0;
-    padding: 16px;
-    border: 1px solid ${cssVar.colorBorderSecondary};
-    border-radius: ${cssVar.borderRadius};
-  `,
-  statIcon: css`
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    width: 36px;
-    height: 36px;
-    border-radius: ${cssVar.borderRadius};
-  `,
-  statLabel: css`
-    font-size: ${cssVar.fontSizeSM};
-    font-weight: 600;
-    color: ${cssVar.colorTextSecondary};
-  `,
   title: css`
     margin: 0;
     font-size: ${cssVar.fontSizeHeading3};
@@ -89,10 +72,10 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
 }));
 
 interface BenchmarkHeaderProps {
-  benchmark: any;
+  benchmark: AgentEvalBenchmark;
   completedRuns: AgentEvalRunListItem[];
-  datasets: any[];
-  onBenchmarkUpdate?: (benchmark: any) => void;
+  datasets: AgentEvalDatasetListItem[];
+  onBenchmarkUpdate?: (benchmark: AgentEvalBenchmark) => void;
   runCount: number;
   systemIcon?: LucideIcon;
   totalCases: number;
@@ -112,6 +95,7 @@ const BenchmarkHeader = memo<BenchmarkHeaderProps>(
     const navigate = useWorkspaceAwareNavigate();
     const deleteBenchmark = useEvalStore((s) => s.deleteBenchmark);
     const refreshBenchmarkDetail = useEvalStore((s) => s.refreshBenchmarkDetail);
+    const isUserBenchmark = !benchmark.isSystem;
 
     const handleEditSuccess = async () => {
       await refreshBenchmarkDetail(benchmark.id);
@@ -153,7 +137,7 @@ const BenchmarkHeader = memo<BenchmarkHeaderProps>(
       if (!hasCompletedRuns) return [];
       const agentMap = new Map<string, { name: string; passRates: number[] }>();
       for (const run of completedRuns) {
-        const agentName = run.targetAgent?.title || run.targetAgent?.id || 'Unknown';
+        const agentName = run.targetAgent?.title || run.targetAgent?.id || t('common.unknown');
         const agentId = run.targetAgentId || run.targetAgent?.id || agentName;
         if (!agentMap.has(agentId)) {
           agentMap.set(agentId, { name: agentName, passRates: [] });
@@ -223,15 +207,14 @@ const BenchmarkHeader = memo<BenchmarkHeaderProps>(
               <div
                 className={styles.iconBox}
                 style={{
-                  background:
-                    benchmark.source === 'user' ? cssVar.colorSuccessBg : cssVar.colorPrimaryBg,
+                  background: isUserBenchmark ? cssVar.colorSuccessBg : cssVar.colorPrimaryBg,
                 }}
               >
                 <Icon
-                  icon={benchmark.source === 'user' ? User : systemIcon}
+                  icon={isUserBenchmark ? User : systemIcon}
                   size={20}
                   style={{
-                    color: benchmark.source === 'user' ? cssVar.colorSuccess : cssVar.colorPrimary,
+                    color: isUserBenchmark ? cssVar.colorSuccess : cssVar.colorPrimary,
                   }}
                 />
               </div>
@@ -282,18 +265,13 @@ const BenchmarkHeader = memo<BenchmarkHeaderProps>(
 
         {/* Stats Cards */}
         <Flexbox horizontal gap={12}>
-          {/* Card 1: Top Agents */}
-          <div className={styles.statCard}>
-            <Flexbox gap={12}>
-              <Flexbox horizontal align="center" gap={8}>
-                <div className={styles.statIcon} style={{ background: cssVar.colorWarningBg }}>
-                  <Trophy size={16} style={{ color: cssVar.colorWarning }} />
-                </div>
-                <span className={styles.statLabel} style={{ textTransform: 'uppercase' }}>
-                  {t('benchmark.detail.stats.topAgents')}
-                </span>
-              </Flexbox>
-
+          <EvalStatCard
+            icon={Trophy}
+            iconBackground={cssVar.colorWarningBg}
+            iconColor={cssVar.colorWarning}
+            label={t('benchmark.detail.stats.topAgents')}
+          >
+            <>
               {!hasDatasets && !hasCompletedRuns && (
                 <span
                   style={{
@@ -363,33 +341,75 @@ const BenchmarkHeader = memo<BenchmarkHeaderProps>(
                   ))}
                 </Flexbox>
               )}
-            </Flexbox>
-          </div>
+            </>
+          </EvalStatCard>
 
-          {/* Card 2: Data Scale */}
-          <div className={styles.statCard}>
-            <Flexbox gap={12}>
-              <Flexbox horizontal align="center" gap={8}>
-                <div className={styles.statIcon} style={{ background: cssVar.colorPrimaryBg }}>
-                  <Layers size={16} style={{ color: cssVar.colorPrimary }} />
-                </div>
-                <span className={styles.statLabel}>{t('benchmark.detail.stats.dataScale')}</span>
-                {totalCases === 0 && (
-                  <span
-                    style={{
-                      backgroundColor: cssVar.colorWarningBg,
-                      borderRadius: cssVar.borderRadiusXS,
-                      color: cssVar.colorWarning,
-                      fontSize: cssVar.fontSizeSM,
-                      paddingBlock: 2,
-                      paddingInline: 8,
-                    }}
-                  >
-                    {t('benchmark.detail.stats.needSetup')}
+          <EvalStatCard
+            icon={Layers}
+            iconBackground={cssVar.colorPrimaryBg}
+            iconColor={cssVar.colorPrimary}
+            label={t('benchmark.detail.stats.dataScale')}
+            uppercaseLabel={false}
+            extra={
+              totalCases === 0 ? (
+                <Badge
+                  count={t('benchmark.detail.stats.needSetup')}
+                  style={{
+                    backgroundColor: cssVar.colorWarningBg,
+                    color: cssVar.colorWarning,
+                    fontSize: 11,
+                  }}
+                />
+              ) : undefined
+            }
+          >
+            <Flexbox gap={2}>
+              <Flexbox horizontal align="baseline" gap={4}>
+                <span
+                  style={{
+                    color: cssVar.colorText,
+                    fontSize: 24,
+                    fontWeight: 'bold',
+                  }}
+                >
+                  {totalCases}
+                </span>
+                {totalCases > 0 && (
+                  <span style={{ color: cssVar.colorTextTertiary, fontSize: 13 }}>
+                    {t('benchmark.detail.stats.cases')}
                   </span>
                 )}
               </Flexbox>
+              {totalCases === 0 ? (
+                <span style={{ color: cssVar.colorPrimary, fontSize: 12 }}>
+                  {t('benchmark.detail.stats.addFirstDataset')}
+                </span>
+              ) : (
+                <span style={{ color: cssVar.colorTextQuaternary, fontSize: 12 }}>
+                  {t('benchmark.detail.stats.datasets', { count: datasets.length })}
+                </span>
+              )}
+            </Flexbox>
+          </EvalStatCard>
 
+          <EvalStatCard
+            icon={Clock}
+            iconBackground={cssVar.colorInfoBg}
+            iconColor={cssVar.colorInfo}
+            label={t('benchmark.detail.stats.avgDuration')}
+            uppercaseLabel={false}
+          >
+            {avgDuration == null ? (
+              <span
+                style={{
+                  color: cssVar.colorTextQuaternary,
+                  fontSize: 20,
+                  fontWeight: 'bold',
+                }}
+              >
+                --
+              </span>
+            ) : (
               <Flexbox gap={2}>
                 <Flexbox horizontal align="baseline" gap={4}>
                   <span
@@ -400,122 +420,62 @@ const BenchmarkHeader = memo<BenchmarkHeaderProps>(
                       fontWeight: 600,
                     }}
                   >
-                    {totalCases}
+                    {formatDurationMinutes(avgDuration)}
                   </span>
-                  {totalCases > 0 && (
-                    <span style={{ color: cssVar.colorTextTertiary, fontSize: cssVar.fontSize }}>
-                      Cases
-                    </span>
-                  )}
+                  <span style={{ color: cssVar.colorTextTertiary, fontSize: 13 }}>min</span>
                 </Flexbox>
-                {totalCases === 0 ? (
-                  <span style={{ color: cssVar.colorPrimary, fontSize: cssVar.fontSizeSM }}>
-                    {t('benchmark.detail.stats.addFirstDataset')}
-                  </span>
-                ) : (
-                  <span style={{ color: cssVar.colorTextQuaternary, fontSize: cssVar.fontSizeSM }}>
-                    {datasets.length} Datasets
+                {p99Duration != null && (
+                  <span style={{ color: cssVar.colorTextQuaternary, fontSize: 12 }}>
+                    {t('benchmark.detail.stats.p99Duration', {
+                      duration: formatDuration(p99Duration),
+                    })}
                   </span>
                 )}
               </Flexbox>
-            </Flexbox>
-          </div>
+            )}
+          </EvalStatCard>
 
-          {/* Card 3: Avg Duration */}
-          <div className={styles.statCard}>
-            <Flexbox gap={12}>
-              <Flexbox horizontal align="center" gap={8}>
-                <div className={styles.statIcon} style={{ background: cssVar.colorInfoBg }}>
-                  <Clock size={16} style={{ color: cssVar.colorInfo }} />
-                </div>
-                <span className={styles.statLabel}>{t('benchmark.detail.stats.avgDuration')}</span>
-              </Flexbox>
-
-              {avgDuration == null ? (
-                <span
-                  style={{
-                    color: cssVar.colorTextQuaternary,
-                    fontSize: cssVar.fontSizeXL,
-                    fontWeight: 600,
-                  }}
-                >
-                  --
-                </span>
-              ) : (
-                <Flexbox gap={2}>
-                  <Flexbox horizontal align="baseline" gap={4}>
-                    <span
-                      style={{
-                        color: cssVar.colorText,
-                        fontFamily: cssVar.fontFamilyCode,
-                        fontSize: cssVar.fontSizeHeading3,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {formatDurationMinutes(avgDuration)}
-                    </span>
-                    <span style={{ color: cssVar.colorTextTertiary, fontSize: cssVar.fontSize }}>
-                      min
-                    </span>
-                  </Flexbox>
-                  {p99Duration != null && (
-                    <span
-                      style={{ color: cssVar.colorTextQuaternary, fontSize: cssVar.fontSizeSM }}
-                    >
-                      P99: {formatDuration(p99Duration)}
-                    </span>
-                  )}
-                </Flexbox>
-              )}
-            </Flexbox>
-          </div>
-
-          {/* Card 4: Avg Cost */}
-          <div className={styles.statCard}>
-            <Flexbox gap={12}>
-              <Flexbox horizontal align="center" gap={8}>
-                <div className={styles.statIcon} style={{ background: cssVar.colorSuccessBg }}>
-                  <CircleDollarSign size={16} style={{ color: cssVar.colorSuccess }} />
-                </div>
-                <span className={styles.statLabel}>{t('benchmark.detail.stats.avgCost')}</span>
-              </Flexbox>
-
-              {avgCost == null ? (
-                <span
-                  style={{
-                    color: cssVar.colorTextQuaternary,
-                    fontSize: cssVar.fontSizeXL,
-                    fontWeight: 600,
-                  }}
-                >
-                  --
-                </span>
-              ) : (
-                <Flexbox gap={2}>
-                  <Flexbox horizontal align="baseline" gap={4}>
-                    <span
-                      style={{
-                        color: cssVar.colorText,
-                        fontFamily: cssVar.fontFamilyCode,
-                        fontSize: cssVar.fontSizeHeading3,
-                        fontWeight: 600,
-                      }}
-                    >
-                      ${formatCost(avgCost)}
-                    </span>
-                    <span style={{ color: cssVar.colorTextTertiary, fontSize: cssVar.fontSize }}>
-                      {t('benchmark.detail.stats.perRun')}
-                    </span>
-                  </Flexbox>
-                  <span style={{ color: cssVar.colorTextQuaternary, fontSize: cssVar.fontSizeSM }}>
-                    {t('benchmark.detail.stats.basedOnLastNRuns', {
-                      count: completedRuns.length,
-                    })}
+          <EvalStatCard
+            icon={CircleDollarSign}
+            iconBackground={cssVar.colorSuccessBg}
+            iconColor={cssVar.colorSuccess}
+            label={t('benchmark.detail.stats.avgCost')}
+            uppercaseLabel={false}
+          >
+            {avgCost == null ? (
+              <span
+                style={{
+                  color: cssVar.colorTextQuaternary,
+                  fontSize: 20,
+                  fontWeight: 'bold',
+                }}
+              >
+                --
+              </span>
+            ) : (
+              <Flexbox gap={2}>
+                <Flexbox horizontal align="baseline" gap={4}>
+                  <span
+                    style={{
+                      color: cssVar.colorText,
+                      fontSize: 24,
+                      fontWeight: 'bold',
+                    }}
+                  >
+                    ${formatCost(avgCost)}
+                  </span>
+                  <span style={{ color: cssVar.colorTextTertiary, fontSize: 13 }}>
+                    {t('benchmark.detail.stats.perRun')}
                   </span>
                 </Flexbox>
-              )}
-            </Flexbox>
-          </div>
+                <span style={{ color: cssVar.colorTextQuaternary, fontSize: 12 }}>
+                  {t('benchmark.detail.stats.basedOnLastNRuns', {
+                    count: completedRuns.length,
+                  })}
+                </span>
+              </Flexbox>
+            )}
+          </EvalStatCard>
         </Flexbox>
       </>
     );

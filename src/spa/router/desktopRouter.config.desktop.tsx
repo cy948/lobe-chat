@@ -109,6 +109,8 @@ import EvalDatasetDetailPage from '@/routes/(main)/eval/bench/[benchmarkId]/data
 import EvalRunDetailPage from '@/routes/(main)/eval/bench/[benchmarkId]/runs/[runId]';
 import EvalCaseDetailPage from '@/routes/(main)/eval/bench/[benchmarkId]/runs/[runId]/cases/[caseId]';
 import FleetPage from '@/routes/(main)/fleet';
+import EvalExperimentDetailPage from '@/routes/(main)/eval/experiments/[experimentId]';
+import EvalExperimentLayout from '@/routes/(main)/eval/experiments/[experimentId]/_layout';
 import GroupPage from '@/routes/(main)/group';
 import DesktopGroupLayout from '@/routes/(main)/group/_layout';
 import { groupRouteMeta } from '@/routes/(main)/group/features/routeMeta';
@@ -538,6 +540,16 @@ export const sharedMainAreaChildren: RouteObject[] = [
           {
             element: <EvalOverviewPage />,
             index: true,
+          },
+          {
+            children: [
+              {
+                element: <EvalExperimentDetailPage />,
+                index: true,
+              },
+            ],
+            element: <EvalExperimentLayout />,
+            path: 'experiments/:experimentId',
           },
         ],
         element: <EvalHomeLayout />,

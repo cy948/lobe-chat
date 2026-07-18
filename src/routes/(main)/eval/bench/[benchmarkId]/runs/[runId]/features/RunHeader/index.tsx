@@ -19,10 +19,10 @@ import {
 import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { StatusBadge } from '@/features/EvalCommon';
+import { createRunEditModal } from '@/features/EvalRuns';
 import { useWorkspaceAwareNavigate } from '@/features/Workspace/useWorkspaceAwareNavigate';
 import WorkspaceLink from '@/features/Workspace/WorkspaceLink';
-import { createRunEditModal } from '@/routes/(main)/eval/bench/[benchmarkId]/features/RunEditModal';
-import StatusBadge from '@/routes/(main)/eval/features/StatusBadge';
 import { useEvalStore } from '@/store/eval';
 
 const styles = createStaticStyles(({ css }) => ({
@@ -193,6 +193,22 @@ const RunHeader = memo<RunHeaderProps>(({ run, benchmarkId, hideStart }) => {
   const agentAvatar = snapshot?.avatar || run.targetAgent?.avatar;
   const agentModel = snapshot?.model || run.targetAgent?.model;
   const agentProvider = snapshot?.provider || run.targetAgent?.provider;
+  const systemRolePreview = snapshot?.systemRole?.trim()
+    ? snapshot.systemRole.length > 10
+      ? `${snapshot.systemRole.slice(0, 10).trim()}...`
+      : snapshot.systemRole
+    : '';
+  const chatConfigPreview =
+    snapshot &&
+    JSON.stringify(
+      {
+        codeCommitSha: snapshot.codeCommitSha,
+        systemRolePreview,
+        ...snapshot.chatConfig,
+      },
+      null,
+      2,
+    );
 
   const handleAbort = () => {
     confirmModal({
@@ -288,6 +304,17 @@ const RunHeader = memo<RunHeaderProps>(({ run, benchmarkId, hideStart }) => {
                 >
                   <span className={styles.metaItem}>{run.dataset.name}</span>
                 </WorkspaceLink>
+              )}
+              {run.experiment && (
+                <>
+                  <span className={styles.separator}>|</span>
+                  <WorkspaceLink
+                    className={styles.datasetLink}
+                    to={`/eval/experiments/${run.experiment.id}`}
+                  >
+                    {run.experiment.name}
+                  </WorkspaceLink>
+                </>
               )}
               {run.targetAgentId && (
                 <Flexbox
@@ -388,10 +415,10 @@ const RunHeader = memo<RunHeaderProps>(({ run, benchmarkId, hideStart }) => {
               </div>
             )}
             {/* chatConfig & params */}
-            {(snapshot.chatConfig || snapshot.params) && (
+            {snapshot && (
               <div className={styles.configSection}>
                 <Flexbox horizontal gap={12}>
-                  {snapshot.chatConfig && (
+                  {snapshot && (
                     <Flexbox flex={1} gap={0} style={{ minWidth: 0 }}>
                       <div className={styles.configSectionLabel}>Chat Config</div>
                       <Highlighter
@@ -399,7 +426,7 @@ const RunHeader = memo<RunHeaderProps>(({ run, benchmarkId, hideStart }) => {
                         style={{ fontSize: 12, maxHeight: 300, overflow: 'auto' }}
                         variant="filled"
                       >
-                        {JSON.stringify(snapshot.chatConfig, null, 2)}
+                        {chatConfigPreview || '{}'}
                       </Highlighter>
                     </Flexbox>
                   )}

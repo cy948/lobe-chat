@@ -186,7 +186,7 @@ describe('AgentEvalDatasetModel', () => {
     });
 
     it('should query datasets by benchmarkId', async () => {
-      const results = await datasetModel.query(benchmarkId);
+      const results = await datasetModel.query({ benchmarkId });
 
       expect(results).toHaveLength(2); // user-dataset-1, system-dataset
       expect(results.every((r) => r.benchmarkId === benchmarkId)).toBe(true);

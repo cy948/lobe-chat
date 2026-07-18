@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getTestDB } from '@/database/core/getTestDB';
@@ -8,6 +9,7 @@ import {
   agentEvalRuns,
   agentEvalRunTopics,
   agentEvalTestCases,
+  agents,
   messages,
   topics,
   users,
@@ -16,16 +18,33 @@ import { AgentEvalRunService } from '@/server/services/agentEvalRun';
 
 // Mock AiAgentService — created inside executeTrajectory
 const mockExecAgent = vi.fn();
+const mockGetAgentConfigById = vi.fn();
 vi.mock('@/server/services/aiAgent', () => ({
   AiAgentService: vi.fn().mockImplementation(() => ({
     execAgent: mockExecAgent,
   })),
 }));
 
-// Mock appEnv so APP_URL is deterministic
-vi.mock('@/envs/app', () => ({
-  appEnv: { APP_URL: 'https://test.example.com' },
+vi.mock('@/server/services/agent', () => ({
+  AgentService: vi.fn().mockImplementation(() => ({
+    getAgentConfigById: mockGetAgentConfigById,
+  })),
 }));
+
+// Mock appEnv so APP_URL is deterministic
+vi.mock('@/envs/app', async (importOriginal) => {
+  const actual = await importOriginal();
+  if (!actual || typeof actual !== 'object' || !('appEnv' in actual)) {
+    throw new Error('Failed to load app env module');
+  }
+
+  const moduleValue = actual as { appEnv: Record<string, unknown> } & Record<string, unknown>;
+  const { appEnv, ...rest } = moduleValue;
+  return {
+    ...rest,
+    appEnv: { ...appEnv, APP_URL: 'https://test.example.com' },
+  };
+});
 
 // Mock AgentRuntimeService (required by service constructor path for checkAndHandleRunTimeout)
 vi.mock('@/server/services/agentRuntime/AgentRuntimeService', () => ({
@@ -50,6 +69,7 @@ beforeEach(async () => {
   await serverDB.insert(users).values({ id: userId });
 
   mockExecAgent.mockReset();
+  mockGetAgentConfigById.mockReset();
 });
 
 /**
@@ -89,6 +109,13 @@ async function setupTrajectoryChain(opts?: {
       userId,
     })
     .returning();
+
+  if (opts?.targetAgentId) {
+    await serverDB.insert(agents).values({
+      id: opts.targetAgentId,
+      userId,
+    });
+  }
 
   const service = new AgentEvalRunService(serverDB, userId);
   const run = await service.createRun({
@@ -225,6 +252,71 @@ describe('AgentEvalRunService', () => {
       expect(mockExecAgent).toHaveBeenCalledWith(
         expect.objectContaining({
           evalContext: { envPrompt: 'You are a math tutor.' },
+        }),
+      );
+    });
+
+    it('should pass frozen agent snapshot as agentConfigOverride', async () => {
+      const { run, testCase } = await setupTrajectoryChain({ targetAgentId: 'agent-1' });
+
+      await serverDB
+        .update(agentEvalRuns)
+        .set({
+          config: {
+            agentSnapshot: {
+              agencyConfig: { boundDeviceId: 'device-1' },
+              chatConfig: { enableHistoryCount: false, memory: { enabled: false } },
+              knowledgeBases: [{ enabled: true, id: 'kb-1', name: 'KB 1' }],
+              model: 'gpt-4o-mini',
+              params: { temperature: 0.1 },
+              plugins: ['lobe-web-browsing'],
+              provider: 'openai',
+              systemRole: 'Frozen system role',
+              title: 'Frozen Agent',
+            },
+          },
+        })
+        .where(eq(agentEvalRuns.id, run.id));
+
+      mockExecAgent.mockResolvedValue({ operationId: 'op-frozen' });
+
+      const service = new AgentEvalRunService(serverDB, userId);
+      await service.executeTrajectory({
+        run: {
+          config: {
+            agentSnapshot: {
+              agencyConfig: { boundDeviceId: 'device-1' },
+              chatConfig: { enableHistoryCount: false, memory: { enabled: false } },
+              knowledgeBases: [{ enabled: true, id: 'kb-1', name: 'KB 1' }],
+              model: 'gpt-4o-mini',
+              params: { temperature: 0.1 },
+              plugins: ['lobe-web-browsing'],
+              provider: 'openai',
+              systemRole: 'Frozen system role',
+              title: 'Frozen Agent',
+            },
+          },
+          datasetId: run.datasetId,
+          targetAgentId: 'agent-1',
+        },
+        runId: run.id,
+        testCase: { content: { input: 'test' }, sortOrder: 1 },
+        testCaseId: testCase.id,
+      });
+
+      expect(mockExecAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentConfigOverride: {
+            agencyConfig: { boundDeviceId: 'device-1' },
+            chatConfig: { enableHistoryCount: false, memory: { enabled: false } },
+            knowledgeBases: [{ enabled: true, id: 'kb-1', name: 'KB 1' }],
+            model: 'gpt-4o-mini',
+            params: { temperature: 0.1 },
+            plugins: ['lobe-web-browsing'],
+            provider: 'openai',
+            systemRole: 'Frozen system role',
+            title: 'Frozen Agent',
+          },
         }),
       );
     });

@@ -35,6 +35,7 @@ export class AgentEvalRunModel {
   query = async (filter?: {
     benchmarkId?: string;
     datasetId?: string;
+    experimentId?: string;
     limit?: number;
     offset?: number;
     status?: 'idle' | 'pending' | 'running' | 'completed' | 'failed' | 'aborted' | 'external';
@@ -43,6 +44,10 @@ export class AgentEvalRunModel {
 
     if (filter?.datasetId) {
       conditions.push(eq(agentEvalRuns.datasetId, filter.datasetId));
+    }
+
+    if (filter?.experimentId) {
+      conditions.push(eq(agentEvalRuns.experimentId, filter.experimentId));
     }
 
     if (filter?.benchmarkId) {

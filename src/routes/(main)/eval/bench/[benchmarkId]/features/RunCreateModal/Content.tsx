@@ -64,6 +64,9 @@ export interface RunCreateContentProps {
   benchmarkId: string;
   datasetId?: string;
   datasetName?: string;
+  /** When set, the created run is tagged to this experiment (and the
+   * experiment detail payload is revalidated instead of the benchmark runs). */
+  experimentId?: string;
   onLoadingChange?: (loading: boolean) => void;
   onSubmitReady: (submit: (shouldStart: boolean) => Promise<void>) => void;
 }
@@ -72,6 +75,7 @@ const RunCreateContent: FC<RunCreateContentProps> = ({
   benchmarkId,
   datasetId,
   datasetName,
+  experimentId,
   onLoadingChange,
   onSubmitReady,
 }) => {
@@ -169,6 +173,7 @@ const RunCreateContent: FC<RunCreateContentProps> = ({
             timeout: timeoutMinutes * 60_000,
           },
           datasetId: isDatasetMode ? datasetId : values.datasetId,
+          experimentId,
           name: values.name,
           targetAgentId: values.targetAgentId,
         });
@@ -188,6 +193,7 @@ const RunCreateContent: FC<RunCreateContentProps> = ({
       close,
       createRun,
       datasetId,
+      experimentId,
       form,
       isDatasetMode,
       navigate,

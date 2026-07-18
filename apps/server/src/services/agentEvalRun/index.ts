@@ -17,6 +17,7 @@ import debug from 'debug';
 import {
   AgentEvalBenchmarkModel,
   AgentEvalDatasetModel,
+  AgentEvalExperimentModel,
   AgentEvalRunModel,
   AgentEvalRunTopicModel,
   AgentEvalTestCaseModel,
@@ -79,6 +80,7 @@ export class AgentEvalRunService {
   private readonly runModel: AgentEvalRunModel;
   private readonly benchmarkModel: AgentEvalBenchmarkModel;
   private readonly datasetModel: AgentEvalDatasetModel;
+  private readonly experimentModel: AgentEvalExperimentModel;
   private readonly runTopicModel: AgentEvalRunTopicModel;
   private readonly testCaseModel: AgentEvalTestCaseModel;
   private readonly messageModel: MessageModel;
@@ -95,6 +97,7 @@ export class AgentEvalRunService {
     this.runModel = new AgentEvalRunModel(db, userId, workspaceId);
     this.benchmarkModel = new AgentEvalBenchmarkModel(db, userId, workspaceId);
     this.datasetModel = new AgentEvalDatasetModel(db, userId, workspaceId);
+    this.experimentModel = new AgentEvalExperimentModel(db, userId, workspaceId);
     this.runTopicModel = new AgentEvalRunTopicModel(db, userId, workspaceId);
     this.testCaseModel = new AgentEvalTestCaseModel(db, userId, workspaceId);
     this.messageModel = new MessageModel(db, userId, workspaceId);
@@ -106,24 +109,57 @@ export class AgentEvalRunService {
   async createRun(params: {
     config?: EvalRunInputConfig;
     datasetId: string;
+    experimentId?: string;
     name?: string;
+    parentRunId?: string;
     targetAgentId?: string;
   }) {
-    const agentSnapshot = params.targetAgentId
-      ? await this.snapshotAgentConfig(params.targetAgentId)
-      : undefined;
+    let { datasetId, targetAgentId } = params;
+    let inputConfig = params.config;
 
-    const config = { ...params.config, agentSnapshot };
+    // Fork: inherit target agent / dataset / config from the parent run.
+    // These are immutable on a fork — reject any override attempt.
+    if (params.parentRunId) {
+      const parent = await this.runModel.findById(params.parentRunId);
+      if (!parent) throw new Error('Parent run not found');
 
-    const run = await this.runModel.create({ ...params, config });
+      if (
+        (params.targetAgentId && params.targetAgentId !== parent.targetAgentId) ||
+        (params.config && Object.keys(params.config).length > 0) ||
+        (params.datasetId && params.datasetId !== parent.datasetId)
+      ) {
+        throw new Error('Cannot override target agent, config, or dataset when forking a run');
+      }
+
+      targetAgentId = parent.targetAgentId ?? undefined;
+      datasetId = parent.datasetId;
+      inputConfig = (parent.config as EvalRunInputConfig | undefined) ?? undefined;
+    }
+
+    // Validate the experiment scope (and bump its recency once the run exists).
+    if (params.experimentId) {
+      const experiment = await this.experimentModel.findById(params.experimentId);
+      if (!experiment) throw new Error('Experiment not found');
+    }
+
+    // Re-snapshot the current agent config (forks capture the *current* state).
+    const agentSnapshot = targetAgentId ? await this.snapshotAgentConfig(targetAgentId) : undefined;
+
+    const config = { ...inputConfig, agentSnapshot };
+
+    const run = await this.runModel.create({ ...params, datasetId, targetAgentId, config });
+
+    if (params.experimentId) {
+      await this.experimentModel.touch(params.experimentId);
+    }
 
     // Pre-create Topics and RunTopics for all test cases (status='pending')
-    const testCases = await this.testCaseModel.findByDatasetId(params.datasetId);
+    const testCases = await this.testCaseModel.findByDatasetId(datasetId);
 
     if (testCases.length > 0) {
       const createdTopics = await this.topicModel.batchCreate(
         testCases.map((tc) => ({
-          agentId: params.targetAgentId ?? undefined,
+          agentId: targetAgentId ?? undefined,
           title: `[Eval Case #${(tc.sortOrder ?? 0) + 1}] ${tc.content?.input?.slice(0, 50) || 'Test Case'}...`,
           trigger: RequestTrigger.Eval,
         })),

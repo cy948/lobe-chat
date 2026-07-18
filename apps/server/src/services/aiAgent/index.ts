@@ -70,7 +70,7 @@ import {
   ThreadStatus,
   ThreadType,
 } from '@lobechat/types';
-import { nanoid } from '@lobechat/utils';
+import { merge, nanoid } from '@lobechat/utils';
 import { TRPCError } from '@trpc/server';
 import debug from 'debug';
 
@@ -324,6 +324,8 @@ const buildBotConversationGroupContext = (
 interface InternalExecAgentParams extends ExecAgentParams {
   /** Additional plugin IDs to inject (e.g., task tool during task execution) */
   additionalPluginIds?: string[];
+  /** Frozen agent config overrides applied after loading the persisted agent config. */
+  agentConfigOverride?: Partial<LobeAgentConfig>;
   /** Bot context for topic metadata (platform, applicationId, platformThreadId) */
   botContext?: ChatTopicBotContext;
   /** Bot platform context for injecting platform capabilities (e.g. markdown support) */
@@ -1095,6 +1097,7 @@ export class AiAgentService {
     const {
       additionalPluginIds,
       agentId,
+      agentConfigOverride,
       slug,
       prompt,
       appContext,
@@ -1182,6 +1185,10 @@ export class AiAgentService {
 
     // 1. Get agent configuration with default config merged (supports both id and slug)
     const agentConfig = await this.resolveAgentConfigOrThrow(identifier);
+
+    if (agentConfigOverride) {
+      Object.assign(agentConfig, merge(agentConfig, agentConfigOverride as LobeAgentConfig));
+    }
 
     // Use actual agent ID from config for subsequent operations
     const resolvedAgentId = agentConfig.id;
@@ -1621,7 +1628,11 @@ export class AiAgentService {
     const heteroProviderType = agentConfig.agencyConfig?.heterogeneousProvider?.type;
     const isHeteroAgent = !!heteroProviderType || HETERO_AGENT_MODELS.has(model);
     const heteroType = (heteroProviderType ?? model) as
-      'amp' | 'claude-code' | 'codex' | 'hermes' | 'openclaw';
+      | 'amp'
+      | 'claude-code'
+      | 'codex'
+      | 'hermes'
+      | 'openclaw';
 
     // ── Shared turn setup (runs for BOTH hetero and normal agents) ──────────
     // Everything up to and including persisting the turn is identical for both
@@ -4964,7 +4975,8 @@ export class AiAgentService {
     if (topicId) {
       const topic = await this.topicModel.findById(topicId);
       const runningOp = (topic?.metadata as any)?.runningOperation as
-        { deviceId?: string; heteroType?: string; operationId?: string } | undefined;
+        | { deviceId?: string; heteroType?: string; operationId?: string }
+        | undefined;
 
       if (
         runningOp?.deviceId &&

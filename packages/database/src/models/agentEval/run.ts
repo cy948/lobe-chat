@@ -1,6 +1,11 @@
 import { and, count, desc, eq, inArray } from 'drizzle-orm';
 
-import { agentEvalDatasets, agentEvalRuns, type NewAgentEvalRun } from '../../schemas';
+import {
+  agentEvalDatasets,
+  agentEvalExperiments,
+  agentEvalRuns,
+  type NewAgentEvalRun,
+} from '../../schemas';
 import { type LobeChatDatabase } from '../../type';
 import { buildWorkspaceWhere } from '../../utils/workspace';
 
@@ -18,25 +23,10 @@ export class AgentEvalRunModel {
   private ownership = () =>
     buildWorkspaceWhere({ userId: this.userId, workspaceId: this.workspaceId }, agentEvalRuns);
 
-  /**
-   * Create a new run
-   */
-  create = async (params: Omit<NewAgentEvalRun, 'userId'>) => {
-    const [result] = await this.db
-      .insert(agentEvalRuns)
-      .values({ ...params, userId: this.userId, workspaceId: this.workspaceId ?? null })
-      .returning();
-    return result;
-  };
-
-  /**
-   * Query runs with optional filters
-   */
-  query = async (filter?: {
+  private buildQueryConditions = (filter?: {
     benchmarkId?: string;
     datasetId?: string;
-    limit?: number;
-    offset?: number;
+    experimentId?: string;
     status?: 'idle' | 'pending' | 'running' | 'completed' | 'failed' | 'aborted' | 'external';
   }) => {
     const conditions = [this.ownership()];
@@ -58,9 +48,55 @@ export class AgentEvalRunModel {
       conditions.push(eq(agentEvalRuns.status, filter.status));
     }
 
+    if (filter?.experimentId) {
+      conditions.push(eq(agentEvalRuns.experimentId, filter.experimentId));
+    }
+
+    return conditions;
+  };
+
+  /**
+   * Create a new run
+   */
+  create = async (params: Omit<NewAgentEvalRun, 'userId'>) => {
+    const [result] = await this.db
+      .insert(agentEvalRuns)
+      .values({ ...params, userId: this.userId, workspaceId: this.workspaceId ?? null })
+      .returning();
+    return result;
+  };
+
+  /**
+   * Query runs with optional filters
+   */
+  query = async (filter?: {
+    benchmarkId?: string;
+    datasetId?: string;
+    experimentId?: string;
+    limit?: number;
+    offset?: number;
+    status?: 'idle' | 'pending' | 'running' | 'completed' | 'failed' | 'aborted' | 'external';
+  }) => {
+    const conditions = this.buildQueryConditions(filter);
+
     const query = this.db
-      .select()
+      .select({
+        datasetName: agentEvalDatasets.name,
+        experimentName: agentEvalExperiments.name,
+        run: agentEvalRuns,
+      })
       .from(agentEvalRuns)
+      .leftJoin(agentEvalDatasets, eq(agentEvalRuns.datasetId, agentEvalDatasets.id))
+      .leftJoin(
+        agentEvalExperiments,
+        and(
+          eq(agentEvalRuns.experimentId, agentEvalExperiments.id),
+          buildWorkspaceWhere(
+            { userId: this.userId, workspaceId: this.workspaceId },
+            agentEvalExperiments,
+          ),
+        ),
+      )
       .where(and(...conditions))
       .orderBy(desc(agentEvalRuns.createdAt))
       .$dynamic();
@@ -73,7 +109,29 @@ export class AgentEvalRunModel {
       query.offset(filter.offset);
     }
 
-    return query;
+    const rows = await query;
+
+    return rows.map((row) => ({
+      ...row.run,
+      datasetName: row.datasetName || undefined,
+      experimentName: row.experimentName || undefined,
+    }));
+  };
+
+  count = async (filter?: {
+    benchmarkId?: string;
+    datasetId?: string;
+    experimentId?: string;
+    status?: 'idle' | 'pending' | 'running' | 'completed' | 'failed' | 'aborted' | 'external';
+  }) => {
+    const conditions = this.buildQueryConditions(filter);
+
+    const result = await this.db
+      .select({ value: count() })
+      .from(agentEvalRuns)
+      .where(and(...conditions));
+
+    return Number(result[0]?.value) || 0;
   };
 
   /**

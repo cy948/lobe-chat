@@ -1,5 +1,6 @@
 'use client';
 
+import type { AgentEvalDatasetListItem } from '@lobechat/types';
 import { Flexbox } from '@lobehub/ui';
 import { Card, Skeleton } from 'antd';
 import { createStaticStyles, cssVar } from 'antd-style';
@@ -108,6 +109,9 @@ const BenchmarkDetail = memo(() => {
   useFetchRuns(benchmarkId);
 
   const completedRuns = runList.filter((r) => r.status === 'completed');
+  const benchmarkDatasets = datasets.filter(
+    (dataset: AgentEvalDatasetListItem) => !dataset.sourceExperimentId,
+  );
 
   const totalCases = datasets.reduce((sum, ds) => sum + (ds.testCaseCount || 0), 0);
 
@@ -117,7 +121,12 @@ const BenchmarkDetail = memo(() => {
         {/* Header skeleton */}
         <Flexbox gap={16}>
           <Flexbox horizontal align="start" gap={12}>
-            <Skeleton.Avatar active shape="square" size={40} style={{ borderRadius: cssVar.borderRadiusLG }} />
+            <Skeleton.Avatar
+              active
+              shape="square"
+              size={40}
+              style={{ borderRadius: cssVar.borderRadiusLG }}
+            />
             <Flexbox flex={1} gap={8}>
               <Skeleton.Input active style={{ height: 24, width: 200 }} />
               <Skeleton.Input active size="small" style={{ height: 14, width: 320 }} />
@@ -193,7 +202,7 @@ const BenchmarkDetail = memo(() => {
       <h3 className={styles.sectionTitle}>{t('benchmark.detail.tabs.datasets')}</h3>
       <DatasetsTab
         benchmarkId={benchmarkId!}
-        datasets={datasets}
+        datasets={benchmarkDatasets}
         loading={isLoadingDatasets}
         onImport={() => {}}
         onRefresh={handleRefreshDatasets}

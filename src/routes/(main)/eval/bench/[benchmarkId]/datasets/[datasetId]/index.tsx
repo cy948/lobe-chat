@@ -1,7 +1,7 @@
 'use client';
 
 import { Flexbox, Text } from '@lobehub/ui';
-import { Button, confirmModal } from '@lobehub/ui/base-ui';
+import { Button } from '@lobehub/ui/base-ui';
 import { App } from 'antd';
 import { createStaticStyles, cssVar } from 'antd-style';
 import { ArrowLeft, Database, Pencil, Plus, Trash2 } from 'lucide-react';
@@ -10,21 +10,21 @@ import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
 
 import AsyncBoundary from '@/components/AsyncBoundary';
+import {
+  createDatasetEditModal,
+  createDatasetImportModal,
+  createTestCaseCreateModal,
+  createTestCaseEditModal,
+  TestCaseTable,
+} from '@/features/EvalDatasets';
+import { createRunCreateModal, EvalRunEmptyState, RunCard } from '@/features/EvalRuns';
 import { useWorkspaceAwareNavigate } from '@/features/Workspace/useWorkspaceAwareNavigate';
 import WorkspaceLink from '@/features/Workspace/WorkspaceLink';
 import { agentEvalService } from '@/services/agentEval';
 import { runSelectors, useEvalStore } from '@/store/eval';
 
-import { createDatasetEditModal } from '../../../../features/DatasetEditModal';
-import { createDatasetImportModal } from '../../../../features/DatasetImportModal';
 import SegmentBar from '../../../../features/SegmentBar';
-import { createTestCaseCreateModal } from '../../../../features/TestCaseCreateModal';
-import { createTestCaseEditModal } from '../../../../features/TestCaseEditModal';
 import TestCasePreviewPanel from '../../features/DatasetsTab/TestCasePreviewPanel';
-import TestCaseTable from '../../features/DatasetsTab/TestCaseTable';
-import { createRunCreateModal } from '../../features/RunCreateModal';
-import EmptyState from '../../features/RunsTab/EmptyState';
-import RunCard from '../../features/RunsTab/RunCard';
 
 const styles = createStaticStyles(({ css }) => ({
   backLink: css`
@@ -95,11 +95,11 @@ const DatasetDetail = memo(() => {
   const { t } = useTranslation('eval');
   const { benchmarkId, datasetId } = useParams<{ benchmarkId: string; datasetId: string }>();
   const navigate = useWorkspaceAwareNavigate();
-  const { message } = App.useApp();
+  const { modal, message } = App.useApp();
 
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10 });
   const [search, setSearch] = useState('');
-  const [diffFilter, setDiffFilter] = useState<'all' | 'easy' | 'medium' | 'hard'>('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [previewCase, setPreviewCase] = useState<any | null>(null);
 
   const useFetchDatasetDetail = useEvalStore((s) => s.useFetchDatasetDetail);
@@ -130,10 +130,17 @@ const DatasetDetail = memo(() => {
   const total = testCaseData?.total || 0;
 
   const filteredCases = testCases.filter((c: any) => {
-    if (diffFilter !== 'all' && c.metadata?.difficulty !== diffFilter) return false;
+    if (categoryFilter !== 'all' && c.content?.category !== categoryFilter) return false;
     if (search && !c.content?.input?.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
+  const categories: string[] = [];
+  for (const testCase of testCases) {
+    const category = testCase.content?.category;
+    if (typeof category === 'string' && category.length > 0 && !categories.includes(category)) {
+      categories.push(category);
+    }
+  }
 
   // Difficulty mix across the loaded cases — feeds the summary hero's bar.
   const difficulty = useMemo(() => {
@@ -162,7 +169,7 @@ const DatasetDetail = memo(() => {
 
   const handleDeleteCase = useCallback(
     (testCase: any) => {
-      confirmModal({
+      modal.confirm({
         content: t('testCase.delete.confirm'),
         okButtonProps: { danger: true },
         okText: t('common.delete'),
@@ -178,11 +185,11 @@ const DatasetDetail = memo(() => {
         title: t('common.delete'),
       });
     },
-    [handleRefresh, message, t],
+    [handleRefresh, message, modal, t],
   );
 
   const handleDelete = useCallback(() => {
-    confirmModal({
+    modal.confirm({
       content: t('dataset.delete.confirm'),
       okButtonProps: { danger: true },
       okText: t('common.delete'),
@@ -197,7 +204,7 @@ const DatasetDetail = memo(() => {
       },
       title: t('common.delete'),
     });
-  }, [benchmarkId, datasetId, message, navigate, t]);
+  }, [benchmarkId, datasetId, message, modal, navigate, t]);
 
   // Skeleton → error → (resolved-null) blank, replacing a bare `return null`
   // that flashed blank on the happy path and stayed permanently blank on a
@@ -302,29 +309,30 @@ const DatasetDetail = memo(() => {
 
               <div className={styles.tableWrapper}>
                 <TestCaseTable
+                  categories={categories}
+                  categoryFilter={categoryFilter}
                   datasetEvalMode={dataset?.evalMode}
-                  diffFilter={diffFilter}
                   pagination={pagination}
                   search={search}
                   selectedId={previewCase?.id}
                   testCases={filteredCases}
                   total={total}
-                  onDelete={handleDeleteCase}
-                  onPageChange={(page, pageSize) => setPagination({ current: page, pageSize })}
-                  onPreview={setPreviewCase}
                   onAddCase={() =>
                     createTestCaseCreateModal({ datasetId: datasetId!, onSuccess: handleRefresh })
                   }
-                  onDiffFilterChange={(f) => {
-                    setDiffFilter(f);
+                  onCategoryFilterChange={(filter) => {
+                    setCategoryFilter(filter);
                     setPagination((prev) => ({ ...prev, current: 1 }));
                   }}
+                  onDelete={handleDeleteCase}
                   onEdit={(testCase) =>
                     createTestCaseEditModal({ onSuccess: handleRefresh, testCase })
                   }
                   onImport={() =>
                     createDatasetImportModal({ datasetId: datasetId!, onSuccess: handleRefresh })
                   }
+                  onPageChange={(page, pageSize) => setPagination({ current: page, pageSize })}
+                  onPreview={setPreviewCase}
                   onSearchChange={(v) => {
                     setSearch(v);
                     setPagination((prev) => ({ ...prev, current: 1 }));
@@ -360,7 +368,7 @@ const DatasetDetail = memo(() => {
                   ))}
                 </Flexbox>
               ) : (
-                <EmptyState
+                <EvalRunEmptyState
                   onCreate={() =>
                     createRunCreateModal({
                       benchmarkId: benchmarkId!,

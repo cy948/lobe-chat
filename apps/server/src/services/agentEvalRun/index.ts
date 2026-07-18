@@ -1,3 +1,5 @@
+import { execSync } from 'node:child_process';
+
 import { LOADING_FLAT } from '@lobechat/const';
 import { type LobeChatDatabase } from '@lobechat/database';
 import { evaluate } from '@lobechat/eval-rubric';
@@ -9,6 +11,7 @@ import type {
   EvalRunMetrics,
   EvalRunTopicResult,
   EvalThreadResult,
+  LobeAgentConfig,
   RubricType,
 } from '@lobechat/types';
 import { getActivePluginIds, RequestTrigger } from '@lobechat/types';
@@ -17,6 +20,7 @@ import debug from 'debug';
 import {
   AgentEvalBenchmarkModel,
   AgentEvalDatasetModel,
+  AgentEvalExperimentModel,
   AgentEvalRunModel,
   AgentEvalRunTopicModel,
   AgentEvalTestCaseModel,
@@ -40,6 +44,25 @@ const EVAL_AGENT_RUNTIME_QSTASH_RETRY_DELAY = '10000 * (1 + retried)';
 const RESUMABLE_THREAD_STATUSES = new Set(['error', 'timeout']);
 
 const log = debug('lobe-server:eval-run-service');
+
+const resolveCodeCommitSha = () => {
+  const envCommitSha =
+    process.env.VERCEL_GIT_COMMIT_SHA || process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA;
+
+  if (envCommitSha) return envCommitSha;
+
+  try {
+    return execSync('git rev-parse --short=12 HEAD', {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    }).trim();
+  } catch (error) {
+    console.error('Failed to resolve eval run code commit sha', error);
+    return undefined;
+  }
+};
+
+const CURRENT_CODE_COMMIT_SHA = resolveCodeCommitSha();
 
 interface ResumableCaseTarget {
   caseStatus?: string | null;
@@ -73,12 +96,34 @@ const resetResumedThreadResult = (thread: EvalThreadResult): EvalThreadResult =>
   status: thread.status === 'external' ? 'external' : 'running',
 });
 
+const toAgentConfigOverride = (
+  snapshot?: EvalRunAgentSnapshot | null,
+): Partial<LobeAgentConfig> | undefined => {
+  if (!snapshot) return;
+
+  return {
+    agencyConfig: snapshot.agencyConfig as LobeAgentConfig['agencyConfig'],
+    avatar: snapshot.avatar ?? undefined,
+    chatConfig: snapshot.chatConfig as LobeAgentConfig['chatConfig'],
+    fewShots: snapshot.fewShots as LobeAgentConfig['fewShots'],
+    files: snapshot.files as LobeAgentConfig['files'],
+    knowledgeBases: snapshot.knowledgeBases as LobeAgentConfig['knowledgeBases'],
+    model: snapshot.model ?? undefined,
+    params: snapshot.params as LobeAgentConfig['params'],
+    plugins: snapshot.plugins ?? undefined,
+    provider: snapshot.provider ?? undefined,
+    systemRole: snapshot.systemRole ?? undefined,
+    title: snapshot.title ?? undefined,
+  };
+};
+
 export class AgentEvalRunService {
   private readonly db: LobeChatDatabase;
   private readonly userId: string;
   private readonly runModel: AgentEvalRunModel;
   private readonly benchmarkModel: AgentEvalBenchmarkModel;
   private readonly datasetModel: AgentEvalDatasetModel;
+  private readonly experimentModel: AgentEvalExperimentModel;
   private readonly runTopicModel: AgentEvalRunTopicModel;
   private readonly testCaseModel: AgentEvalTestCaseModel;
   private readonly messageModel: MessageModel;
@@ -95,6 +140,7 @@ export class AgentEvalRunService {
     this.runModel = new AgentEvalRunModel(db, userId, workspaceId);
     this.benchmarkModel = new AgentEvalBenchmarkModel(db, userId, workspaceId);
     this.datasetModel = new AgentEvalDatasetModel(db, userId, workspaceId);
+    this.experimentModel = new AgentEvalExperimentModel(db, userId, workspaceId);
     this.runTopicModel = new AgentEvalRunTopicModel(db, userId, workspaceId);
     this.testCaseModel = new AgentEvalTestCaseModel(db, userId, workspaceId);
     this.messageModel = new MessageModel(db, userId, workspaceId);
@@ -106,24 +152,65 @@ export class AgentEvalRunService {
   async createRun(params: {
     config?: EvalRunInputConfig;
     datasetId: string;
+    experimentId?: string;
     name?: string;
+    parentRunId?: string;
     targetAgentId?: string;
   }) {
-    const agentSnapshot = params.targetAgentId
-      ? await this.snapshotAgentConfig(params.targetAgentId)
-      : undefined;
+    let inheritedConfig: EvalRunConfig | undefined;
+    let targetAgentId = params.targetAgentId;
+    let datasetId = params.datasetId;
 
-    const config = { ...params.config, agentSnapshot };
+    if (params.parentRunId) {
+      const parentRun = await this.runModel.findById(params.parentRunId);
+      if (!parentRun) throw new Error('Parent run not found');
 
-    const run = await this.runModel.create({ ...params, config });
+      if (params.targetAgentId !== undefined) {
+        throw new Error('Fork run cannot override target agent');
+      }
+
+      if (params.config !== undefined) {
+        throw new Error('Fork run cannot override run config');
+      }
+
+      if (params.datasetId !== parentRun.datasetId) {
+        throw new Error('Fork run cannot change dataset');
+      }
+
+      inheritedConfig = parentRun.config || undefined;
+      targetAgentId = parentRun.targetAgentId ?? undefined;
+      datasetId = parentRun.datasetId;
+    }
+
+    const agentSnapshot = targetAgentId ? await this.snapshotAgentConfig(targetAgentId) : undefined;
+
+    const config = { ...inheritedConfig, ...params.config, agentSnapshot };
+
+    if (params.experimentId) {
+      const experiment = await this.experimentModel.findById(params.experimentId);
+      if (!experiment) throw new Error('Experiment not found');
+    }
+
+    const run = await this.runModel.create({
+      config,
+      datasetId,
+      experimentId: params.experimentId,
+      name: params.name,
+      parentRunId: params.parentRunId,
+      targetAgentId,
+    });
+
+    if (params.experimentId) {
+      await this.experimentModel.touch(params.experimentId);
+    }
 
     // Pre-create Topics and RunTopics for all test cases (status='pending')
-    const testCases = await this.testCaseModel.findByDatasetId(params.datasetId);
+    const testCases = await this.testCaseModel.findByDatasetId(datasetId);
 
     if (testCases.length > 0) {
       const createdTopics = await this.topicModel.batchCreate(
         testCases.map((tc) => ({
-          agentId: params.targetAgentId ?? undefined,
+          agentId: targetAgentId,
           title: `[Eval Case #${(tc.sortOrder ?? 0) + 1}] ${tc.content?.input?.slice(0, 50) || 'Test Case'}...`,
           trigger: RequestTrigger.Eval,
         })),
@@ -972,6 +1059,7 @@ export class AgentEvalRunService {
     try {
       const execResult = await aiAgentService.execAgent({
         agentId: run.targetAgentId ?? undefined,
+        agentConfigOverride: toAgentConfigOverride(run.config?.agentSnapshot),
         appContext: { topicId },
         autoStart: true,
         trigger: RequestTrigger.Eval,
@@ -1131,6 +1219,7 @@ export class AgentEvalRunService {
     try {
       const execResult = await aiAgentService.execAgent({
         agentId: run.targetAgentId ?? undefined,
+        agentConfigOverride: toAgentConfigOverride(run.config?.agentSnapshot),
         appContext: { threadId, topicId },
         autoStart: true,
         trigger: RequestTrigger.Eval,
@@ -1529,7 +1618,13 @@ export class AgentEvalRunService {
         rubricScores: meta.rubricScores as any,
         score: meta.score as number | undefined,
         status: meta.status as
-          'error' | 'external' | 'failed' | 'passed' | 'running' | 'timeout' | undefined,
+          | 'error'
+          | 'external'
+          | 'failed'
+          | 'passed'
+          | 'running'
+          | 'timeout'
+          | undefined,
         steps: meta.steps as number | undefined,
         threadId: t.id,
         tokens: meta.tokens as number | undefined,
@@ -1621,9 +1716,13 @@ export class AgentEvalRunService {
     }
 
     // Get dataset and run topics in parallel
-    const [dataset, runTopics] = await Promise.all([
+    const [dataset, runTopics, experiment, parentRun] = await Promise.all([
       this.datasetModel.findById(run.datasetId),
       this.runTopicModel.findByRunId(id),
+      run.experimentId
+        ? this.experimentModel.findById(run.experimentId)
+        : Promise.resolve(undefined),
+      run.parentRunId ? this.runModel.findById(run.parentRunId) : Promise.resolve(undefined),
     ]);
 
     // Get target agent display info via AgentService (fallback for runs without snapshot)
@@ -1646,6 +1745,8 @@ export class AgentEvalRunService {
     return {
       ...run,
       dataset,
+      experiment: experiment ? { id: experiment.id, name: experiment.name } : null,
+      parentRun: parentRun ? { id: parentRun.id, name: parentRun.name } : null,
       targetAgent,
       topics: runTopics.map((rt) => ({
         createdAt: rt.createdAt,
@@ -2194,10 +2295,14 @@ export class AgentEvalRunService {
     if (!agentConfig) return undefined;
 
     return {
+      agencyConfig: agentConfig.agencyConfig as Record<string, unknown>,
       avatar: agentConfig.avatar,
       chatConfig: agentConfig.chatConfig as unknown as Record<string, unknown>,
+      codeCommitSha: CURRENT_CODE_COMMIT_SHA,
       description: null,
+      files: agentConfig.files as unknown[],
       fewShots: agentConfig.fewShots,
+      knowledgeBases: agentConfig.knowledgeBases as unknown[],
       model: agentConfig.model,
       params: agentConfig.params as Record<string, unknown>,
       // Pinned identifiers only — this snapshot is a display-only DTO

@@ -40,10 +40,14 @@ export type EvalRunStatus = 'aborted' | 'completed' | 'external' | 'failed' | 'p
  * Evaluation run configuration
  */
 export interface EvalRunAgentSnapshot {
+  agencyConfig?: Record<string, unknown> | null;
   avatar?: string | null;
   chatConfig?: Record<string, unknown> | null;
+  codeCommitSha?: string | null;
   description?: string | null;
   fewShots?: unknown[] | null;
+  files?: unknown[] | null;
+  knowledgeBases?: unknown[] | null;
   model?: string | null;
   params?: Record<string, unknown> | null;
   plugins?: string[] | null;

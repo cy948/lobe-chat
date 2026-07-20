@@ -94,4 +94,47 @@ describe('agentEvalExternalRouter.reportResult', () => {
       expect.objectContaining({ status: 'running' }),
     );
   });
+
+  it('uses the caseSelection subset as the total-cases denominator', async () => {
+    const run = {
+      config: { caseSelection: { caseIds: ['c1'], mode: 'include' }, k: 1 },
+      datasetId: 'dataset-1',
+      id: 'run-1',
+      metrics: null,
+      startedAt: new Date(),
+    };
+    const passedTopic = {
+      evalResult: { awaitingExternalEval: false },
+      passed: true,
+      score: 1,
+      status: 'passed',
+      topicId: 'topic-1',
+    };
+
+    mocks.findRunById.mockResolvedValue(run);
+    mocks.findRunTopics.mockResolvedValueOnce([passedTopic]).mockResolvedValueOnce([passedTopic]);
+    mocks.countByDatasetId.mockResolvedValue(10);
+    mocks.evaluateAndFinalizeRun.mockResolvedValue({
+      completedCases: 1,
+      errorCases: 0,
+      timeoutCases: 0,
+      totalCases: 1,
+    });
+    mocks.updateRun.mockResolvedValue({ ...run, status: 'completed' });
+
+    const result = await caller().reportResult({
+      correct: true,
+      runId: run.id,
+      score: 1,
+      topicId: passedTopic.topicId,
+    });
+
+    // The denominator comes from the selection (1 selected case), not the
+    // full dataset count (10) — so reporting the only selected case completes
+    // the run instead of leaving it running forever.
+    expect(mocks.evaluateAndFinalizeRun).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedTotalCases: 1 }),
+    );
+    expect(result.runStatus).toBe('completed');
+  });
 });

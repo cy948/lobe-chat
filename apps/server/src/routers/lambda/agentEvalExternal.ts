@@ -1,4 +1,9 @@
-import type { EvalRunMetrics, EvalRunTopicResult, EvalThreadResult } from '@lobechat/types';
+import type {
+  EvalCaseSelection,
+  EvalRunMetrics,
+  EvalRunTopicResult,
+  EvalThreadResult,
+} from '@lobechat/types';
 import { TRPCError } from '@trpc/server';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import isEqual from 'fast-deep-equal';
@@ -90,6 +95,27 @@ export const resolveRunStatus = (
     : 'completed';
 };
 
+/**
+ * Denominator for external-run totals. External runs create topics on demand,
+ * so the dataset case count is the baseline; a persisted caseSelection narrows
+ * it to the selected subset (include → selection size, exclude → dataset minus
+ * excluded). Omitted selection means all cases (canonical).
+ *
+ * caseIds are shape-validated only (existence is the worker's contract); a
+ * worker executing fewer cases than the selection is treated the same as one
+ * executing fewer than the full dataset — no extra clamping query. Exported
+ * for unit tests.
+ */
+export const resolveExpectedTotalCases = (
+  caseSelection: EvalCaseSelection | undefined,
+  datasetCaseCount: number,
+): number => {
+  if (!caseSelection || caseSelection.mode === 'all') return datasetCaseCount;
+  const selectedIds = caseSelection.caseIds ?? [];
+  if (caseSelection.mode === 'include') return selectedIds.length;
+  return Math.max(datasetCaseCount - selectedIds.length, 0);
+};
+
 const recomputeRunAggregation = async (
   ctx: {
     runModel: AgentEvalRunModel;
@@ -104,9 +130,10 @@ const recomputeRunAggregation = async (
 
   const refreshedTopics = await ctx.runTopicModel.findByRunId(runId);
   const metrics = await ctx.runService.evaluateAndFinalizeRun({
-    // External runs create topics on demand — use the dataset case count as the
-    // denominator so partial executions report correct totals/pass rates.
-    expectedTotalCases: await ctx.testCaseModel.countByDatasetId(refreshedRun.datasetId),
+    expectedTotalCases: resolveExpectedTotalCases(
+      refreshedRun.config?.caseSelection,
+      await ctx.testCaseModel.countByDatasetId(refreshedRun.datasetId),
+    ),
     run: {
       config: refreshedRun.config,
       id: refreshedRun.id,
@@ -532,7 +559,10 @@ export const agentEvalExternalRouter = router({
         if (input.status === 'failed') {
           const runTopics = await ctx.runTopicModel.findByRunId(input.runId);
           const metrics = await ctx.runService.evaluateAndFinalizeRun({
-            expectedTotalCases: await ctx.testCaseModel.countByDatasetId(run.datasetId),
+            expectedTotalCases: resolveExpectedTotalCases(
+              run.config?.caseSelection,
+              await ctx.testCaseModel.countByDatasetId(run.datasetId),
+            ),
             run: { config: run.config, id: run.id, metrics: run.metrics, startedAt: run.startedAt },
             runTopics,
           });
@@ -579,7 +609,10 @@ export const agentEvalExternalRouter = router({
         }
 
         const metrics = await ctx.runService.evaluateAndFinalizeRun({
-          expectedTotalCases: await ctx.testCaseModel.countByDatasetId(run.datasetId),
+          expectedTotalCases: resolveExpectedTotalCases(
+            run.config?.caseSelection,
+            await ctx.testCaseModel.countByDatasetId(run.datasetId),
+          ),
           run: { config: run.config, id: run.id, metrics: run.metrics, startedAt: run.startedAt },
           runTopics,
         });

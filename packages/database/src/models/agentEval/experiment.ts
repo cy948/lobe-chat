@@ -89,29 +89,57 @@ export class AgentEvalExperimentModel {
 
     await this.ensureVisibleBenchmarks(normalizedBenchmarkIds);
 
-    return this.db.transaction(async (trx) => {
-      const [created] = await trx
-        .insert(agentEvalExperiments)
-        .values({
-          ...experiment,
-          userId: this.userId,
-          workspaceId: this.workspaceId ?? null,
-        })
-        .returning();
+    // Idempotent create: when the caller supplies an `id` (cross-server machine
+    // creation), return the existing experiment instead of failing on conflict.
+    if (experiment.id) {
+      const [existing] = await this.db
+        .select()
+        .from(agentEvalExperiments)
+        .where(and(eq(agentEvalExperiments.id, experiment.id), this.experimentOwnership()))
+        .limit(1);
+      if (existing) return existing;
+    }
 
-      if (normalizedBenchmarkIds.length > 0) {
-        await trx.insert(agentEvalExperimentBenchmarks).values(
-          normalizedBenchmarkIds.map((benchmarkId) => ({
-            benchmarkId,
-            experimentId: created.id,
+    const insert = async () =>
+      this.db.transaction(async (trx) => {
+        const [created] = await trx
+          .insert(agentEvalExperiments)
+          .values({
+            ...experiment,
             userId: this.userId,
             workspaceId: this.workspaceId ?? null,
-          })),
-        );
-      }
+          })
+          .returning();
 
-      return created;
-    });
+        if (normalizedBenchmarkIds.length > 0) {
+          await trx.insert(agentEvalExperimentBenchmarks).values(
+            normalizedBenchmarkIds.map((benchmarkId) => ({
+              benchmarkId,
+              experimentId: created.id,
+              userId: this.userId,
+              workspaceId: this.workspaceId ?? null,
+            })),
+          );
+        }
+
+        return created;
+      });
+
+    try {
+      return await insert();
+    } catch (error) {
+      // Race-safe idempotency: a concurrent insert with the same id lost the
+      // race — return the winner's row.
+      if (experiment.id && (error as { code?: string })?.code === '23505') {
+        const [existing] = await this.db
+          .select()
+          .from(agentEvalExperiments)
+          .where(and(eq(agentEvalExperiments.id, experiment.id), this.experimentOwnership()))
+          .limit(1);
+        if (existing) return existing;
+      }
+      throw error;
+    }
   };
 
   /**

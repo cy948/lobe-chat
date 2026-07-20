@@ -19,6 +19,8 @@ import { AgentEvalRunService } from '@/server/services/agentEvalRun';
 import { FileService } from '@/server/services/file';
 import { AgentEvalRunWorkflow } from '@/server/workflows/agentEvalRun';
 
+import { evalRunInputConfigSchema } from './evalRunConfig.schema';
+
 const rubricTypeSchema = z.enum([
   'equals',
   'contains',
@@ -41,17 +43,6 @@ const rubricTypeSchema = z.enum([
 ]);
 
 const evalConfigSchema = z.object({ judgePrompt: z.string().optional() }).passthrough();
-
-const evalRunInputConfigSchema = z.object({
-  k: z.number().min(1).max(10).optional(),
-  maxConcurrency: z.number().min(1).max(20).optional(),
-  maxSteps: z.number().min(1).max(1000).optional(),
-  timeout: z
-    .number()
-    .min(60_000)
-    .max(6 * 3_600_000)
-    .optional(),
-});
 
 const log = debug('lobe-lambda-router:agent-eval');
 
@@ -185,6 +176,8 @@ export const agentEvalRouter = router({
   createExperiment: agentEvalProcedureWrite
     .input(
       z.object({
+        // Optional caller-supplied id for cross-server idempotent creation.
+        id: z.string().optional(),
         name: z.string(),
         description: z.string().optional(),
         metadata: z.record(z.string(), z.unknown()).optional(),
@@ -697,6 +690,8 @@ export const agentEvalRouter = router({
         config: evalRunInputConfigSchema.optional(),
         experimentId: z.string().optional(),
         parentRunId: z.string().optional(),
+        // 'external': create claimable (pending) run with no pre-created topics.
+        mode: z.enum(['internal', 'external']).optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -913,7 +908,18 @@ export const agentEvalRouter = router({
         });
       }
 
-      await ctx.runService.retrySingleCase(input.runId, input.testCaseId);
+      try {
+        await ctx.runService.retrySingleCase(input.runId, input.testCaseId);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Cannot retry case';
+        if (message.startsWith('Cannot retry: case is')) {
+          throw new TRPCError({ code: 'CONFLICT', message });
+        }
+        if (message === 'RunTopic not found') {
+          throw new TRPCError({ code: 'NOT_FOUND', message });
+        }
+        throw error;
+      }
 
       await AgentEvalRunWorkflow.triggerExecuteTestCase({
         runId: input.runId,

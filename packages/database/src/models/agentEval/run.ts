@@ -106,6 +106,20 @@ export class AgentEvalRunModel {
   };
 
   /**
+   * Atomically claim a pending run (pending -> running) via a single
+   * conditional update. Returns the updated run, or undefined when the run is
+   * not owned / not currently pending (already claimed or terminal).
+   */
+  claim = async (id: string) => {
+    const [result] = await this.db
+      .update(agentEvalRuns)
+      .set({ startedAt: new Date(), status: 'running', updatedAt: new Date() })
+      .where(and(eq(agentEvalRuns.id, id), eq(agentEvalRuns.status, 'pending'), this.ownership()))
+      .returning();
+    return result;
+  };
+
+  /**
    * Delete run (only user-created runs)
    */
   delete = async (id: string) => {

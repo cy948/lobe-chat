@@ -91,6 +91,7 @@ export default {
   'caseDetail.resources': 'Resources',
   'caseDetail.score': 'Score',
   'caseDetail.completionReason': 'Status',
+  'caseDetail.section.externalResult': 'External Result',
   'caseDetail.section.runtime': 'Runtime',
   'caseDetail.section.scoring': 'Scoring Details',
   'caseDetail.section.testCase': 'Test Case',

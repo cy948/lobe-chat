@@ -686,6 +686,45 @@ export function registerAgentCommand(program: Command) {
         if (r.completedAt) console.log(`  Ended:   ${r.completedAt}`);
       },
     );
+
+  // ── interrupt ──────────────────────────────────────────
+
+  agent
+    .command('interrupt')
+    .description('Interrupt a running agent operation')
+    .requiredOption('--operation-id <id>', 'Operation ID to interrupt')
+    .option('--topic-id <id>', 'Topic ID (enables remote device cancellation when applicable)')
+    .option('--thread-id <id>', 'Thread ID (resolves the operation from thread metadata)')
+    .option('--json', 'Output JSON envelope')
+    .action(
+      async (options: {
+        json?: boolean;
+        operationId: string;
+        threadId?: string;
+        topicId?: string;
+      }) => {
+        const client = await getTrpcClient();
+        const input: Record<string, any> = { operationId: options.operationId };
+        if (options.topicId) input.topicId = options.topicId;
+        if (options.threadId) input.threadId = options.threadId;
+
+        const result = await client.aiAgent.interruptTask.mutate(input as any);
+
+        if (options.json) {
+          outputJson(result);
+          return;
+        }
+
+        const r = result as any;
+        if (r?.success) {
+          console.log(`${pc.green('OK')} Interrupted operation ${pc.bold(options.operationId)}`);
+        } else {
+          console.log(
+            `${pc.yellow('!')} Interrupt not acknowledged for ${pc.bold(options.operationId)} (already finished?)`,
+          );
+        }
+      },
+    );
 }
 
 function colorStatus(status: string): string {

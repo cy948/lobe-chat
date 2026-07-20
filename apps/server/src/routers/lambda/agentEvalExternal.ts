@@ -1,4 +1,4 @@
-import type { EvalRunTopicResult, EvalThreadResult } from '@lobechat/types';
+import type { EvalRunMetrics, EvalRunTopicResult, EvalThreadResult } from '@lobechat/types';
 import { TRPCError } from '@trpc/server';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import isEqual from 'fast-deep-equal';
@@ -73,6 +73,23 @@ const agentEvalExternalWriteProcedure = agentEvalExternalProcedure.use(
 
 type ReportResultInput = z.infer<typeof reportResultItemSchema> & { runId: string };
 
+/**
+ * Decide the run status from aggregated metrics. Priority: external (still
+ * awaiting external eval) > running (cases outstanding) > failed (every case
+ * errored/timed out) > completed. Exported for unit tests.
+ */
+export const resolveRunStatus = (
+  metrics: Pick<EvalRunMetrics, 'completedCases' | 'errorCases' | 'timeoutCases' | 'totalCases'>,
+  hasAwaitingExternal: boolean,
+): 'completed' | 'external' | 'failed' | 'running' => {
+  if (hasAwaitingExternal) return 'external';
+  const totalCases = metrics.totalCases ?? 0;
+  if ((metrics.completedCases ?? 0) < totalCases) return 'running';
+  return (metrics.errorCases ?? 0) + (metrics.timeoutCases ?? 0) >= totalCases
+    ? 'failed'
+    : 'completed';
+};
+
 const recomputeRunAggregation = async (
   ctx: {
     runModel: AgentEvalRunModel;
@@ -104,12 +121,7 @@ const recomputeRunAggregation = async (
       topic.status === 'external' ||
       (topic.evalResult as Record<string, unknown> | null)?.awaitingExternalEval === true,
   );
-  const nonSuccessCases = (metrics.errorCases || 0) + (metrics.timeoutCases || 0);
-  const status = hasAwaitingExternal
-    ? 'external'
-    : nonSuccessCases >= metrics.totalCases
-      ? 'failed'
-      : 'completed';
+  const status = resolveRunStatus(metrics, hasAwaitingExternal);
 
   await ctx.runModel.update(runId, { metrics, status });
 

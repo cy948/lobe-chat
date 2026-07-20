@@ -29,14 +29,9 @@ export class ExperimentActionImpl {
     metadata?: Record<string, unknown>;
     name: string;
   }): Promise<any> => {
-    this.#set({ isCreatingExperiment: true }, false, 'createExperiment/start');
-    try {
-      const result = await agentEvalService.createExperiment(params);
-      await this.#get().refreshExperiments();
-      return result.data;
-    } finally {
-      this.#set({ isCreatingExperiment: false }, false, 'createExperiment/end');
-    }
+    const result = await agentEvalService.createExperiment(params);
+    await this.#get().refreshExperiments();
+    return result.data;
   };
 
   deleteExperiment = async (id: string): Promise<void> => {
@@ -94,7 +89,6 @@ export class ExperimentActionImpl {
           {
             experimentList: data.data,
             experimentListInit: true,
-            isLoadingExperimentList: false,
           },
           false,
           'useFetchExperiments/success',

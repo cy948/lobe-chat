@@ -5,6 +5,7 @@ import { createStaticStyles } from 'antd-style';
 import { memo } from 'react';
 import { useParams } from 'react-router';
 
+import AsyncBoundary from '@/components/AsyncBoundary';
 import { experimentSelectors, useEvalStore } from '@/store/eval';
 
 import BenchmarksSection from './BenchmarksSection';
@@ -32,26 +33,37 @@ const ExperimentDetailPage = memo(() => {
   const useFetchExperimentDetail = useEvalStore((s) => s.useFetchExperimentDetail);
   const experiment = useEvalStore(experimentSelectors.getExperimentDetailById(experimentId || ''));
 
-  useFetchExperimentDetail(experimentId);
+  const { error, isLoading, mutate } = useFetchExperimentDetail(experimentId);
 
   const actions = useExperimentActions(experiment);
 
-  if (!experiment) {
-    return (
-      <Flexbox className={styles.container} gap={24} height="100%" width="100%">
-        <Skeleton active paragraph={{ rows: 2 }} title={{ width: 240 }} />
-        <Skeleton active paragraph={{ rows: 6 }} title={false} />
-      </Flexbox>
-    );
-  }
-
+  // Error (including a deleted / unknown experiment) must gate before the
+  // skeleton — otherwise a failed first load hangs on it forever (ux Feedback).
   return (
     <Flexbox className={styles.container} gap={24} height="100%" width="100%">
-      <ExperimentHeader experiment={experiment} />
-      <ExperimentStats datasetCount={experiment.datasets.length} experiment={experiment} />
-      <BenchmarksSection actions={actions} experiment={experiment} />
-      <ScopedDatasetsSection actions={actions} />
-      <RunsSection actions={actions} experiment={experiment} />
+      <AsyncBoundary
+        data={experiment}
+        error={error}
+        errorVariant={'block'}
+        isLoading={isLoading && !experiment}
+        loading={
+          <>
+            <Skeleton active paragraph={{ rows: 2 }} title={{ width: 240 }} />
+            <Skeleton active paragraph={{ rows: 6 }} title={false} />
+          </>
+        }
+        onRetry={() => mutate()}
+      >
+        {experiment && (
+          <>
+            <ExperimentHeader experiment={experiment} />
+            <ExperimentStats datasetCount={experiment.datasets.length} experiment={experiment} />
+            <BenchmarksSection actions={actions} experiment={experiment} />
+            <ScopedDatasetsSection actions={actions} />
+            <RunsSection actions={actions} experiment={experiment} />
+          </>
+        )}
+      </AsyncBoundary>
     </Flexbox>
   );
 });

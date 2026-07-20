@@ -215,6 +215,7 @@ export default {
   'experiment.create.name.placeholder': 'Enter experiment name',
   'experiment.create.nameRequired': 'Please enter an experiment name',
   'experiment.create.title': 'Create Experiment',
+  'experiment.delete.error': 'Failed to delete experiment',
   'experiment.edit.error': 'Failed to update experiment',
   'experiment.edit.success': 'Experiment updated successfully',
   'experiment.edit.title': 'Edit Experiment',
@@ -233,6 +234,7 @@ export default {
   'experiment.detail.stats.branches': 'Branches',
   'experiment.detail.stats.runs': 'Runs',
   'experiment.list.subtitle': 'Track optimization contexts, scoped datasets, and run iterations.',
+  'experiment.list.error': 'Failed to load experiments',
   'experiment.list.title': 'Experiments',
   'experiment.run.parent': 'Forked from {{name}}',
 
@@ -327,6 +329,7 @@ export default {
   'run.create.dataset': 'Dataset',
   'run.create.dataset.placeholder': 'Select a dataset',
   'run.create.dataset.required': 'Please select a dataset',
+  'run.create.error': 'Failed to create run',
   'run.create.forkTitle': 'Fork Run from "{{run}}"',
   'run.create.forkSummary.agent': 'Agent: {{agent}}',
   'run.create.forkSummary.dataset': 'Dataset: {{dataset}}',

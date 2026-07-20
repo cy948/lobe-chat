@@ -27,7 +27,7 @@ interface ExperimentHeaderProps {
 
 const ExperimentHeader = memo<ExperimentHeaderProps>(({ experiment }) => {
   const { t } = useTranslation('eval');
-  const { modal } = App.useApp();
+  const { message, modal } = App.useApp();
   const navigate = useWorkspaceAwareNavigate();
   const deleteExperiment = useEvalStore((s) => s.deleteExperiment);
 
@@ -43,8 +43,14 @@ const ExperimentHeader = memo<ExperimentHeaderProps>(({ experiment }) => {
           okButtonProps: { danger: true },
           okText: t('experiment.actions.delete'),
           onOk: async () => {
-            await deleteExperiment(experiment.id);
-            navigate('/eval');
+            try {
+              await deleteExperiment(experiment.id);
+              navigate('/eval');
+            } catch {
+              // Optimistic removal surfaces its failure here (ux Act) — stay
+              // on the page and let the user retry instead of navigating away.
+              message.error(t('experiment.delete.error'));
+            }
           },
           title: t('experiment.actions.delete'),
         }),

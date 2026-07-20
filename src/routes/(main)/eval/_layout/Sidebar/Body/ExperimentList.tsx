@@ -1,7 +1,8 @@
 'use client';
 
 import { AccordionItem, Flexbox, Text } from '@lobehub/ui';
-import { Beaker } from 'lucide-react';
+import { Button } from '@lobehub/ui/base-ui';
+import { Beaker, RotateCw } from 'lucide-react';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -19,9 +20,58 @@ interface ExperimentListProps {
 
 const ExperimentList = memo<ExperimentListProps>(({ activeKey, itemKey }) => {
   const { t } = useTranslation('eval');
+  const { t: tCommon } = useTranslation('common');
   const navigate = useWorkspaceAwareNavigate();
   const experimentList = useEvalStore((s) => s.experimentList);
   const isInit = useEvalStore((s) => s.experimentListInit);
+  const useFetchExperiments = useEvalStore((s) => s.useFetchExperiments);
+  const { error, mutate } = useFetchExperiments();
+
+  // Error gates before the skeleton: a failed fetch never settles `isInit`, so
+  // without this branch the list would hang on SkeletonList forever (ux Feedback).
+  const body = (() => {
+    if (error && !isInit) {
+      return (
+        <Flexbox gap={4} padding={'8px 12px'}>
+          <Text fontSize={12} type={'secondary'}>
+            {t('experiment.list.error')}
+          </Text>
+          <Button icon={RotateCw} size={'small'} type={'text'} onClick={() => mutate()}>
+            {tCommon('retry')}
+          </Button>
+        </Flexbox>
+      );
+    }
+
+    if (!isInit) return <SkeletonList rows={3} />;
+
+    if (experimentList.length === 0) {
+      return (
+        <Text fontSize={12} style={{ padding: '8px 12px' }} type="secondary">
+          {t('experiment.empty')}
+        </Text>
+      );
+    }
+
+    return experimentList.map((experiment) => (
+      <WorkspaceLink
+        key={experiment.id}
+        to={`/eval/experiments/${experiment.id}`}
+        onClick={(e) => {
+          if (isModifierClick(e)) return;
+          e.preventDefault();
+          navigate(`/eval/experiments/${experiment.id}`);
+        }}
+      >
+        <NavItem
+          active={activeKey === `experiment-${experiment.id}`}
+          icon={Beaker}
+          iconSize={16}
+          title={experiment.name}
+        />
+      </WorkspaceLink>
+    ));
+  })();
 
   return (
     <AccordionItem
@@ -42,32 +92,7 @@ const ExperimentList = memo<ExperimentListProps>(({ activeKey, itemKey }) => {
       }
     >
       <Flexbox gap={1} paddingBlock={1}>
-        {!isInit ? (
-          <SkeletonList rows={3} />
-        ) : experimentList.length > 0 ? (
-          experimentList.map((experiment) => (
-            <WorkspaceLink
-              key={experiment.id}
-              to={`/eval/experiments/${experiment.id}`}
-              onClick={(e) => {
-                if (isModifierClick(e)) return;
-                e.preventDefault();
-                navigate(`/eval/experiments/${experiment.id}`);
-              }}
-            >
-              <NavItem
-                active={activeKey === `experiment-${experiment.id}`}
-                icon={Beaker}
-                iconSize={16}
-                title={experiment.name}
-              />
-            </WorkspaceLink>
-          ))
-        ) : (
-          <Text fontSize={12} style={{ padding: '8px 12px' }} type="secondary">
-            {t('experiment.empty')}
-          </Text>
-        )}
+        {body}
       </Flexbox>
     </AccordionItem>
   );

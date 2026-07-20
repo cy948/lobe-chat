@@ -90,6 +90,23 @@ const EvalOverview = memo(() => {
     </Flexbox>
   );
 
+  // Same contract for the experiments grid (ux Read: empty is a real page with
+  // a CTA, not a blank grid).
+  const experimentsEmptyState = (
+    <Flexbox align={'center'} flex={1} justify={'center'}>
+      <Empty description={t('experiment.empty')} icon={FlaskConical}>
+        <Button
+          icon={Plus}
+          style={{ marginTop: 16 }}
+          type={'primary'}
+          onClick={() => createExperimentModal()}
+        >
+          {t('overview.createExperiment')}
+        </Button>
+      </Empty>
+    </Flexbox>
+  );
+
   return (
     <Flexbox className={styles.container} gap={32} height={'100%'} width={'100%'}>
       {/* Header */}
@@ -119,6 +136,7 @@ const EvalOverview = memo(() => {
         </Flexbox>
         <AsyncBoundary
           data={experimentData}
+          empty={experimentsEmptyState}
           error={experimentError}
           errorVariant={'block'}
           isEmpty={experimentList.length === 0}

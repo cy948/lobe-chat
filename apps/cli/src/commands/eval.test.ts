@@ -37,7 +37,6 @@ const { mockTrpcClient, mockResolveLocalDeviceId } = vi.hoisted(() => ({
       listTestCases: { query: vi.fn() },
       retryRunErrors: { mutate: vi.fn() },
       startRun: { mutate: vi.fn() },
-      updateRunStatus: { mutate: vi.fn() },
       updateBenchmark: { mutate: vi.fn() },
       updateDataset: { mutate: vi.fn() },
       updateExperiment: { mutate: vi.fn() },
@@ -586,7 +585,7 @@ describe('eval command', () => {
     });
 
     it('should set run status to running', async () => {
-      mockTrpcClient.agentEval.updateRunStatus.mutate.mockResolvedValue({
+      mockTrpcClient.agentEvalExternal.runSetStatus.mutate.mockResolvedValue({
         runId: 'run-1',
         status: 'running',
         success: true,
@@ -605,8 +604,8 @@ describe('eval command', () => {
         'running',
       ]);
 
-      expect(mockTrpcClient.agentEval.updateRunStatus.mutate).toHaveBeenCalledWith({
-        id: 'run-1',
+      expect(mockTrpcClient.agentEvalExternal.runSetStatus.mutate).toHaveBeenCalledWith({
+        runId: 'run-1',
         status: 'running',
       });
     });

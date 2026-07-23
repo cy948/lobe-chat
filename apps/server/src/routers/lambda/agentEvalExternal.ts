@@ -544,6 +544,18 @@ export const agentEvalExternalRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Run not found' });
       }
 
+      if (input.status === 'running') {
+        if (!['running', 'completed', 'failed', 'aborted'].includes(run.status)) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: `Only terminal runs can be reopened. current=${run.status}`,
+          });
+        }
+
+        const updated = await ctx.runModel.update(input.runId, { status: 'running' });
+        return { runId: input.runId, status: updated?.status ?? 'running', success: true };
+      }
+
       // Worker-driven terminal failure/abort: allowed from any non-terminal
       // state. Marks remaining non-terminal RunTopics aborted and finalizes.
       if (input.status === 'failed' || input.status === 'aborted') {

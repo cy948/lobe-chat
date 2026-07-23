@@ -138,3 +138,16 @@ describe('agentEvalExternalRouter.reportResult', () => {
     expect(result.runStatus).toBe('completed');
   });
 });
+
+describe('agentEvalExternalRouter.runSetStatus', () => {
+  it('reopens a terminal run as running', async () => {
+    mocks.findRunById.mockResolvedValue({ id: 'run-1', status: 'completed' });
+    mocks.updateRun.mockResolvedValue({ id: 'run-1', status: 'running' });
+
+    const result = await caller().runSetStatus({ runId: 'run-1', status: 'running' });
+
+    expect(mocks.updateRun).toHaveBeenCalledWith('run-1', { status: 'running' });
+    expect(mocks.evaluateAndFinalizeRun).not.toHaveBeenCalled();
+    expect(result).toEqual({ runId: 'run-1', status: 'running', success: true });
+  });
+});

@@ -545,13 +545,6 @@ export const agentEvalExternalRouter = router({
       }
 
       if (input.status === 'running') {
-        if (!['running', 'completed', 'failed', 'aborted'].includes(run.status)) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: `Only terminal runs can be reopened. current=${run.status}`,
-          });
-        }
-
         const updated = await ctx.runModel.update(input.runId, { status: 'running' });
         return { runId: input.runId, status: updated?.status ?? 'running', success: true };
       }

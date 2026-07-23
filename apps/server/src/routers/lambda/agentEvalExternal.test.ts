@@ -140,8 +140,8 @@ describe('agentEvalExternalRouter.reportResult', () => {
 });
 
 describe('agentEvalExternalRouter.runSetStatus', () => {
-  it('reopens a terminal run as running', async () => {
-    mocks.findRunById.mockResolvedValue({ id: 'run-1', status: 'completed' });
+  it('sets an existing run to running', async () => {
+    mocks.findRunById.mockResolvedValue({ id: 'run-1', status: 'external' });
     mocks.updateRun.mockResolvedValue({ id: 'run-1', status: 'running' });
 
     const result = await caller().runSetStatus({ runId: 'run-1', status: 'running' });

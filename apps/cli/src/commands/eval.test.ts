@@ -37,6 +37,7 @@ const { mockTrpcClient, mockResolveLocalDeviceId } = vi.hoisted(() => ({
       listTestCases: { query: vi.fn() },
       retryRunErrors: { mutate: vi.fn() },
       startRun: { mutate: vi.fn() },
+      updateRunStatus: { mutate: vi.fn() },
       updateBenchmark: { mutate: vi.fn() },
       updateDataset: { mutate: vi.fn() },
       updateExperiment: { mutate: vi.fn() },
@@ -557,8 +558,8 @@ describe('eval command', () => {
       expect(mockTrpcClient.agentEval.deleteRun.mutate).toHaveBeenCalledWith({ id: 'r1' });
     });
 
-    it('should set run status via external API', async () => {
-      mockTrpcClient.agentEvalExternal.runSetStatus.mutate.mockResolvedValue({
+    it('should set run status', async () => {
+      mockTrpcClient.agentEval.updateRunStatus.mutate.mockResolvedValue({
         runId: 'run-1',
         status: 'completed',
         success: true,
@@ -577,17 +578,17 @@ describe('eval command', () => {
         'completed',
       ]);
 
-      expect(mockTrpcClient.agentEvalExternal.runSetStatus.mutate).toHaveBeenCalledWith({
-        runId: 'run-1',
+      expect(mockTrpcClient.agentEval.updateRunStatus.mutate).toHaveBeenCalledWith({
+        id: 'run-1',
         status: 'completed',
       });
       expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('status updated to'));
     });
 
-    it('should set run status to failed via external API', async () => {
-      mockTrpcClient.agentEvalExternal.runSetStatus.mutate.mockResolvedValue({
+    it('should set run status to running', async () => {
+      mockTrpcClient.agentEval.updateRunStatus.mutate.mockResolvedValue({
         runId: 'run-1',
-        status: 'failed',
+        status: 'running',
         success: true,
       });
 
@@ -601,12 +602,12 @@ describe('eval command', () => {
         '--id',
         'run-1',
         '--status',
-        'failed',
+        'running',
       ]);
 
-      expect(mockTrpcClient.agentEvalExternal.runSetStatus.mutate).toHaveBeenCalledWith({
-        runId: 'run-1',
-        status: 'failed',
+      expect(mockTrpcClient.agentEval.updateRunStatus.mutate).toHaveBeenCalledWith({
+        id: 'run-1',
+        status: 'running',
       });
     });
 

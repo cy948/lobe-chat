@@ -47,7 +47,7 @@ beforeEach(() => {
 });
 
 describe('agentEvalExternalRouter.reportResult', () => {
-  it('keeps a partially executed multi-case run running', async () => {
+  it('promotes an external error while keeping a partially executed run running', async () => {
     const run = {
       config: { k: 1 },
       datasetId: 'dataset-1',
@@ -60,34 +60,48 @@ describe('agentEvalExternalRouter.reportResult', () => {
       status: 'external',
       topicId: 'topic-1',
     };
-    const completedTopic = {
+    const error = { message: 'Agent execution timed out', type: 'AgentTimeoutError' };
+    const erroredTopic = {
       evalResult: { awaitingExternalEval: false },
-      passed: true,
-      score: 1,
-      status: 'passed',
+      passed: false,
+      score: 0,
+      status: 'error',
       topicId: 'topic-1',
     };
 
     mocks.findRunById.mockResolvedValue(run);
     mocks.findRunTopics
       .mockResolvedValueOnce([awaitingTopic])
-      .mockResolvedValueOnce([completedTopic]);
+      .mockResolvedValueOnce([erroredTopic]);
     mocks.countByDatasetId.mockResolvedValue(10);
     mocks.evaluateAndFinalizeRun.mockResolvedValue({
       completedCases: 1,
-      errorCases: 0,
+      errorCases: 1,
       timeoutCases: 0,
       totalCases: 10,
     });
     mocks.updateRun.mockResolvedValue({ ...run, status: 'running' });
 
     const result = await caller().reportResult({
-      correct: true,
+      correct: false,
+      result: { error },
       runId: run.id,
-      score: 1,
+      score: 0,
       topicId: awaitingTopic.topicId,
     });
 
+    expect(mocks.updateRunTopic).toHaveBeenCalledWith(
+      run.id,
+      awaitingTopic.topicId,
+      expect.objectContaining({
+        evalResult: expect.objectContaining({
+          error: 'AgentTimeoutError: Agent execution timed out',
+          errorDetail: error,
+          externalResult: { error },
+        }),
+        status: 'error',
+      }),
+    );
     expect(result.runStatus).toBe('running');
     expect(mocks.updateRun).toHaveBeenCalledWith(
       run.id,

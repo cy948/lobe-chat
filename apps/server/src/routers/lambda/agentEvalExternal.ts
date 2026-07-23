@@ -309,8 +309,14 @@ const applyReportResult = async (
       });
     }
   } else {
+    const externalError = externalResult.error as Record<string, unknown> | string | undefined;
+    const errorMessage =
+      typeof externalError === 'string'
+        ? externalError
+        : [externalError?.type, externalError?.message].filter(Boolean).join(': ') || undefined;
+    const topicStatus = errorMessage ? 'error' : input.correct ? 'passed' : 'failed';
     const alreadyReported =
-      runTopic.status === (input.correct ? 'passed' : 'failed') &&
+      runTopic.status === topicStatus &&
       runTopic.score === input.score &&
       runTopic.passed === input.correct &&
       isEqual(existingEvalResult.externalResult, externalResult);
@@ -323,12 +329,19 @@ const applyReportResult = async (
         externalResult,
         rubricScores,
       } satisfies EvalRunTopicResult & Record<string, unknown>;
+      if (errorMessage) {
+        nextEvalResult.error = errorMessage;
+        nextEvalResult.errorDetail = externalError;
+      } else {
+        delete nextEvalResult.error;
+        delete nextEvalResult.errorDetail;
+      }
 
       await ctx.runTopicModel.updateByRunAndTopic(input.runId, input.topicId, {
         evalResult: nextEvalResult,
         passed: input.correct,
         score: input.score,
-        status: input.correct ? 'passed' : 'failed',
+        status: topicStatus,
       });
     }
 

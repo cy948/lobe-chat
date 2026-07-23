@@ -902,6 +902,13 @@ export function registerEvalCommand(program: Command) {
         options,
         async () => {
           const client = await getTrpcClient();
+          if (options.status !== 'running') {
+            return client.agentEvalExternal.runSetStatus.mutate({
+              runId: options.id,
+              status: options.status,
+            });
+          }
+
           return client.agentEval.updateRunStatus.mutate({
             id: options.id,
             status: options.status,

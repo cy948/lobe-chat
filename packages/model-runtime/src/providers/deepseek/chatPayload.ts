@@ -16,8 +16,18 @@ const hasReasoningContent = (reasoning: any) => typeof reasoning?.content === 's
 
 const buildThinkingBlock = (reasoning: any) =>
   hasReasoningContent(reasoning)
-    ? { thinking: reasoning.content, type: 'thinking' as const }
+    ? {
+        ...(typeof reasoning.signature === 'string' && { signature: reasoning.signature }),
+        thinking: reasoning.content,
+        type: 'thinking' as const,
+      }
     : undefined;
+
+const normalizeThinkingPart = (part: any) =>
+  // Omitted thinking still carries a signature and must round-trip with `thinking: ''`.
+  part?.type === 'thinking' && typeof part.signature === 'string'
+    ? { ...part, thinking: typeof part.thinking === 'string' ? part.thinking : '' }
+    : part;
 
 const toContentArray = (content: any) =>
   Array.isArray(content)
@@ -78,15 +88,21 @@ const normalizeMessagesForAnthropic = (
     if (message.role !== 'assistant') return message;
 
     const { reasoning, ...rest } = message;
+    const content = Array.isArray(message.content)
+      ? message.content.map(normalizeThinkingPart)
+      : message.content;
+    const hasThinkingPart =
+      Array.isArray(content) && content.some((part: any) => part?.type === 'thinking');
     const thinkingBlock = buildThinkingBlock(reasoning);
-    const effectiveThinkingBlock =
-      thinkingBlock || (forceThinking ? { thinking: ' ', type: 'thinking' as const } : undefined);
+    const effectiveThinkingBlock = hasThinkingPart
+      ? undefined
+      : thinkingBlock || (forceThinking ? { thinking: ' ', type: 'thinking' as const } : undefined);
 
-    if (!effectiveThinkingBlock) return rest;
+    if (!effectiveThinkingBlock) return { ...rest, content };
 
     return {
       ...rest,
-      content: [effectiveThinkingBlock, ...toContentArray(message.content)],
+      content: [effectiveThinkingBlock, ...toContentArray(content)],
     };
   });
 

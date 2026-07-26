@@ -43,4 +43,42 @@ describe('buildDeepSeekAnthropicPayload — completion budget', () => {
     expect(payload.max_tokens).toBeGreaterThan(0);
     expect(payload.max_tokens).toBeLessThanOrEqual(393_216);
   });
+
+  it('repairs and replays an omitted thinking block without adding a placeholder', async () => {
+    const signature = 'f2667b49-5a24-49f4-bc41-4de7b6097afa';
+    const payload = await buildDeepSeekAnthropicPayload({
+      messages: [
+        { content: 'Run the command', role: 'user' },
+        {
+          content: [
+            { signature, type: 'thinking' },
+            { text: '', type: 'text' },
+          ],
+          reasoning: { signature },
+          role: 'assistant',
+          tool_calls: [
+            {
+              function: { arguments: '{}', name: 'runCommand' },
+              id: 'call-1',
+              type: 'function',
+            },
+          ],
+        },
+        { content: 'done', role: 'tool', tool_call_id: 'call-1' },
+      ],
+      model: 'deepseek-v4-flash',
+    } as any);
+
+    const assistant = payload.messages.find((message) => message.role === 'assistant');
+    const thinkingBlocks = Array.isArray(assistant?.content)
+      ? assistant.content.filter((part) => part.type === 'thinking')
+      : [];
+
+    expect(thinkingBlocks).toEqual([{ signature, thinking: '', type: 'thinking' }]);
+    expect(assistant?.content).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'call-1', name: 'runCommand', type: 'tool_use' }),
+      ]),
+    );
+  });
 });

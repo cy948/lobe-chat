@@ -148,8 +148,10 @@ const recomputeRunAggregation = async (
       topic.status === 'external' ||
       (topic.evalResult as Record<string, unknown> | null)?.awaitingExternalEval === true,
   );
-  const hasRunningTopic = refreshedTopics.some((topic) => topic.status === 'running');
-  const status = hasRunningTopic ? 'running' : resolveRunStatus(metrics, hasAwaitingExternal);
+  const hasActiveTopic = refreshedTopics.some(
+    (topic) => topic.status === 'pending' || topic.status === 'running',
+  );
+  const status = hasActiveTopic ? 'running' : resolveRunStatus(metrics, hasAwaitingExternal);
 
   await ctx.runModel.update(runId, { metrics, status });
 

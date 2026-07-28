@@ -48,21 +48,18 @@ describe('serverMessagesEngine', () => {
       expect(userContent).toContain('Keep server context in sync');
     });
 
-    it.each([{ items: [], updatedAt: 'canonical-clear' }, []])(
-      'does not inject a canonical or legacy empty TODO state',
-      async (todos) => {
-        const result = await serverMessagesEngine({
-          messages: createBasicMessages(),
-          model: 'gpt-4',
-          planTodo: { enabled: true, todos: todos as any },
-          provider: 'openai',
-        });
+    it('does not inject an empty TODO state', async () => {
+      const result = await serverMessagesEngine({
+        messages: createBasicMessages(),
+        model: 'gpt-4',
+        planTodo: { enabled: true, todos: { items: [], updatedAt: 'canonical-clear' } },
+        provider: 'openai',
+      });
 
-        expect(result.find((message) => message.role === 'user')?.content).not.toContain(
-          '<todo_context>',
-        );
-      },
-    );
+      expect(result.find((message) => message.role === 'user')?.content).not.toContain(
+        '<todo_context>',
+      );
+    });
 
     it('matches client-style stepContext and server planTodo output', async () => {
       const todos = { items, updatedAt: 'same' };

@@ -32,6 +32,60 @@ describe('serverMessagesEngine', () => {
     } as UIChatMessage,
   ];
 
+  describe('TODO context', () => {
+    const items = [{ status: 'processing' as const, text: 'Keep server context in sync' }];
+
+    it('forwards non-empty planTodo state to MessagesEngine', async () => {
+      const result = await serverMessagesEngine({
+        messages: createBasicMessages(),
+        model: 'gpt-4',
+        planTodo: { enabled: true, todos: { items, updatedAt: 'now' } },
+        provider: 'openai',
+      });
+      const userContent = result.find((message) => message.role === 'user')?.content;
+
+      expect(userContent).toContain('<todo_context>');
+      expect(userContent).toContain('Keep server context in sync');
+    });
+
+    it.each([{ items: [], updatedAt: 'canonical-clear' }, []])(
+      'does not inject a canonical or legacy empty TODO state',
+      async (todos) => {
+        const result = await serverMessagesEngine({
+          messages: createBasicMessages(),
+          model: 'gpt-4',
+          planTodo: { enabled: true, todos: todos as any },
+          provider: 'openai',
+        });
+
+        expect(result.find((message) => message.role === 'user')?.content).not.toContain(
+          '<todo_context>',
+        );
+      },
+    );
+
+    it('matches client-style stepContext and server planTodo output', async () => {
+      const todos = { items, updatedAt: 'same' };
+      const clientResult = await new MessagesEngine({
+        enableSystemDate: false,
+        messages: createBasicMessages(),
+        model: 'gpt-4',
+        provider: 'openai',
+        stepContext: { todos },
+      }).process();
+      const serverResult = await serverMessagesEngine({
+        messages: createBasicMessages(),
+        model: 'gpt-4',
+        planTodo: { enabled: true, todos },
+        provider: 'openai',
+      });
+
+      expect(serverResult.find((message) => message.role === 'user')?.content).toBe(
+        clientResult.messages.find((message) => message.role === 'user')?.content,
+      );
+    });
+  });
+
   describe('basic functionality', () => {
     it('should process messages with required parameters', async () => {
       const messages = createBasicMessages();

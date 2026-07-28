@@ -86,6 +86,7 @@ export const serverMessagesEngine = async ({
   agentManagementContext,
   onboardingContext,
   pageContentContext,
+  planTodo,
   topicReferences,
   additionalVariables,
   userTimezone,
@@ -135,6 +136,7 @@ export const serverMessagesEngine = async ({
     modelKnowledgeCutoff,
 
     provider,
+    planTodo,
     systemRole,
 
     // Timezone for system date provider

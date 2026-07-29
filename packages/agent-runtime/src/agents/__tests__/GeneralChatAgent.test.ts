@@ -424,6 +424,101 @@ describe('GeneralChatAgent', () => {
       ]);
     });
 
+    it('should block every tool when allowedToolNames is empty', async () => {
+      const agent = new GeneralChatAgent({
+        agentConfig: { maxSteps: 100 },
+        allowedToolNames: [],
+        operationId: 'test-session',
+        modelRuntimeConfig: mockModelRuntimeConfig,
+      });
+      const toolCall: ChatToolPayload = {
+        apiName: 'runCommand',
+        arguments: '{}',
+        id: 'call-1',
+        identifier: 'lobe-local-system',
+        type: 'builtin',
+      };
+
+      const result = await agent.runner(
+        createMockContext('llm_result', {
+          hasToolsCalling: true,
+          parentMessageId: 'msg-1',
+          toolsCalling: [toolCall],
+        }),
+        createMockState(),
+      );
+
+      expect(result).toEqual([
+        {
+          payload: {
+            blockedContent:
+              'Tool execution blocked because the tool is not allowed in the current execution scope.',
+            blockedReason: 'tool_not_allowed',
+            parentMessageId: 'msg-1',
+            toolsCalling: [toolCall],
+          },
+          type: 'resolve_blocked_tools',
+        },
+      ]);
+    });
+
+    it('should send allowed tools through intervention checks and block the rest', async () => {
+      const agent = new GeneralChatAgent({
+        agentConfig: { maxSteps: 100 },
+        allowedToolNames: ['lobe-local-system____readFile'],
+        operationId: 'test-session',
+        modelRuntimeConfig: mockModelRuntimeConfig,
+      });
+      const readFile: ChatToolPayload = {
+        apiName: 'readFile',
+        arguments: '{}',
+        id: 'call-read',
+        identifier: 'lobe-local-system',
+        type: 'builtin',
+      };
+      const runCommand: ChatToolPayload = {
+        apiName: 'runCommand',
+        arguments: '{}',
+        id: 'call-command',
+        identifier: 'lobe-local-system',
+        type: 'builtin',
+      };
+
+      const result = await agent.runner(
+        createMockContext('llm_result', {
+          hasToolsCalling: true,
+          parentMessageId: 'msg-1',
+          toolsCalling: [readFile, runCommand],
+        }),
+        createMockState({
+          toolManifestMap: {
+            'lobe-local-system': {
+              api: [{ name: 'readFile' }, { name: 'runCommand' }],
+              identifier: 'lobe-local-system',
+              type: 'builtin',
+            },
+          },
+        }),
+      );
+
+      expect(result).toEqual([
+        {
+          payload: { parentMessageId: 'msg-1', toolCalling: readFile },
+          type: 'call_tool',
+        },
+        {
+          payload: {
+            blockedContent:
+              'Tool execution blocked because the tool is not allowed in the current execution scope.',
+            blockedReason: 'tool_not_allowed',
+            parentMessageId: 'msg-1',
+            toolsCalling: [runCommand],
+          },
+          type: 'resolve_blocked_tools',
+        },
+      ]);
+    });
+
     it('should handle invalid JSON in tool arguments gracefully', async () => {
       const agent = new GeneralChatAgent({
         agentConfig: { maxSteps: 100 },

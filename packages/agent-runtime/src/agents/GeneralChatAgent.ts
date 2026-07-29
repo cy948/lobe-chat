@@ -1,3 +1,4 @@
+import { ToolNameResolver } from '@lobechat/context-engine';
 import {
   type ChatToolPayload,
   type ExtendedHumanInterventionConfig,
@@ -25,6 +26,10 @@ import {
   type SubAgentsBatchResultPayload,
 } from '../types';
 import { shouldCompress } from '../utils/tokenCounter';
+
+const TOOL_NOT_ALLOWED_CONTENT =
+  'Tool execution blocked because the tool is not allowed in the current execution scope.';
+const TOOL_NOT_ALLOWED_REASON = 'tool_not_allowed';
 
 /**
  * ChatAgent - The "Brain" of the chat agent
@@ -54,6 +59,24 @@ export class GeneralChatAgent implements Agent {
     return this.config.allowedToolNames === undefined
       ? {}
       : { allowedToolNames: this.config.allowedToolNames };
+  }
+
+  private partitionToolsByAllowList(toolsCalling: ChatToolPayload[]) {
+    if (this.config.allowedToolNames === undefined) {
+      return { allowedTools: toolsCalling, blockedTools: [] };
+    }
+
+    const allowedToolNames = new Set(this.config.allowedToolNames);
+    const toolNameResolver = new ToolNameResolver();
+    const allowedTools: ChatToolPayload[] = [];
+    const blockedTools: ChatToolPayload[] = [];
+
+    for (const tool of toolsCalling) {
+      const toolName = toolNameResolver.generate(tool.identifier, tool.apiName, tool.type);
+      (allowedToolNames.has(toolName) ? allowedTools : blockedTools).push(tool);
+    }
+
+    return { allowedTools, blockedTools };
   }
 
   /**
@@ -515,9 +538,10 @@ export class GeneralChatAgent implements Agent {
           context.payload as GeneralAgentCallLLMResultPayload;
 
         if (hasToolsCalling && toolsCalling && toolsCalling.length > 0) {
+          const { allowedTools, blockedTools } = this.partitionToolsByAllowList(toolsCalling);
           // Check which tools need human intervention
           const [toolsNeedingIntervention, toolsToExecute] = await this.checkInterventionNeeded(
-            toolsCalling,
+            allowedTools,
             state,
           );
 
@@ -570,6 +594,18 @@ export class GeneralChatAgent implements Agent {
                 type: 'request_human_approve',
               });
             }
+          }
+
+          if (blockedTools.length > 0) {
+            instructions.push({
+              payload: {
+                blockedContent: TOOL_NOT_ALLOWED_CONTENT,
+                blockedReason: TOOL_NOT_ALLOWED_REASON,
+                parentMessageId,
+                toolsCalling: blockedTools,
+              },
+              type: 'resolve_blocked_tools',
+            } satisfies AgentInstruction);
           }
 
           return instructions;

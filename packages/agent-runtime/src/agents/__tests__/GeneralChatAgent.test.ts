@@ -462,10 +462,10 @@ describe('GeneralChatAgent', () => {
       ]);
     });
 
-    it('should send allowed tools through intervention checks and block the rest', async () => {
+    it('should execute allowed tools, resolve denied tools, then pause for approval', async () => {
       const agent = new GeneralChatAgent({
         agentConfig: { maxSteps: 100 },
-        allowedToolNames: ['lobe-local-system____readFile'],
+        allowedToolNames: ['lobe-local-system____readFile', 'lobe-local-system____deleteFile'],
         operationId: 'test-session',
         modelRuntimeConfig: mockModelRuntimeConfig,
       });
@@ -473,6 +473,13 @@ describe('GeneralChatAgent', () => {
         apiName: 'readFile',
         arguments: '{}',
         id: 'call-read',
+        identifier: 'lobe-local-system',
+        type: 'builtin',
+      };
+      const deleteFile: ChatToolPayload = {
+        apiName: 'deleteFile',
+        arguments: '{}',
+        id: 'call-delete',
         identifier: 'lobe-local-system',
         type: 'builtin',
       };
@@ -488,12 +495,16 @@ describe('GeneralChatAgent', () => {
         createMockContext('llm_result', {
           hasToolsCalling: true,
           parentMessageId: 'msg-1',
-          toolsCalling: [readFile, runCommand],
+          toolsCalling: [readFile, deleteFile, runCommand],
         }),
         createMockState({
           toolManifestMap: {
             'lobe-local-system': {
-              api: [{ name: 'readFile' }, { name: 'runCommand' }],
+              api: [
+                { name: 'readFile' },
+                { humanIntervention: 'require', name: 'deleteFile' },
+                { name: 'runCommand' },
+              ],
               identifier: 'lobe-local-system',
               type: 'builtin',
             },
@@ -515,6 +526,12 @@ describe('GeneralChatAgent', () => {
             toolsCalling: [runCommand],
           },
           type: 'resolve_blocked_tools',
+        },
+        {
+          parentMessageId: 'msg-1',
+          pendingToolsCalling: [deleteFile],
+          reason: 'human_intervention_required',
+          type: 'request_human_approve',
         },
       ]);
     });

@@ -62,6 +62,7 @@ export class GeneralChatAgent implements Agent {
   }
 
   private partitionToolsByAllowList(toolsCalling: ChatToolPayload[]) {
+    // An omitted allow-list preserves unrestricted behavior; an explicit empty list blocks all tools.
     if (this.config.allowedToolNames === undefined) {
       return { allowedTools: toolsCalling, blockedTools: [] };
     }
@@ -569,6 +570,19 @@ export class GeneralChatAgent implements Agent {
             }
           }
 
+          // Resolve denied tools before an approval request parks the runtime.
+          if (blockedTools.length > 0) {
+            instructions.push({
+              payload: {
+                blockedContent: TOOL_NOT_ALLOWED_CONTENT,
+                blockedReason: TOOL_NOT_ALLOWED_REASON,
+                parentMessageId,
+                toolsCalling: blockedTools,
+              },
+              type: 'resolve_blocked_tools',
+            } satisfies AgentInstruction);
+          }
+
           // Request approval for tools that need intervention
           // Non-headless mode waits for human approval; headless mode returns blocked tool results.
           if (toolsNeedingIntervention.length > 0) {
@@ -594,18 +608,6 @@ export class GeneralChatAgent implements Agent {
                 type: 'request_human_approve',
               });
             }
-          }
-
-          if (blockedTools.length > 0) {
-            instructions.push({
-              payload: {
-                blockedContent: TOOL_NOT_ALLOWED_CONTENT,
-                blockedReason: TOOL_NOT_ALLOWED_REASON,
-                parentMessageId,
-                toolsCalling: blockedTools,
-              },
-              type: 'resolve_blocked_tools',
-            } satisfies AgentInstruction);
           }
 
           return instructions;

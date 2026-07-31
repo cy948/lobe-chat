@@ -1,6 +1,7 @@
 /* eslint-disable perfectionist/sort-interfaces */
 import type { FileContent, KnowledgeBaseInfo, PageContentContext } from '@lobechat/prompts';
 import type {
+  GraphRuntimeContext,
   RuntimeInitialContext,
   RuntimeSelectedSkill,
   RuntimeSelectedTool,
@@ -250,6 +251,8 @@ export interface MessagesEngineParams {
   inputTemplate?: string;
   /** System role */
   systemRole?: string;
+  /** GraphAgent-owned context for ordinary active-node LLM calls */
+  graphRuntimeContext?: GraphRuntimeContext;
 
   // ========== Capability injection (dependency injection) ==========
   /** Model capability checker */

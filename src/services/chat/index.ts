@@ -15,6 +15,7 @@ import { AgentRuntimeError } from '@lobechat/model-runtime/utils/createError';
 import {
   ChatErrorType,
   getDisabledPluginIds,
+  type GraphRuntimeContext,
   type RuntimeInitialContext,
   type RuntimeStepContext,
   type TracePayload,
@@ -74,6 +75,7 @@ const providersWithDeploymentName = new Set<string>([
 ]);
 export interface GetChatCompletionPayload extends Partial<Omit<ChatStreamPayload, 'messages'>> {
   agentId?: string;
+  graphRuntimeContext?: GraphRuntimeContext;
   groupId?: string;
   messages: UIChatMessage[];
   /**
@@ -137,6 +139,7 @@ class ChatService {
       messages,
       agentId,
       groupId,
+      graphRuntimeContext,
       topicId,
       resolvedAgentConfig,
       ...params
@@ -300,6 +303,7 @@ class ChatService {
       enableHistoryCount: chatConfig.enableHistoryCount,
       enableUserMemories,
       groupId,
+      graphRuntimeContext,
       // historyCount is number of history messages; add 1 for current user message
       historyCount: (chatConfig.historyCount ?? 20) + 1,
       // Page editor context from agent runtime

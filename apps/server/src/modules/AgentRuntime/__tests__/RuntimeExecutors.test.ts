@@ -2360,6 +2360,40 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
         );
       });
 
+      it('should forward Graph runtime context to MessagesEngine without leaking model parameters', async () => {
+        const ctxWithConfig: RuntimeExecutorContext = {
+          ...ctx,
+          agentConfig: { plugins: [], systemRole: 'test' },
+        };
+        const graphRuntimeContext = {
+          guidance: { budgetStatus: 'normal' as const, stage: 'inspection' },
+          nodeContext: {
+            inputContext: { value: { query: 'Inspect' } },
+            outputContract: { type: 'object' },
+            taskInstruction: 'Inspect the repository.',
+          },
+        };
+
+        await createRuntimeExecutors(ctxWithConfig).call_llm!(
+          {
+            payload: {
+              graphRuntimeContext,
+              messages: [{ content: 'Hello', role: 'user' }],
+              model: 'gpt-4',
+              provider: 'openai',
+            },
+            type: 'call_llm',
+          },
+          createMockState(),
+        );
+
+        expect(engineSpy).toHaveBeenCalledWith(expect.objectContaining({ graphRuntimeContext }));
+        const modelPayload = mockChat.mock.calls[0][0];
+        expect(modelPayload).not.toHaveProperty('graphRuntimeContext');
+        expect(JSON.stringify(modelPayload.messages)).toContain('<graph_node_context>');
+        expect(JSON.stringify(modelPayload.messages)).toContain('<graph_runtime_guidance');
+      });
+
       it('should pass model knowledge cutoff into serverMessagesEngine', async () => {
         const ctxWithConfig: RuntimeExecutorContext = {
           ...ctx,

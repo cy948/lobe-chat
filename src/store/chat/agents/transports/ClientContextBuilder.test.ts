@@ -88,6 +88,14 @@ describe('ClientContextBuilder', () => {
     });
     const userMessage = { content: 'Question', id: 'user-1', role: 'user' as const };
     const assistantMessage = { content: '', id: 'assistant-1', role: 'assistant' as const };
+    const graphRuntimeContext = {
+      guidance: { budgetStatus: 'normal' as const, stage: 'inspection' },
+      nodeContext: {
+        inputContext: { value: { query: 'Question' } },
+        outputContract: { type: 'object' },
+        taskInstruction: 'Inspect the question.',
+      },
+    };
     const state = AgentRuntime.createInitialState({
       messages: [userMessage],
       operationId: 'operation-1',
@@ -103,6 +111,7 @@ describe('ClientContextBuilder', () => {
       model: 'test-model',
       payload: {
         assistantMessageId: assistantMessage.id,
+        graphRuntimeContext,
         messages: [userMessage, assistantMessage],
         model: 'test-model',
         provider: 'test-provider',
@@ -117,6 +126,7 @@ describe('ClientContextBuilder', () => {
     );
     expect(prepareContext).toHaveBeenCalledWith(
       expect.objectContaining({
+        graphRuntimeContext,
         messages: [userMessage],
         resolvedAgentConfig: expect.objectContaining({
           enabledToolIds: ['dynamic-search'],
@@ -132,5 +142,8 @@ describe('ClientContextBuilder', () => {
     expect(result.modelParameters).toMatchObject({
       params: { model: 'test-model', provider: 'test-provider', tools: [activatedTool] },
     });
+    expect(
+      (result.modelParameters as { params: Record<string, unknown> }).params,
+    ).not.toHaveProperty('graphRuntimeContext');
   });
 });

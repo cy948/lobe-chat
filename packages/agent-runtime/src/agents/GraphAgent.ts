@@ -1,5 +1,10 @@
 import { ToolNameResolver } from '@lobechat/context-engine';
-import type { AgentGraphEdge, AgentGraphNode, ReasoningGraph } from '@lobechat/types';
+import type {
+  AgentGraphEdge,
+  AgentGraphNode,
+  GraphRuntimeContext,
+  ReasoningGraph,
+} from '@lobechat/types';
 import { AGENT_GRAPH_ROOT_NODE_ID } from '@lobechat/types';
 import type { UnknownRecord } from '@lobechat/utils/object';
 import { isRecord } from '@lobechat/utils/object';
@@ -205,6 +210,13 @@ export class GraphAgent implements Agent {
 
       graphContext = orchestration.graphContext;
       graphState = orchestration.graphState;
+      orchestration.instruction = this.attachGraphRuntimeContext({
+        context,
+        graphContext,
+        graphState,
+        instruction: orchestration.instruction,
+        state,
+      });
       this.updateGraphRuntimeState(state, { graphContext, graphState, instructionCount });
 
       const instruction = this.resolveRuntimeInstruction(orchestration);
@@ -344,25 +356,12 @@ export class GraphAgent implements Agent {
             .filter((name): name is string => typeof name === 'string');
 
     if (!graphState.active) {
-      const prompt = this.renderPrompt({
-        input_context: this.resolveNodeInputContext(graphState.incomingEdge, input),
-        output_contract: this.getOutputSchema(graphState.incomingEdge) as PromptObject,
-        task_instruction: graphState.incomingEdge.instruction,
-      });
-      const callLlm = (prompt: string): AgentInstruction => {
-        const payload: GeneralAgentCallLLMInstructionPayload = {
-          allowedToolNames,
-          messages: [...state.messages, { content: prompt, role: 'user' as const }],
-          model: state.modelRuntimeConfig?.model ?? '',
-          provider: state.modelRuntimeConfig?.provider ?? '',
-          tools,
-        };
-
-        return {
-          payload,
-          stepLabel: graphState.currentNode,
-          type: 'call_llm',
-        };
+      const payload: GeneralAgentCallLLMInstructionPayload = {
+        allowedToolNames,
+        messages: state.messages,
+        model: state.modelRuntimeConfig?.model ?? '',
+        provider: state.modelRuntimeConfig?.provider ?? '',
+        tools,
       };
 
       return {
@@ -372,7 +371,11 @@ export class GraphAgent implements Agent {
           active: true,
           nodeStartStepCount: state.stepCount,
         },
-        instruction: callLlm(prompt),
+        instruction: {
+          payload,
+          stepLabel: graphState.currentNode,
+          type: 'call_llm',
+        },
       };
     }
 
@@ -630,6 +633,65 @@ export class GraphAgent implements Agent {
     return Array.isArray(instruction)
       ? instruction.some((item) => item.type === 'finish')
       : instruction.type === 'finish';
+  }
+
+  private attachGraphRuntimeContext(input: {
+    context: AgentRuntimeContext;
+    graphContext: GraphContext;
+    graphState: GraphState;
+    instruction?: AgentInstruction | AgentInstruction[];
+    state: AgentState;
+  }): AgentInstruction | AgentInstruction[] | undefined {
+    const { graphState, instruction } = input;
+    if (!instruction || graphState.phase !== 'node_in' || !graphState.active) return instruction;
+
+    const node = this.getNodeById(graphState.currentNode);
+    if (!node) return instruction;
+
+    const usedNodeRuntimeSteps = Math.max(
+      0,
+      input.state.stepCount - (graphState.nodeStartStepCount ?? input.state.stepCount),
+    );
+    const budgetStatus = this.getNodeBudgetStatus(node, usedNodeRuntimeSteps);
+    const cadence = budgetStatus === 'near_exhaustion' ? 4 : 8;
+    const shouldIncludeGuidance =
+      usedNodeRuntimeSteps === 0 ||
+      input.context.phase === 'compression_result' ||
+      (usedNodeRuntimeSteps > 0 && usedNodeRuntimeSteps % cadence === 0);
+    const graphRuntimeContext: GraphRuntimeContext = {
+      ...(shouldIncludeGuidance && {
+        guidance: {
+          budgetStatus,
+          stage: graphState.currentNode,
+        },
+      }),
+      nodeContext: {
+        inputContext: this.resolveNodeInputContext(graphState.incomingEdge, input),
+        outputContract: this.getOutputSchema(graphState.incomingEdge) as PromptObject,
+        taskInstruction: graphState.incomingEdge.instruction,
+      },
+    };
+    const attach = (item: AgentInstruction): AgentInstruction =>
+      item.type === 'call_llm'
+        ? {
+            ...item,
+            payload: { ...item.payload, graphRuntimeContext },
+          }
+        : item;
+
+    return Array.isArray(instruction) ? instruction.map(attach) : attach(instruction);
+  }
+
+  private getNodeBudgetStatus(
+    node: Readonly<AgentGraphNode>,
+    usedNodeRuntimeSteps: number,
+  ): 'near_exhaustion' | 'normal' {
+    if (node.type !== 'agent' || node.maxAgentSteps === undefined) return 'normal';
+
+    const warningWindow = Math.max(1, Math.ceil(node.maxAgentSteps * 0.2));
+    const remainingSteps = Math.max(0, node.maxAgentSteps - usedNodeRuntimeSteps);
+
+    return remainingSteps <= warningWindow ? 'near_exhaustion' : 'normal';
   }
 
   private loadGraphRuntimeState(state: Readonly<AgentState>): GraphRuntimeState {

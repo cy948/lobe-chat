@@ -18,7 +18,7 @@ import type {
   UserMemoryData,
 } from '@lobechat/context-engine';
 import type { PageContentContext } from '@lobechat/prompts';
-import type { RuntimeInitialContext, UIChatMessage } from '@lobechat/types';
+import type { GraphRuntimeContext, RuntimeInitialContext, UIChatMessage } from '@lobechat/types';
 
 /**
  * Model capability checker functions for server-side
@@ -116,6 +116,8 @@ export interface ServerMessagesEngineParams {
 
   /** Function to format history summary */
   formatHistorySummary?: (summary: string) => string;
+  /** GraphAgent-owned context for ordinary active-node calls */
+  graphRuntimeContext?: GraphRuntimeContext;
   /** History message count limit */
   historyCount?: number;
   /** History summary content */

@@ -15,6 +15,8 @@ export { ContextSelectionsInjector } from './ContextSelectionsInjector';
 export { DiscordContextProvider } from './DiscordContextProvider';
 export { EvalContextSystemInjector } from './EvalContextSystemInjector';
 export { ForceFinishSummaryInjector } from './ForceFinishSummaryInjector';
+export { GraphNodeContextInjector } from './GraphNodeContextInjector';
+export { GraphRuntimeGuidanceInjector } from './GraphRuntimeGuidanceInjector';
 export { GroupAgentBuilderContextInjector } from './GroupAgentBuilderContextInjector';
 export { GroupContextInjector } from './GroupContextInjector';
 export { HistorySummaryProvider } from './HistorySummary';
@@ -80,6 +82,8 @@ export type { ContextSelectionsInjectorConfig } from './ContextSelectionsInjecto
 export type { DiscordContext, DiscordContextProviderConfig } from './DiscordContextProvider';
 export type { EvalContext, EvalContextSystemInjectorConfig } from './EvalContextSystemInjector';
 export type { ForceFinishSummaryInjectorConfig } from './ForceFinishSummaryInjector';
+export type { GraphNodeContextInjectorConfig } from './GraphNodeContextInjector';
+export type { GraphRuntimeGuidanceInjectorConfig } from './GraphRuntimeGuidanceInjector';
 export type {
   GroupAgentBuilderContext,
   GroupAgentBuilderContextInjectorConfig,

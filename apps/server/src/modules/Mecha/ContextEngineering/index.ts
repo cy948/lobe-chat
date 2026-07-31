@@ -125,6 +125,7 @@ export const serverMessagesEngine = async ({
   enableAgentMode,
   enableHistoryCount,
   forceFinish,
+  graphRuntimeContext,
   historyCount,
   historySummary,
   formatHistorySummary,
@@ -167,6 +168,8 @@ export const serverMessagesEngine = async ({
 
     // Force finish mode (inject summary prompt when maxSteps exceeded)
     forceFinish,
+
+    graphRuntimeContext,
 
     formatHistorySummary,
 

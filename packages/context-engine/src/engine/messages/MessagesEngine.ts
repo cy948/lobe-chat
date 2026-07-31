@@ -40,6 +40,8 @@ import {
   DiscordContextProvider,
   EvalContextSystemInjector,
   ForceFinishSummaryInjector,
+  GraphNodeContextInjector,
+  GraphRuntimeGuidanceInjector,
   GroupAgentBuilderContextInjector,
   GroupContextInjector,
   HistorySummaryProvider,
@@ -171,6 +173,7 @@ export class MessagesEngine {
       onboardingContext,
       agentManagementContext,
       groupAgentBuilderContext,
+      graphRuntimeContext,
       agentGroup,
       agentDocuments,
       planTodo,
@@ -322,6 +325,11 @@ export class MessagesEngine {
       // Order matters: first executed = first in content
       // =============================================
 
+      // Stable Graph node contract
+      new GraphNodeContextInjector({
+        context: graphRuntimeContext?.nodeContext,
+        enabled: !!graphRuntimeContext?.nodeContext,
+      }),
       // User memory
       new UserMemoryInjector({ ...userMemory, enabled: isUserMemoryEnabled }),
       // Group context (agent identity and group info for multi-agent chat)
@@ -438,6 +446,10 @@ export class MessagesEngine {
       new OnboardingActionHintInjector({
         enabled: !!onboardingContext?.phaseGuidance,
         onboardingContext,
+      }),
+      new GraphRuntimeGuidanceInjector({
+        enabled: !!graphRuntimeContext?.guidance,
+        guidance: graphRuntimeContext?.guidance,
       }),
 
       // =============================================

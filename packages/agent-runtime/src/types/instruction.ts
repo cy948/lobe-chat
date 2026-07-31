@@ -1,5 +1,6 @@
 import type {
   ChatToolPayload,
+  GraphRuntimeContext,
   ModelUsage,
   RuntimeInitialContext,
   RuntimeStepContext,
@@ -120,6 +121,7 @@ export interface Agent {
 
 export interface CallLLMPayload {
   allowedToolNames?: string[];
+  graphRuntimeContext?: GraphRuntimeContext;
   isFirstMessage?: boolean;
   messages: any[];
   model: string;

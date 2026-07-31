@@ -495,6 +495,7 @@ export const buildServerCallLlmContext = async ({
     enableHistoryCount: agentConfig.chatConfig?.enableHistoryCount ?? undefined,
     evalContext: ctx.evalContext,
     forceFinish: state.forceFinish,
+    graphRuntimeContext: llmPayload.graphRuntimeContext,
     historyCount: resolveRuntimeHistoryCount(agentConfig.chatConfig?.historyCount),
     initialContext: (state as any).initialContext?.initialContext,
     knowledge: {

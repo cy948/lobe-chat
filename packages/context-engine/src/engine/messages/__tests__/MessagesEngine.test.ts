@@ -1316,5 +1316,76 @@ Document content here.
 
       expect(result.messages).toEqual([{ content: 'Question', role: 'user' }]);
     });
+
+    it('should inject one stable Graph contract and normal guidance at the virtual tail', async () => {
+      const result = await new MessagesEngine(
+        createBasicParams({
+          graphRuntimeContext: {
+            guidance: { budgetStatus: 'normal', stage: 'inspection' },
+            nodeContext: {
+              inputContext: { fields: { query: { value: 'Inspect the repository' } } },
+              outputContract: { properties: { summary: { type: 'string' } }, type: 'object' },
+              taskInstruction: 'Inspect only. <Do not mutate> & report findings.',
+            },
+          },
+        }),
+      ).process();
+      const serialized = JSON.stringify(result.messages);
+      const tail = result.messages.at(-1);
+
+      expect(serialized.match(/<graph_node_context>/g)).toHaveLength(1);
+      expect(serialized).toContain('<input_context>');
+      expect(serialized).toContain('<output_contract>');
+      expect(serialized).toContain(
+        '<task_instruction>Inspect only. &lt;Do not mutate&gt; &amp; report findings.</task_instruction>',
+      );
+      expect(tail).toEqual({
+        content: [
+          '<graph_runtime_guidance stage="inspection">',
+          'The current Graph stage remains active. Continue following the constraints and output contract in graph_node_context.',
+          '</graph_runtime_guidance>',
+        ].join('\n'),
+        role: 'user',
+      });
+    });
+
+    it('should render near-exhaustion guidance without exposing budget control data', async () => {
+      const result = await new MessagesEngine(
+        createBasicParams({
+          graphRuntimeContext: {
+            guidance: { budgetStatus: 'near_exhaustion', stage: 'work' },
+            nodeContext: {
+              inputContext: { value: {} },
+              outputContract: { type: 'object' },
+              taskInstruction: 'Complete the current stage.',
+            },
+          },
+        }),
+      ).process();
+      const tailContent = String(result.messages.at(-1)?.content);
+
+      expect(tailContent).toBe(
+        [
+          '<graph_runtime_guidance stage="work" budget_status="near_exhaustion">',
+          'The current Graph stage budget is nearly exhausted. Begin finalization now.',
+          'Do not start new exploratory branches. Consolidate the evidence already gathered,',
+          'complete the remaining actions required by graph_node_context, and produce the stage',
+          'result matching its output_contract.',
+          '</graph_runtime_guidance>',
+        ].join('\n'),
+      );
+      expect(tailContent).not.toMatch(/maxAgentSteps|runtime step|cadence|percent|\d/i);
+    });
+
+    it('should leave non-Graph output unchanged when Graph context is omitted', async () => {
+      const params = createBasicParams();
+      const baseline = await new MessagesEngine(params).process();
+      const withoutGraph = await new MessagesEngine({
+        ...params,
+        graphRuntimeContext: undefined,
+      }).process();
+
+      expect(withoutGraph.messages).toEqual(baseline.messages);
+    });
   });
 });

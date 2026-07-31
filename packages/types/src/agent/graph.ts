@@ -63,6 +63,36 @@ export interface ReasoningGraph {
   terminal: string;
 }
 
+export type GraphRuntimeContextValue =
+  | boolean
+  | null
+  | number
+  | string
+  | undefined
+  | readonly GraphRuntimeContextValue[]
+  | GraphRuntimeContextObject;
+
+export interface GraphRuntimeContextObject {
+  readonly [key: string]: GraphRuntimeContextValue | undefined;
+}
+
+export interface GraphNodeRuntimeContext {
+  readonly inputContext: GraphRuntimeContextObject;
+  readonly outputContract: GraphRuntimeContextObject;
+  readonly taskInstruction: string;
+}
+
+export interface GraphRuntimeGuidance {
+  readonly budgetStatus: 'near_exhaustion' | 'normal';
+  readonly stage: string;
+}
+
+/** Presentation-safe Graph context attached to ordinary node LLM calls. */
+export interface GraphRuntimeContext {
+  readonly guidance?: GraphRuntimeGuidance;
+  readonly nodeContext: GraphNodeRuntimeContext;
+}
+
 const AgentGraphNodeSchema = z.discriminatedUnion('type', [
   z.object({
     allowedToolApiNames: z.array(z.string().min(1)).optional(),

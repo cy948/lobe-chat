@@ -27,7 +27,8 @@ export class GraphNodeContextInjector extends BaseFirstUserContentProvider {
   protected buildContent(_context: PipelineContext): string | null {
     if (!this.config.enabled || !this.config.context) return null;
 
-    const { inputContext, outputContract, taskInstruction } = this.config.context;
+    const { allowedToolApiNames, inputContext, outputContract, taskInstruction } =
+      this.config.context;
 
     return [
       '<graph_node_context>',
@@ -35,6 +36,13 @@ export class GraphNodeContextInjector extends BaseFirstUserContentProvider {
       serializeContext(inputContext),
       '</input_context>',
       `<task_instruction>${escapeXmlContent(taskInstruction)}</task_instruction>`,
+      ...(allowedToolApiNames === undefined
+        ? []
+        : [
+            '<allowed_tool_api_names>',
+            JSON.stringify(allowedToolApiNames),
+            '</allowed_tool_api_names>',
+          ]),
       '<output_contract>',
       serializeContext(outputContract),
       '</output_contract>',

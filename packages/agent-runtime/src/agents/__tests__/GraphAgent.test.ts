@@ -473,6 +473,7 @@ describe('GraphAgent', () => {
         ]),
       );
       expect(graphRuntimeContext.guidance).toEqual({ budgetStatus: 'normal', stage: 'plan' });
+      expect(graphRuntimeContext.nodeContext.allowedToolApiNames).toEqual(['read', 'search']);
       expect(graphRuntimeContext.nodeContext.taskInstruction).toContain(
         'Convert the user /goal request into concrete goals.',
       );
@@ -506,6 +507,7 @@ describe('GraphAgent', () => {
       expect(context.nodeContext.taskInstruction).toBe(
         'Complete the planned goals. Work through the provided goals and summarize what changed.',
       );
+      expect(context.nodeContext.allowedToolApiNames).toBeUndefined();
       expect(serializedContext).toContain('close prompt loop');
       expect(serializedContext).toContain('Ensure prompt contains values and field semantics.');
       expect(serializedContext).toContain('Concrete goals planned from the user request.');

@@ -77,6 +77,7 @@ export interface GraphRuntimeContextObject {
 }
 
 export interface GraphNodeRuntimeContext {
+  readonly allowedToolApiNames?: readonly string[];
   readonly inputContext: GraphRuntimeContextObject;
   readonly outputContract: GraphRuntimeContextObject;
   readonly taskInstruction: string;

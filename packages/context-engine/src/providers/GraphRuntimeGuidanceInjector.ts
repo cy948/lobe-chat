@@ -36,8 +36,8 @@ export class GraphRuntimeGuidanceInjector extends BaseVirtualLastUserContentProv
         `<graph_runtime_guidance stage="${escapedStage}" budget_status="near_exhaustion">`,
         'The current Graph stage budget is nearly exhausted. Begin finalization now.',
         'Do not start new exploratory branches. Consolidate the evidence already gathered,',
-        'complete the remaining actions required by graph_node_context, and produce the stage',
-        'result matching its output_contract.',
+        'and complete the remaining actions required by graph_node_context. Once those actions',
+        'are complete, stop making tool calls and produce the stage result matching its output_contract.',
         '</graph_runtime_guidance>',
       ].join('\n');
     }

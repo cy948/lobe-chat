@@ -666,6 +666,9 @@ export class GraphAgent implements Agent {
         },
       }),
       nodeContext: {
+        ...(node.type === 'agent' && node.allowedToolApiNames !== undefined
+          ? { allowedToolApiNames: node.allowedToolApiNames }
+          : {}),
         inputContext: this.resolveNodeInputContext(graphState.incomingEdge, input),
         outputContract: this.getOutputSchema(graphState.incomingEdge) as PromptObject,
         taskInstruction: graphState.incomingEdge.instruction,

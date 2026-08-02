@@ -1323,6 +1323,14 @@ Document content here.
           graphRuntimeContext: {
             guidance: { budgetStatus: 'normal', stage: 'inspection' },
             nodeContext: {
+              allowedToolApiNames: [
+                'readFile',
+                'searchFiles',
+                'grepContent',
+                'globFiles',
+                'createPlan',
+                'createTodos',
+              ],
               inputContext: { fields: { query: { value: 'Inspect the repository' } } },
               outputContract: { properties: { summary: { type: 'string' } }, type: 'object' },
               taskInstruction: 'Inspect only. <Do not mutate> & report findings.',
@@ -1331,11 +1339,19 @@ Document content here.
         }),
       ).process();
       const serialized = JSON.stringify(result.messages);
+      const stableContent = String(result.messages[0]?.content);
       const tail = result.messages.at(-1);
 
       expect(serialized.match(/<graph_node_context>/g)).toHaveLength(1);
       expect(serialized).toContain('<input_context>');
       expect(serialized).toContain('<output_contract>');
+      expect(stableContent).toContain(
+        [
+          '<allowed_tool_api_names>',
+          '["readFile","searchFiles","grepContent","globFiles","createPlan","createTodos"]',
+          '</allowed_tool_api_names>',
+        ].join('\n'),
+      );
       expect(serialized).toContain(
         '<task_instruction>Inspect only. &lt;Do not mutate&gt; &amp; report findings.</task_instruction>',
       );
@@ -1369,8 +1385,8 @@ Document content here.
           '<graph_runtime_guidance stage="work" budget_status="near_exhaustion">',
           'The current Graph stage budget is nearly exhausted. Begin finalization now.',
           'Do not start new exploratory branches. Consolidate the evidence already gathered,',
-          'complete the remaining actions required by graph_node_context, and produce the stage',
-          'result matching its output_contract.',
+          'and complete the remaining actions required by graph_node_context. Once those actions',
+          'are complete, stop making tool calls and produce the stage result matching its output_contract.',
           '</graph_runtime_guidance>',
         ].join('\n'),
       );

@@ -1320,21 +1320,61 @@ Document content here.
     it('should inject one stable Graph contract and normal guidance at the virtual tail', async () => {
       const result = await new MessagesEngine(
         createBasicParams({
-          graphRuntimeContext: {
-            guidance: { budgetStatus: 'normal', stage: 'inspection' },
-            nodeContext: {
-              allowedToolApiNames: [
-                'readFile',
-                'searchFiles',
-                'grepContent',
-                'globFiles',
-                'createPlan',
-                'createTodos',
-              ],
-              inputContext: { fields: { query: { value: 'Inspect the repository' } } },
-              outputContract: { properties: { summary: { type: 'string' } }, type: 'object' },
-              taskInstruction: 'Inspect only. <Do not mutate> & report findings.',
-            },
+          runtimeContext: {
+            additionalContexts: [
+              {
+                content: {
+                  sections: [
+                    {
+                      format: 'json',
+                      tag: 'input_context',
+                      value: { fields: { query: { value: 'Inspect the repository' } } },
+                    },
+                    {
+                      format: 'text',
+                      tag: 'task_instruction',
+                      value: 'Inspect only. <Do not mutate> & report findings.',
+                    },
+                    {
+                      format: 'compact_json',
+                      tag: 'allowed_tool_api_names',
+                      value: [
+                        'readFile',
+                        'searchFiles',
+                        'grepContent',
+                        'globFiles',
+                        'createPlan',
+                        'createTodos',
+                      ],
+                    },
+                    {
+                      format: 'json',
+                      tag: 'output_contract',
+                      value: {
+                        properties: { summary: { type: 'string' } },
+                        type: 'object',
+                      },
+                    },
+                  ],
+                  type: 'sections',
+                },
+                id: 'graph_node_context',
+                placement: 'stable_prefix',
+                wrapper: { tag: 'graph_node_context' },
+              },
+              {
+                content: {
+                  text: 'The current Graph stage remains active. Continue following the constraints and output contract in graph_node_context.',
+                  type: 'text',
+                },
+                id: 'graph_runtime_guidance',
+                placement: 'virtual_tail',
+                wrapper: {
+                  attributes: { stage: 'inspection' },
+                  tag: 'graph_runtime_guidance',
+                },
+              },
+            ],
           },
         }),
       ).process();
@@ -1368,13 +1408,26 @@ Document content here.
     it('should render near-exhaustion guidance without exposing budget control data', async () => {
       const result = await new MessagesEngine(
         createBasicParams({
-          graphRuntimeContext: {
-            guidance: { budgetStatus: 'near_exhaustion', stage: 'work' },
-            nodeContext: {
-              inputContext: { value: {} },
-              outputContract: { type: 'object' },
-              taskInstruction: 'Complete the current stage.',
-            },
+          runtimeContext: {
+            additionalContexts: [
+              {
+                content: {
+                  text: [
+                    'The current Graph stage budget is nearly exhausted. Begin finalization now.',
+                    'Do not start new exploratory branches. Consolidate the evidence already gathered,',
+                    'and complete the remaining actions required by graph_node_context. Once those actions',
+                    'are complete, stop making tool calls and produce the stage result matching its output_contract.',
+                  ].join('\n'),
+                  type: 'text',
+                },
+                id: 'graph_runtime_guidance',
+                placement: 'virtual_tail',
+                wrapper: {
+                  attributes: { stage: 'work', budget_status: 'near_exhaustion' },
+                  tag: 'graph_runtime_guidance',
+                },
+              },
+            ],
           },
         }),
       ).process();
@@ -1398,7 +1451,7 @@ Document content here.
       const baseline = await new MessagesEngine(params).process();
       const withoutGraph = await new MessagesEngine({
         ...params,
-        graphRuntimeContext: undefined,
+        runtimeContext: undefined,
       }).process();
 
       expect(withoutGraph.messages).toEqual(baseline.messages);

@@ -3,7 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ToolNameResolver } from '@lobechat/context-engine';
-import type { GraphRuntimeContext, ReasoningGraph } from '@lobechat/types';
+import type {
+  LLMRuntimeContext,
+  ReasoningGraph,
+  RuntimeAdditionalContextFragment,
+} from '@lobechat/types';
 import { AGENT_GRAPH_ROOT_NODE_ID, ReasoningGraphSchema } from '@lobechat/types';
 import { describe, expect, it } from 'vitest';
 
@@ -99,17 +103,35 @@ const getLastPrompt = (instruction: AgentInstruction | AgentInstruction[]) => {
   return typeof lastMessage?.content === 'string' ? lastMessage.content : '';
 };
 
-const getGraphRuntimeContext = (
+const getRuntimeContext = (
   instruction: AgentInstruction | AgentInstruction[],
-): GraphRuntimeContext => {
-  const graphRuntimeContext = expectCallLlm(instruction).payload.graphRuntimeContext;
-  expect(graphRuntimeContext).toBeDefined();
+): LLMRuntimeContext => {
+  const runtimeContext = expectCallLlm(instruction).payload.runtimeContext;
+  expect(runtimeContext).toBeDefined();
 
-  return graphRuntimeContext as GraphRuntimeContext;
+  return runtimeContext as LLMRuntimeContext;
 };
 
+const getFragment = (
+  instruction: AgentInstruction | AgentInstruction[],
+  id: string,
+): RuntimeAdditionalContextFragment | undefined =>
+  getRuntimeContext(instruction).additionalContexts?.find((fragment) => fragment.id === id);
+
+const getGraphNodeContext = (instruction: AgentInstruction | AgentInstruction[]) => {
+  const fragment = getFragment(instruction, 'graph_node_context');
+  expect(fragment?.content.type).toBe('sections');
+
+  return fragment as RuntimeAdditionalContextFragment & {
+    content: Extract<RuntimeAdditionalContextFragment['content'], { type: 'sections' }>;
+  };
+};
+
+const getGraphNodeSection = (instruction: AgentInstruction | AgentInstruction[], tag: string) =>
+  getGraphNodeContext(instruction).content.sections.find((section) => section.tag === tag)?.value;
+
 const getGraphNodeContextText = (instruction: AgentInstruction | AgentInstruction[]) =>
-  JSON.stringify(getGraphRuntimeContext(instruction).nodeContext);
+  JSON.stringify(getGraphNodeContext(instruction));
 
 const loadGoalLoopGraph = (): ReasoningGraph => {
   const graph = JSON.parse(
@@ -464,7 +486,7 @@ describe('GraphAgent', () => {
 
       const instruction = await agent.runner(createContext('init'), state);
       const call = expectCallLlm(instruction);
-      const graphRuntimeContext = getGraphRuntimeContext(instruction);
+      const runtimeContext = getRuntimeContext(instruction);
 
       expect(call.payload.messages).toEqual(messages);
       expect(call.payload.messages).not.toEqual(
@@ -472,9 +494,16 @@ describe('GraphAgent', () => {
           expect.objectContaining({ content: expect.stringContaining('<task_instruction>') }),
         ]),
       );
-      expect(graphRuntimeContext.guidance).toEqual({ budgetStatus: 'normal', stage: 'plan' });
-      expect(graphRuntimeContext.nodeContext.allowedToolApiNames).toEqual(['read', 'search']);
-      expect(graphRuntimeContext.nodeContext.taskInstruction).toContain(
+      expect(runtimeContext.additionalContexts).toHaveLength(2);
+      expect(getFragment(instruction, 'graph_runtime_guidance')).toMatchObject({
+        placement: 'virtual_tail',
+        wrapper: { attributes: { stage: 'plan' } },
+      });
+      expect(getGraphNodeSection(instruction, 'allowed_tool_api_names')).toEqual([
+        'read',
+        'search',
+      ]);
+      expect(getGraphNodeSection(instruction, 'task_instruction')).toContain(
         'Convert the user /goal request into concrete goals.',
       );
     });
@@ -501,13 +530,12 @@ describe('GraphAgent', () => {
         createLlmResultContext(JSON.stringify({ goals })),
         state,
       );
-      const context = getGraphRuntimeContext(workInstruction);
-      const serializedContext = JSON.stringify(context.nodeContext);
+      const serializedContext = getGraphNodeContextText(workInstruction);
 
-      expect(context.nodeContext.taskInstruction).toBe(
+      expect(getGraphNodeSection(workInstruction, 'task_instruction')).toBe(
         'Complete the planned goals. Work through the provided goals and summarize what changed.',
       );
-      expect(context.nodeContext.allowedToolApiNames).toBeUndefined();
+      expect(getGraphNodeSection(workInstruction, 'allowed_tool_api_names')).toBeUndefined();
       expect(serializedContext).toContain('close prompt loop');
       expect(serializedContext).toContain('Ensure prompt contains values and field semantics.');
       expect(serializedContext).toContain('Concrete goals planned from the user request.');
@@ -543,10 +571,9 @@ describe('GraphAgent', () => {
         createLlmResultContext(JSON.stringify({ summary })),
         state,
       );
-      const context = getGraphRuntimeContext(verifyInstruction);
-      const serializedContext = JSON.stringify(context.nodeContext);
+      const serializedContext = getGraphNodeContextText(verifyInstruction);
 
-      expect(context.nodeContext.taskInstruction).toBe(
+      expect(getGraphNodeSection(verifyInstruction, 'task_instruction')).toBe(
         'Verify whether the work satisfies the planned goals. Return fin=true only when all goals are complete.',
       );
       expect(serializedContext).toContain('Concrete goals planned from the user request.');
@@ -588,7 +615,7 @@ describe('GraphAgent', () => {
       expect(prompt).toContain('Concrete goals planned from the user request.');
       expect(prompt).toContain('<previous_error>');
       expect(prompt).toContain('The node output is not valid JSON.');
-      expect(expectCallLlm(extractionInstruction).payload.graphRuntimeContext).toBeUndefined();
+      expect(expectCallLlm(extractionInstruction).payload.runtimeContext).toBeUndefined();
     });
 
     it('should render raw fallback context once when declared input fields are missing', async () => {
@@ -670,10 +697,12 @@ describe('GraphAgent', () => {
         state,
       );
 
-      expect(getGraphRuntimeContext(stepSeven).guidance).toBeUndefined();
-      expect(getGraphRuntimeContext(stepEight).guidance).toEqual({
-        budgetStatus: 'normal',
-        stage: 'plan',
+      expect(getFragment(stepSeven, 'graph_runtime_guidance')).toBeUndefined();
+      expect(getFragment(stepSeven, 'graph_node_context')).toMatchObject({
+        placement: 'stable_prefix',
+      });
+      expect(getFragment(stepEight, 'graph_runtime_guidance')).toMatchObject({
+        wrapper: { attributes: { stage: 'plan' } },
       });
       expect(Object.keys(getGraphRuntimeState(state) ?? {}).sort()).toEqual([
         'graphContext',
@@ -717,12 +746,11 @@ describe('GraphAgent', () => {
         state,
       );
 
-      expect(getGraphRuntimeContext(beforeWindow).guidance).toBeUndefined();
-      expect(getGraphRuntimeContext(inWindow).guidance).toEqual({
-        budgetStatus: 'near_exhaustion',
-        stage: 'plan',
+      expect(getFragment(beforeWindow, 'graph_runtime_guidance')).toBeUndefined();
+      expect(getFragment(inWindow, 'graph_runtime_guidance')).toMatchObject({
+        wrapper: { attributes: { budget_status: 'near_exhaustion', stage: 'plan' } },
       });
-      expect(getGraphRuntimeContext(betweenCadence).guidance).toBeUndefined();
+      expect(getFragment(betweenCadence, 'graph_runtime_guidance')).toBeUndefined();
     });
 
     it('should emit guidance immediately after compression', async () => {
@@ -746,9 +774,11 @@ describe('GraphAgent', () => {
         state,
       );
 
-      expect(getGraphRuntimeContext(instruction).guidance).toEqual({
-        budgetStatus: 'normal',
-        stage: 'plan',
+      expect(getFragment(instruction, 'graph_runtime_guidance')).toMatchObject({
+        wrapper: { attributes: { stage: 'plan' } },
+      });
+      expect(getFragment(instruction, 'graph_node_context')).toMatchObject({
+        placement: 'stable_prefix',
       });
     });
   });

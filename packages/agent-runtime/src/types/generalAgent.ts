@@ -2,7 +2,7 @@ import {
   type ChatToolPayload,
   type DynamicInterventionResolver,
   type GlobalInterventionAuditConfig,
-  type GraphRuntimeContext,
+  type LLMRuntimeContext,
   type MessageToolCall,
 } from '@lobechat/types';
 
@@ -16,12 +16,12 @@ export interface GeneralAgentCallLLMInstructionPayload {
   assistantMessageId?: string;
   /** Force create a new assistant message (e.g., after compression) */
   createAssistantMessage?: boolean;
-  graphRuntimeContext?: GraphRuntimeContext;
   isFirstMessage?: boolean;
   messages: any[];
   model: string;
   parentMessageId?: string;
   provider: string;
+  runtimeContext?: LLMRuntimeContext;
   tools: any[];
 }
 

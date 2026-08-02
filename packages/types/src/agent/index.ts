@@ -7,4 +7,5 @@ export * from './graph';
 export * from './item';
 export * from './modelSelection';
 export * from './pluginConfig';
+export * from './runtimeContext';
 export * from './tts';

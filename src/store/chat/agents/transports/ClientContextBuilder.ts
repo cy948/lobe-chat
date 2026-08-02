@@ -77,11 +77,11 @@ export class ClientContextBuilder implements ContextBuilder {
       {
         agentId: effectiveAgentId || undefined,
         groupId,
-        graphRuntimeContext: input.payload.graphRuntimeContext,
         messages,
         model: input.model,
         provider: input.provider,
         resolvedAgentConfig: promptAgentConfig,
+        runtimeContext: input.payload.runtimeContext,
         topicId: topicId ?? undefined,
         ...agentConfig.params,
       },

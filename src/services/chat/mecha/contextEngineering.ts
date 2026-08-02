@@ -40,7 +40,7 @@ import { MessagesEngine, resolveTopicReferences } from '@lobechat/context-engine
 import { historySummaryPrompt } from '@lobechat/prompts';
 import {
   getActivePluginIds,
-  type GraphRuntimeContext,
+  type LLMRuntimeContext,
   type OpenAIChatMessage,
   type RuntimeInitialContext,
   type RuntimeStepContext,
@@ -105,8 +105,6 @@ interface ContextEngineeringContext {
   enableAgentMode?: boolean;
   enableHistoryCount?: boolean;
   enableUserMemories?: boolean;
-  /** GraphAgent-owned context for ordinary active-node calls */
-  graphRuntimeContext?: GraphRuntimeContext;
   /** Group ID for multi-agent scenarios */
   groupId?: string;
   historyCount?: number;
@@ -126,6 +124,8 @@ interface ContextEngineeringContext {
   /** Agent's enabled plugin/tool/skill identifiers (from agentConfig.plugins) */
   plugins?: string[];
   provider: string;
+  /** Agent-materialized presentation context for this LLM call */
+  runtimeContext?: LLMRuntimeContext;
   sessionId?: string;
   /**
    * Step context from Agent Runtime
@@ -157,7 +157,7 @@ export const contextEngineering = async ({
   disabledPluginIds,
   enableAgentMode,
   groupId,
-  graphRuntimeContext,
+  runtimeContext,
   initialContext,
   plugins,
   stepContext,
@@ -705,7 +705,7 @@ export const contextEngineering = async ({
     formatHistorySummary: historySummaryPrompt,
     historyCount,
     historySummary,
-    graphRuntimeContext,
+    runtimeContext,
     inputTemplate,
     systemRole,
 

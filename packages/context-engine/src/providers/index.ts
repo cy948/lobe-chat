@@ -15,8 +15,6 @@ export { ContextSelectionsInjector } from './ContextSelectionsInjector';
 export { DiscordContextProvider } from './DiscordContextProvider';
 export { EvalContextSystemInjector } from './EvalContextSystemInjector';
 export { ForceFinishSummaryInjector } from './ForceFinishSummaryInjector';
-export { GraphNodeContextInjector } from './GraphNodeContextInjector';
-export { GraphRuntimeGuidanceInjector } from './GraphRuntimeGuidanceInjector';
 export { GroupAgentBuilderContextInjector } from './GroupAgentBuilderContextInjector';
 export { GroupContextInjector } from './GroupContextInjector';
 export { HistorySummaryProvider } from './HistorySummary';
@@ -29,6 +27,8 @@ export { OnboardingSyntheticStateInjector } from './OnboardingSyntheticStateInje
 export { PageEditorContextInjector } from './PageEditorContextInjector';
 export { PageSelectionsInjector } from './PageSelectionsInjector';
 export { PlanInjector } from './PlanInjector';
+export { RuntimeAdditionalContextStableProvider } from './RuntimeAdditionalContextStableProvider';
+export { RuntimeAdditionalContextTailProvider } from './RuntimeAdditionalContextTailProvider';
 export {
   formatSelectedSkills,
   formatSelectedSkillsContext,
@@ -82,8 +82,6 @@ export type { ContextSelectionsInjectorConfig } from './ContextSelectionsInjecto
 export type { DiscordContext, DiscordContextProviderConfig } from './DiscordContextProvider';
 export type { EvalContext, EvalContextSystemInjectorConfig } from './EvalContextSystemInjector';
 export type { ForceFinishSummaryInjectorConfig } from './ForceFinishSummaryInjector';
-export type { GraphNodeContextInjectorConfig } from './GraphNodeContextInjector';
-export type { GraphRuntimeGuidanceInjectorConfig } from './GraphRuntimeGuidanceInjector';
 export type {
   GroupAgentBuilderContext,
   GroupAgentBuilderContextInjectorConfig,
@@ -106,6 +104,8 @@ export type {
 export type { PageEditorContextInjectorConfig } from './PageEditorContextInjector';
 export type { PageSelectionsInjectorConfig } from './PageSelectionsInjector';
 export type { Plan, PlanInjectorConfig } from './PlanInjector';
+export type { RuntimeAdditionalContextStableProviderConfig } from './RuntimeAdditionalContextStableProvider';
+export type { RuntimeAdditionalContextTailProviderConfig } from './RuntimeAdditionalContextTailProvider';
 export type { SelectedSkillInjectorConfig } from './SelectedSkillInjector';
 export type { SelectedToolInjectorConfig } from './SelectedToolInjector';
 export type { SkillContextProviderConfig, SkillMeta } from './SkillContextProvider';

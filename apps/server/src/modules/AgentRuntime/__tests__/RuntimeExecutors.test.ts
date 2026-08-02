@@ -2360,36 +2360,47 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
         );
       });
 
-      it('should forward Graph runtime context to MessagesEngine without leaking model parameters', async () => {
+      it('should forward runtime context to MessagesEngine without leaking model parameters', async () => {
         const ctxWithConfig: RuntimeExecutorContext = {
           ...ctx,
           agentConfig: { plugins: [], systemRole: 'test' },
         };
-        const graphRuntimeContext = {
-          guidance: { budgetStatus: 'normal' as const, stage: 'inspection' },
-          nodeContext: {
-            inputContext: { value: { query: 'Inspect' } },
-            outputContract: { type: 'object' },
-            taskInstruction: 'Inspect the repository.',
-          },
+        const runtimeContext = {
+          additionalContexts: [
+            {
+              content: { text: 'Inspect the repository.', type: 'text' as const },
+              id: 'graph_node_context',
+              placement: 'stable_prefix' as const,
+              wrapper: { tag: 'graph_node_context' },
+            },
+            {
+              content: { text: 'Continue.', type: 'text' as const },
+              id: 'graph_runtime_guidance',
+              placement: 'virtual_tail' as const,
+              wrapper: {
+                attributes: { stage: 'inspection' },
+                tag: 'graph_runtime_guidance',
+              },
+            },
+          ],
         };
 
         await createRuntimeExecutors(ctxWithConfig).call_llm!(
           {
             payload: {
-              graphRuntimeContext,
               messages: [{ content: 'Hello', role: 'user' }],
               model: 'gpt-4',
               provider: 'openai',
+              runtimeContext,
             },
             type: 'call_llm',
           },
           createMockState(),
         );
 
-        expect(engineSpy).toHaveBeenCalledWith(expect.objectContaining({ graphRuntimeContext }));
+        expect(engineSpy).toHaveBeenCalledWith(expect.objectContaining({ runtimeContext }));
         const modelPayload = mockChat.mock.calls[0][0];
-        expect(modelPayload).not.toHaveProperty('graphRuntimeContext');
+        expect(modelPayload).not.toHaveProperty('runtimeContext');
         expect(JSON.stringify(modelPayload.messages)).toContain('<graph_node_context>');
         expect(JSON.stringify(modelPayload.messages)).toContain('<graph_runtime_guidance');
       });

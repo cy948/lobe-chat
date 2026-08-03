@@ -2218,31 +2218,31 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
         expect(mockFindPlanDocuments).not.toHaveBeenCalled();
       });
 
-      it.each([{ items: [], updatedAt: 'canonical-clear' }, []])(
-        'treats canonical and legacy empty message states as clear tombstones',
-        async (todos) => {
-          mockFindPlanDocuments.mockResolvedValue([
-            {
-              metadata: {
-                todos: { items: [{ status: 'todo', text: 'Stale metadata task' }] },
-              },
-              updatedAt: new Date(),
+      it.each([
+        { items: [], updatedAt: 'canonical-clear' },
+        [],
+      ])('treats canonical and legacy empty message states as clear tombstones', async (todos) => {
+        mockFindPlanDocuments.mockResolvedValue([
+          {
+            metadata: {
+              todos: { items: [{ status: 'todo', text: 'Stale metadata task' }] },
             },
-          ]);
+            updatedAt: new Date(),
+          },
+        ]);
 
-          const content = await callWithMessages(
-            [
-              { content: 'cleared', pluginState: { todos }, role: 'tool' },
-              { content: 'Continue', role: 'user' },
-            ],
-            stateWithLobeAgent(),
-          );
+        const content = await callWithMessages(
+          [
+            { content: 'cleared', pluginState: { todos }, role: 'tool' },
+            { content: 'Continue', role: 'user' },
+          ],
+          stateWithLobeAgent(),
+        );
 
-          expect(content).not.toContain('<todo_context>');
-          expect(content).not.toContain('Stale metadata task');
-          expect(mockFindPlanDocuments).not.toHaveBeenCalled();
-        },
-      );
+        expect(content).not.toContain('<todo_context>');
+        expect(content).not.toContain('Stale metadata task');
+        expect(mockFindPlanDocuments).not.toHaveBeenCalled();
+      });
 
       it.each([
         {
@@ -2368,13 +2368,11 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
         const additionalContexts = [
           {
             content: { text: 'Inspect the repository.', type: 'text' as const },
-            id: 'graph_node_context',
             placement: 'stable_prefix' as const,
             wrapper: { tag: 'graph_node_context' },
           },
           {
             content: { text: 'Continue.', type: 'text' as const },
-            id: 'graph_runtime_guidance',
             placement: 'virtual_tail' as const,
             wrapper: {
               attributes: { stage: 'inspection' },

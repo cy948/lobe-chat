@@ -3,6 +3,7 @@ import type {
   AgentGraphEdge,
   AgentGraphNode,
   ReasoningGraph,
+  RuntimeAdditionalContextFragment,
   RuntimeAdditionalContextValue,
 } from '@lobechat/types';
 import { AGENT_GRAPH_ROOT_NODE_ID } from '@lobechat/types';
@@ -94,6 +95,14 @@ interface ReducerInput {
   graphContext: GraphContext;
   graphState: GraphState;
   state: AgentState;
+}
+
+interface GraphPromptHookEvent {
+  context: AgentRuntimeContext;
+  graphContext: GraphContext;
+  graphState: Extract<GraphState, { active: boolean; phase: 'node_in' }>;
+  state: AgentState;
+  type: 'before_llm_call';
 }
 
 interface GraphOrchestration {
@@ -215,26 +224,36 @@ export class GraphAgent implements Agent {
 
       graphContext = orchestration.graphContext;
       graphState = orchestration.graphState;
-      orchestration.instruction = this.attachRuntimeContext({
-        context,
-        graphContext,
-        graphState,
-        instruction: orchestration.instruction,
-        state,
-      });
       this.updateGraphRuntimeState(state, { graphContext, graphState, instructionCount });
 
       const instruction = this.resolveRuntimeInstruction(orchestration);
+      const callsLlm = Array.isArray(instruction)
+        ? instruction.some((item) => item.type === 'call_llm')
+        : instruction?.type === 'call_llm';
+      const additionalContexts =
+        callsLlm && graphState.phase === 'node_in' && graphState.active
+          ? this.runGraphPromptHooks({
+              context,
+              graphContext,
+              graphState,
+              state,
+              type: 'before_llm_call',
+            })
+          : [];
+      const instructionWithContexts = this.attachAdditionalContexts(
+        instruction,
+        additionalContexts,
+      );
 
       // If the graph state machine lowers to a runtime instruction or reaches fin,
       // we can return the instruction to the runtime.
-      if (instruction) {
-        if (!this.hasFinishInstruction(instruction)) {
+      if (instructionWithContexts) {
+        if (!this.hasFinishInstruction(instructionWithContexts)) {
           instructionCount += 1;
           this.updateGraphRuntimeState(state, { graphContext, graphState, instructionCount });
         }
 
-        return instruction;
+        return instructionWithContexts;
       }
     }
 
@@ -640,42 +659,45 @@ export class GraphAgent implements Agent {
       : instruction.type === 'finish';
   }
 
-  private attachRuntimeContext(input: {
-    context: AgentRuntimeContext;
-    graphContext: GraphContext;
-    graphState: GraphState;
-    instruction?: AgentInstruction | AgentInstruction[];
-    state: AgentState;
-  }): AgentInstruction | AgentInstruction[] | undefined {
-    const { graphState, instruction } = input;
-    if (!instruction || graphState.phase !== 'node_in' || !graphState.active) return instruction;
-
+  private runGraphPromptHooks(
+    event: GraphPromptHookEvent,
+  ): readonly RuntimeAdditionalContextFragment[] {
+    const { context, graphState, state } = event;
     const node = this.getNodeById(graphState.currentNode);
-    if (!node) return instruction;
+    if (!node) return [];
 
     const usedNodeRuntimeSteps = Math.max(
       0,
-      input.state.stepCount - (graphState.nodeStartStepCount ?? input.state.stepCount),
+      state.stepCount - (graphState.nodeStartStepCount ?? state.stepCount),
     );
     const budgetStatus = getGraphBudgetStatus(node, usedNodeRuntimeSteps);
     const trigger = evaluateGraphPromptTrigger({
       budgetStatus,
-      isAfterCompression: input.context.phase === 'compression_result',
+      isAfterCompression: context.phase === 'compression_result',
       usedNodeRuntimeSteps,
     });
-    const additionalContexts = materializeGraphPromptContext({
+
+    return materializeGraphPromptContext({
       ...(node.type === 'agent' && node.allowedToolApiNames !== undefined
         ? { allowedToolApiNames: node.allowedToolApiNames }
         : {}),
       budgetStatus,
       inputContext: this.toRuntimeContextValue(
-        this.resolveNodeInputContext(graphState.incomingEdge, input),
+        this.resolveNodeInputContext(graphState.incomingEdge, event),
       ),
       outputContract: this.toRuntimeContextValue(this.getOutputSchema(graphState.incomingEdge)),
       stage: graphState.currentNode,
       taskInstruction: graphState.incomingEdge.instruction,
       trigger,
     });
+  }
+
+  private attachAdditionalContexts(
+    instruction: AgentInstruction | AgentInstruction[] | undefined,
+    additionalContexts: readonly RuntimeAdditionalContextFragment[],
+  ): AgentInstruction | AgentInstruction[] | undefined {
+    if (!instruction || additionalContexts.length === 0) return instruction;
+
     const attach = (item: AgentInstruction): AgentInstruction =>
       item.type === 'call_llm'
         ? {

@@ -1,11 +1,7 @@
 import { ToolNameResolver } from '@lobechat/context-engine';
-import type {
-  AgentGraphEdge,
-  AgentGraphNode,
-  ReasoningGraph,
-  RuntimeAdditionalContextValue,
-} from '@lobechat/types';
+import type { AgentGraphEdge, AgentGraphNode, ReasoningGraph } from '@lobechat/types';
 import { AGENT_GRAPH_ROOT_NODE_ID } from '@lobechat/types';
+import { toJsonSafe } from '@lobechat/utils/json';
 import type { UnknownRecord } from '@lobechat/utils/object';
 import { isRecord } from '@lobechat/utils/object';
 import Ajv from 'ajv';
@@ -668,7 +664,7 @@ export class GraphAgent implements Agent {
         ? { allowedToolApiNames: node.allowedToolApiNames }
         : {}),
       budgetStatus,
-      inputContext: this.toRuntimeContextValue(
+      inputContext: toJsonSafe(
         this.resolveNodeInputContext(graphState.incomingEdge, {
           context: input.context,
           graphContext: input.graphContext,
@@ -676,7 +672,7 @@ export class GraphAgent implements Agent {
           state: input.state,
         }),
       ),
-      outputContract: this.toRuntimeContextValue(this.getOutputSchema(graphState.incomingEdge)),
+      outputContract: toJsonSafe(this.getOutputSchema(graphState.incomingEdge)),
       stage: graphState.currentNode,
       taskInstruction: graphState.incomingEdge.instruction,
       trigger: evaluateGraphPromptTrigger({
@@ -832,38 +828,6 @@ export class GraphAgent implements Agent {
 
     seen.delete(value);
     return promptObject;
-  }
-
-  private toRuntimeContextValue(value: unknown): RuntimeAdditionalContextValue {
-    if (
-      value === null ||
-      typeof value === 'string' ||
-      typeof value === 'boolean' ||
-      (typeof value === 'number' && Number.isFinite(value))
-    ) {
-      return value;
-    }
-
-    if (typeof value === 'bigint') return value.toString();
-
-    if (Array.isArray(value)) {
-      return value.map((item) =>
-        item === undefined || typeof item === 'function' || typeof item === 'symbol'
-          ? null
-          : this.toRuntimeContextValue(item),
-      );
-    }
-
-    if (!isRecord(value)) return null;
-
-    return Object.fromEntries(
-      Object.entries(value)
-        .filter(
-          ([, item]) =>
-            item !== undefined && typeof item !== 'function' && typeof item !== 'symbol',
-        )
-        .map(([key, item]) => [key, this.toRuntimeContextValue(item)]),
-    );
   }
 
   private resolveNodeInputContext(

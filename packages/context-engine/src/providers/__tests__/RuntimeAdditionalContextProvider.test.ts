@@ -40,10 +40,10 @@ describe('RuntimeAdditionalContextProvider', () => {
       additionalContexts: fragments,
     }).process(createContext());
 
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[0]).toEqual({ content: 'Hello', role: 'user' });
     expect(result.messages.at(-1)?.content).toBe(
       [
-        'Hello',
-        '',
         '<context label="a&quot;&lt;&amp;&gt;">',
         '<data>',
         '{',
@@ -90,10 +90,39 @@ describe('RuntimeAdditionalContextProvider', () => {
     }).process(createContext());
     const undefinedResult = await new RuntimeAdditionalContextProvider({}).process(createContext());
 
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[0]).toEqual({ content: 'Hello', role: 'user' });
     expect(result.messages.at(-1)?.content).toBe(
-      'Hello\n\n<one>\ntail-one\n</one>\n\n<stable>\nstable\n</stable>\n\n<two>\ntail-two\n</two>',
+      '<one>\ntail-one\n</one>\n\n<stable>\nstable\n</stable>\n\n<two>\ntail-two\n</two>',
     );
     expect(emptyResult.messages).toEqual(createContext().messages);
     expect(undefinedResult.messages).toEqual(createContext().messages);
+  });
+
+  it('reuses an existing synthetic tail user message', async () => {
+    const result = await new RuntimeAdditionalContextProvider({
+      additionalContexts: [
+        {
+          content: { text: 'Current stage.', type: 'text' },
+          id: 'stage',
+          wrapper: { tag: 'stage_context' },
+        },
+      ],
+    }).process({
+      ...createContext(),
+      messages: [
+        { content: 'Hello', role: 'user' },
+        {
+          content: 'Existing hint',
+          meta: { injectType: 'OtherProvider', virtualLastUser: true },
+          role: 'user',
+        },
+      ],
+    });
+
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages.at(-1)?.content).toBe(
+      'Existing hint\n\n<stage_context>\nCurrent stage.\n</stage_context>',
+    );
   });
 });

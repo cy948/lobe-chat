@@ -10,14 +10,16 @@ const VIRTUAL_LAST_USER_MARKER = 'virtualLastUser';
  * Base provider for injecting content at the virtual "last user" position.
  *
  * Behavior:
- * - If the current last message is a user message, append to it directly
- * - Otherwise create a synthetic user message at the tail of the message list
+ * - By default, append directly when the current last message is a user message
+ * - Subclasses may instead reserve a standalone synthetic user message at the tail
  * - Multiple virtual-last-user providers can reuse the same synthetic tail message
  *
  * This is intended for high-churn runtime guidance that should stay at the end
  * of the prompt so earlier stable prefixes can still benefit from cache hits.
  */
 export abstract class BaseVirtualLastUserContentProvider extends BaseProcessor {
+  protected readonly appendToRealLastUser: boolean = true;
+
   constructor(options: ProcessorOptions = {}) {
     super(options);
   }
@@ -113,7 +115,10 @@ export abstract class BaseVirtualLastUserContentProvider extends BaseProcessor {
     const clonedContext = this.cloneContext(context);
     const lastMessage = clonedContext.messages.at(-1);
 
-    if (lastMessage?.role === 'user') {
+    if (
+      lastMessage?.role === 'user' &&
+      (this.appendToRealLastUser || lastMessage.meta?.[VIRTUAL_LAST_USER_MARKER] === true)
+    ) {
       clonedContext.messages[clonedContext.messages.length - 1] = this.appendToMessage(
         lastMessage,
         content,

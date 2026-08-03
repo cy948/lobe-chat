@@ -1398,7 +1398,7 @@ Document content here.
       );
     });
 
-    it('should append additional context to an existing last user message', async () => {
+    it('should preserve an existing last user message and inject additional context at the tail', async () => {
       const result = await new MessagesEngine(
         createBasicParams({
           additionalContexts: [
@@ -1422,7 +1422,11 @@ Document content here.
 
       expect(result.messages).toEqual([
         {
-          content: 'Question\n\n<stage_context>\nCurrent stage.\n</stage_context>',
+          content: 'Question',
+          role: 'user',
+        },
+        {
+          content: '<stage_context>\nCurrent stage.\n</stage_context>',
           role: 'user',
         },
       ]);

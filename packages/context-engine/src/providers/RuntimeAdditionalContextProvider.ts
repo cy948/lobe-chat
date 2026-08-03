@@ -10,6 +10,7 @@ export interface RuntimeAdditionalContextProviderConfig {
 
 export class RuntimeAdditionalContextProvider extends BaseVirtualLastUserContentProvider {
   readonly name = 'RuntimeAdditionalContextProvider';
+  protected override readonly appendToRealLastUser = false;
 
   constructor(
     private config: RuntimeAdditionalContextProviderConfig,

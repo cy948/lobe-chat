@@ -70,7 +70,6 @@ const createGuidanceFragment = (
         : 'The current Graph stage remains active. Continue following the constraints and output contract in graph_node_context.',
     type: 'text',
   },
-  id: 'graph_runtime_guidance',
   placement: 'virtual_tail',
   wrapper: {
     attributes: {
@@ -102,7 +101,6 @@ export const materializeGraphPromptContext = (
       ],
       type: 'sections',
     },
-    id: 'graph_node_context',
     placement: 'stable_prefix',
     wrapper: { tag: 'graph_node_context' },
   };

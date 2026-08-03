@@ -26,7 +26,6 @@ export interface RuntimeAdditionalContextFragment {
         readonly text: string;
         readonly type: 'text';
       };
-  readonly id: string;
   readonly placement: 'stable_prefix' | 'virtual_tail';
   readonly wrapper: {
     readonly attributes?: Readonly<Record<string, string>>;

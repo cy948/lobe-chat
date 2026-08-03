@@ -23,7 +23,6 @@ describe('RuntimeAdditionalContextProvider', () => {
           ],
           type: 'sections',
         },
-        id: 'first',
         placement: 'virtual_tail',
         wrapper: {
           attributes: { label: 'a"<&>' },
@@ -32,7 +31,6 @@ describe('RuntimeAdditionalContextProvider', () => {
       },
       {
         content: { text: 'Second & final.', type: 'text' },
-        id: 'second',
         placement: 'virtual_tail',
         wrapper: { tag: 'note' },
       },
@@ -69,19 +67,16 @@ describe('RuntimeAdditionalContextProvider', () => {
     const fragments: RuntimeAdditionalContextFragment[] = [
       {
         content: { text: 'tail-one', type: 'text' },
-        id: 'tail-one',
         placement: 'virtual_tail',
         wrapper: { tag: 'one' },
       },
       {
         content: { text: 'stable', type: 'text' },
-        id: 'stable',
         placement: 'stable_prefix',
         wrapper: { tag: 'stable' },
       },
       {
         content: { text: 'tail-two', type: 'text' },
-        id: 'tail-two',
         placement: 'virtual_tail',
         wrapper: { tag: 'two' },
       },
@@ -114,7 +109,6 @@ describe('RuntimeAdditionalContextProvider', () => {
       additionalContexts: [
         {
           content: { text: 'Current stage.', type: 'text' },
-          id: 'stage',
           placement: 'virtual_tail',
           wrapper: { tag: 'stage_context' },
         },
@@ -142,7 +136,6 @@ describe('RuntimeAdditionalContextProvider', () => {
       additionalContexts: [
         {
           content: { text: 'Graph contract.', type: 'text' },
-          id: 'graph',
           placement: 'stable_prefix',
           wrapper: { tag: 'graph_node_context' },
         },

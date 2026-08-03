@@ -110,9 +110,9 @@ const getAdditionalContexts = (
 
 const getFragment = (
   instruction: AgentInstruction | AgentInstruction[],
-  id: string,
+  tag: string,
 ): RuntimeAdditionalContextFragment | undefined =>
-  getAdditionalContexts(instruction).find((fragment) => fragment.id === id);
+  getAdditionalContexts(instruction).find((fragment) => fragment.wrapper.tag === tag);
 
 const getGraphNodeContext = (instruction: AgentInstruction | AgentInstruction[]) => {
   const fragment = getFragment(instruction, 'graph_node_context');
@@ -491,7 +491,7 @@ describe('GraphAgent', () => {
         ]),
       );
       expect(additionalContexts).toHaveLength(2);
-      expect(additionalContexts.map(({ id }) => id)).toEqual([
+      expect(additionalContexts.map(({ wrapper }) => wrapper.tag)).toEqual([
         'graph_node_context',
         'graph_runtime_guidance',
       ]);
@@ -702,7 +702,7 @@ describe('GraphAgent', () => {
 
       expect(getFragment(stepSeven, 'graph_runtime_guidance')).toBeUndefined();
       expect(getFragment(stepSeven, 'graph_node_context')).toMatchObject({
-        id: 'graph_node_context',
+        wrapper: { tag: 'graph_node_context' },
       });
       expect(getFragment(stepEight, 'graph_runtime_guidance')).toMatchObject({
         wrapper: { attributes: { stage: 'plan' } },
@@ -781,7 +781,7 @@ describe('GraphAgent', () => {
         wrapper: { attributes: { stage: 'plan' } },
       });
       expect(getFragment(instruction, 'graph_node_context')).toMatchObject({
-        id: 'graph_node_context',
+        wrapper: { tag: 'graph_node_context' },
       });
     });
   });

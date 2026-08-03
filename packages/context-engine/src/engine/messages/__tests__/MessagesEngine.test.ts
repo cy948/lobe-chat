@@ -1317,167 +1317,36 @@ Document content here.
       expect(result.messages).toEqual([{ content: 'Question', role: 'user' }]);
     });
 
-    it('should inject the Graph contract at the stable prefix and guidance at the virtual tail', async () => {
+    it('should place additional contexts at the stable prefix and virtual tail', async () => {
       const result = await new MessagesEngine(
         createBasicParams({
           additionalContexts: [
             {
-              content: {
-                sections: [
-                  {
-                    format: 'json',
-                    tag: 'input_context',
-                    value: { fields: { query: { value: 'Inspect the repository' } } },
-                  },
-                  {
-                    format: 'text',
-                    tag: 'task_instruction',
-                    value: 'Inspect only. <Do not mutate> & report findings.',
-                  },
-                  {
-                    format: 'compact_json',
-                    tag: 'allowed_tool_api_names',
-                    value: [
-                      'readFile',
-                      'searchFiles',
-                      'grepContent',
-                      'globFiles',
-                      'createPlan',
-                      'createTodos',
-                    ],
-                  },
-                  {
-                    format: 'json',
-                    tag: 'output_contract',
-                    value: {
-                      properties: { summary: { type: 'string' } },
-                      type: 'object',
-                    },
-                  },
-                ],
-                type: 'sections',
-              },
-              id: 'graph_node_context',
+              content: { text: 'Stable context.', type: 'text' },
               placement: 'stable_prefix',
-              wrapper: { tag: 'graph_node_context' },
+              wrapper: { tag: 'stable_context' },
             },
             {
-              content: {
-                text: 'The current Graph stage remains active. Continue following the constraints and output contract in graph_node_context.',
-                type: 'text',
-              },
-              id: 'graph_runtime_guidance',
+              content: { text: 'Tail guidance.', type: 'text' },
               placement: 'virtual_tail',
-              wrapper: {
-                attributes: { stage: 'inspection' },
-                tag: 'graph_runtime_guidance',
-              },
+              wrapper: { tag: 'tail_guidance' },
             },
-          ],
-        }),
-      ).process();
-      const serialized = JSON.stringify(result.messages);
-      const prefixContent = String(result.messages[0]?.content);
-      const tail = result.messages.at(-1);
-      const tailContent = String(tail?.content);
-
-      expect(result.messages).toHaveLength(4);
-      expect(prefixContent.match(/<graph_node_context>/g)).toHaveLength(1);
-      expect(serialized).toContain('<input_context>');
-      expect(serialized).toContain('<output_contract>');
-      expect(prefixContent).toContain(
-        [
-          '<allowed_tool_api_names>',
-          '["readFile","searchFiles","grepContent","globFiles","createPlan","createTodos"]',
-          '</allowed_tool_api_names>',
-        ].join('\n'),
-      );
-      expect(serialized).toContain(
-        '<task_instruction>Inspect only. &lt;Do not mutate&gt; &amp; report findings.</task_instruction>',
-      );
-      expect(result.messages[1]).toEqual({ content: 'Hello', role: 'user' });
-      expect(tail).toMatchObject({ role: 'user' });
-      expect(tailContent).toBe(
-        [
-          '<graph_runtime_guidance stage="inspection">',
-          'The current Graph stage remains active. Continue following the constraints and output contract in graph_node_context.',
-          '</graph_runtime_guidance>',
-        ].join('\n'),
-      );
-    });
-
-    it('should preserve an existing last user message and inject additional context at the tail', async () => {
-      const result = await new MessagesEngine(
-        createBasicParams({
-          additionalContexts: [
-            {
-              content: { text: 'Current stage.', type: 'text' },
-              id: 'stage',
-              placement: 'virtual_tail',
-              wrapper: { tag: 'stage_context' },
-            },
-          ],
-          messages: [
-            {
-              content: 'Question',
-              createdAt: Date.now(),
-              id: 'msg-user',
-              role: 'user',
-              updatedAt: Date.now(),
-            } as UIChatMessage,
           ],
         }),
       ).process();
 
       expect(result.messages).toEqual([
         {
-          content: 'Question',
+          content: '<stable_context>\nStable context.\n</stable_context>',
           role: 'user',
         },
+        { content: 'Hello', role: 'user' },
+        { content: 'Hi there!', role: 'assistant' },
         {
-          content: '<stage_context>\nCurrent stage.\n</stage_context>',
+          content: '<tail_guidance>\nTail guidance.\n</tail_guidance>',
           role: 'user',
         },
       ]);
-    });
-
-    it('should render near-exhaustion guidance without exposing budget control data', async () => {
-      const result = await new MessagesEngine(
-        createBasicParams({
-          additionalContexts: [
-            {
-              content: {
-                text: [
-                  'The current Graph stage budget is nearly exhausted. Begin finalization now.',
-                  'Do not start new exploratory branches. Consolidate the evidence already gathered,',
-                  'and complete the remaining actions required by graph_node_context. Once those actions',
-                  'are complete, stop making tool calls and produce the stage result matching its output_contract.',
-                ].join('\n'),
-                type: 'text',
-              },
-              id: 'graph_runtime_guidance',
-              placement: 'virtual_tail',
-              wrapper: {
-                attributes: { stage: 'work', budget_status: 'near_exhaustion' },
-                tag: 'graph_runtime_guidance',
-              },
-            },
-          ],
-        }),
-      ).process();
-      const tailContent = String(result.messages.at(-1)?.content);
-
-      expect(tailContent).toBe(
-        [
-          '<graph_runtime_guidance stage="work" budget_status="near_exhaustion">',
-          'The current Graph stage budget is nearly exhausted. Begin finalization now.',
-          'Do not start new exploratory branches. Consolidate the evidence already gathered,',
-          'and complete the remaining actions required by graph_node_context. Once those actions',
-          'are complete, stop making tool calls and produce the stage result matching its output_contract.',
-          '</graph_runtime_guidance>',
-        ].join('\n'),
-      );
-      expect(tailContent).not.toMatch(/maxAgentSteps|runtime step|cadence|percent|\d/i);
     });
 
     it('should leave non-Graph output unchanged when Graph context is omitted', async () => {

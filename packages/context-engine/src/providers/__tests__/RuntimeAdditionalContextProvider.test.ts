@@ -1,10 +1,18 @@
 import type { RuntimeAdditionalContextFragment } from '@lobechat/types';
 import { describe, expect, it } from 'vitest';
 
-import { renderRuntimeAdditionalContexts } from '../RuntimeAdditionalContextProvider';
+import type { PipelineContext } from '../../types';
+import { RuntimeAdditionalContextProvider } from '../RuntimeAdditionalContextProvider';
 
-describe('RuntimeAdditionalContextProvider renderer', () => {
-  it('renders ordered sections with format-specific escaping', () => {
+const createContext = (): PipelineContext => ({
+  initialState: { messages: [], model: 'test-model', provider: 'test-provider' },
+  isAborted: false,
+  messages: [{ content: 'Hello', role: 'user' }],
+  metadata: { maxTokens: 4000, model: 'test-model' },
+});
+
+describe('RuntimeAdditionalContextProvider', () => {
+  it('renders ordered sections with format-specific escaping', async () => {
     const fragments: RuntimeAdditionalContextFragment[] = [
       {
         content: {
@@ -28,8 +36,14 @@ describe('RuntimeAdditionalContextProvider renderer', () => {
       },
     ];
 
-    expect(renderRuntimeAdditionalContexts(fragments)).toBe(
+    const result = await new RuntimeAdditionalContextProvider({
+      additionalContexts: fragments,
+    }).process(createContext());
+
+    expect(result.messages.at(-1)?.content).toBe(
       [
+        'Hello',
+        '',
         '<context label="a&quot;&lt;&amp;&gt;">',
         '<data>',
         '{',
@@ -49,7 +63,7 @@ describe('RuntimeAdditionalContextProvider renderer', () => {
     );
   });
 
-  it('preserves fragment order and returns null without fragments', () => {
+  it('preserves fragment order and skips injection without fragments', async () => {
     const fragments: RuntimeAdditionalContextFragment[] = [
       {
         content: { text: 'tail-one', type: 'text' },
@@ -68,10 +82,18 @@ describe('RuntimeAdditionalContextProvider renderer', () => {
       },
     ];
 
-    expect(renderRuntimeAdditionalContexts(fragments)).toBe(
-      '<one>\ntail-one\n</one>\n\n<stable>\nstable\n</stable>\n\n<two>\ntail-two\n</two>',
+    const result = await new RuntimeAdditionalContextProvider({
+      additionalContexts: fragments,
+    }).process(createContext());
+    const emptyResult = await new RuntimeAdditionalContextProvider({
+      additionalContexts: [],
+    }).process(createContext());
+    const undefinedResult = await new RuntimeAdditionalContextProvider({}).process(createContext());
+
+    expect(result.messages.at(-1)?.content).toBe(
+      'Hello\n\n<one>\ntail-one\n</one>\n\n<stable>\nstable\n</stable>\n\n<two>\ntail-two\n</two>',
     );
-    expect(renderRuntimeAdditionalContexts([])).toBeNull();
-    expect(renderRuntimeAdditionalContexts(undefined)).toBeNull();
+    expect(emptyResult.messages).toEqual(createContext().messages);
+    expect(undefinedResult.messages).toEqual(createContext().messages);
   });
 });

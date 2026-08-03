@@ -15,7 +15,7 @@ import { AgentRuntimeError } from '@lobechat/model-runtime/utils/createError';
 import {
   ChatErrorType,
   getDisabledPluginIds,
-  type LLMRuntimeContext,
+  type RuntimeAdditionalContextFragment,
   type RuntimeInitialContext,
   type RuntimeStepContext,
   type TracePayload,
@@ -74,6 +74,7 @@ const providersWithDeploymentName = new Set<string>([
   ModelProvider.VolcengineCodingPlan,
 ]);
 export interface GetChatCompletionPayload extends Partial<Omit<ChatStreamPayload, 'messages'>> {
+  additionalContexts?: readonly RuntimeAdditionalContextFragment[];
   agentId?: string;
   groupId?: string;
   messages: UIChatMessage[];
@@ -82,7 +83,6 @@ export interface GetChatCompletionPayload extends Partial<Omit<ChatStreamPayload
    * Required to ensure config consistency and proper isSubAgent filtering.
    */
   resolvedAgentConfig: ResolvedAgentConfig;
-  runtimeContext?: LLMRuntimeContext;
   topicId?: string;
 }
 
@@ -139,7 +139,7 @@ class ChatService {
       messages,
       agentId,
       groupId,
-      runtimeContext,
+      additionalContexts,
       topicId,
       resolvedAgentConfig,
       ...params
@@ -303,7 +303,7 @@ class ChatService {
       enableHistoryCount: chatConfig.enableHistoryCount,
       enableUserMemories,
       groupId,
-      runtimeContext,
+      additionalContexts,
       // historyCount is number of history messages; add 1 for current user message
       historyCount: (chatConfig.historyCount ?? 20) + 1,
       // Page editor context from agent runtime

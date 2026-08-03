@@ -27,8 +27,7 @@ export { OnboardingSyntheticStateInjector } from './OnboardingSyntheticStateInje
 export { PageEditorContextInjector } from './PageEditorContextInjector';
 export { PageSelectionsInjector } from './PageSelectionsInjector';
 export { PlanInjector } from './PlanInjector';
-export { RuntimeAdditionalContextStableProvider } from './RuntimeAdditionalContextStableProvider';
-export { RuntimeAdditionalContextTailProvider } from './RuntimeAdditionalContextTailProvider';
+export { RuntimeAdditionalContextProvider } from './RuntimeAdditionalContextProvider';
 export {
   formatSelectedSkills,
   formatSelectedSkillsContext,
@@ -104,8 +103,7 @@ export type {
 export type { PageEditorContextInjectorConfig } from './PageEditorContextInjector';
 export type { PageSelectionsInjectorConfig } from './PageSelectionsInjector';
 export type { Plan, PlanInjectorConfig } from './PlanInjector';
-export type { RuntimeAdditionalContextStableProviderConfig } from './RuntimeAdditionalContextStableProvider';
-export type { RuntimeAdditionalContextTailProviderConfig } from './RuntimeAdditionalContextTailProvider';
+export type { RuntimeAdditionalContextProviderConfig } from './RuntimeAdditionalContextProvider';
 export type { SelectedSkillInjectorConfig } from './SelectedSkillInjector';
 export type { SelectedToolInjectorConfig } from './SelectedToolInjector';
 export type { SkillContextProviderConfig, SkillMeta } from './SkillContextProvider';

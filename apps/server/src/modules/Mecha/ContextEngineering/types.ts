@@ -18,7 +18,11 @@ import type {
   UserMemoryData,
 } from '@lobechat/context-engine';
 import type { PageContentContext } from '@lobechat/prompts';
-import type { LLMRuntimeContext, RuntimeInitialContext, UIChatMessage } from '@lobechat/types';
+import type {
+  RuntimeAdditionalContextFragment,
+  RuntimeInitialContext,
+  UIChatMessage,
+} from '@lobechat/types';
 
 /**
  * Model capability checker functions for server-side
@@ -73,6 +77,8 @@ export interface ServerUserMemoryConfig {
  * instead of fetching from stores
  */
 export interface ServerMessagesEngineParams {
+  /** Agent-materialized presentation contexts for this LLM call */
+  additionalContexts?: readonly RuntimeAdditionalContextFragment[];
   /** Additional variable values to merge with defaults (e.g. device paths) */
   additionalVariables?: Record<string, string>;
   /** Agent documents to inject into context based on load rules and positions */
@@ -116,8 +122,6 @@ export interface ServerMessagesEngineParams {
 
   /** Function to format history summary */
   formatHistorySummary?: (summary: string) => string;
-  /** Agent-materialized presentation context for this LLM call */
-  runtimeContext?: LLMRuntimeContext;
   /** History message count limit */
   historyCount?: number;
   /** History summary content */

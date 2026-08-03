@@ -465,6 +465,7 @@ export const buildServerCallLlmContext = async ({
   }
 
   const contextEngineInput = {
+    additionalContexts: llmPayload.additionalContexts,
     agentDocuments,
     ...(agentBuilderContext && { agentBuilderContext }),
     agentGroup: state.metadata?.agentGroup as AgentGroupConfig | undefined,
@@ -495,7 +496,6 @@ export const buildServerCallLlmContext = async ({
     enableHistoryCount: agentConfig.chatConfig?.enableHistoryCount ?? undefined,
     evalContext: ctx.evalContext,
     forceFinish: state.forceFinish,
-    runtimeContext: llmPayload.runtimeContext,
     historyCount: resolveRuntimeHistoryCount(agentConfig.chatConfig?.historyCount),
     initialContext: (state as any).initialContext?.initialContext,
     knowledge: {

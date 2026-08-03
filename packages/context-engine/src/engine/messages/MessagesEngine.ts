@@ -52,8 +52,7 @@ import {
   PageEditorContextInjector,
   PageSelectionsInjector,
   PlanInjector,
-  RuntimeAdditionalContextStableProvider,
-  RuntimeAdditionalContextTailProvider,
+  RuntimeAdditionalContextProvider,
   selectActivatedSkills,
   SelectedSkillInjector,
   selectToolPromptManifests,
@@ -173,7 +172,7 @@ export class MessagesEngine {
       onboardingContext,
       agentManagementContext,
       groupAgentBuilderContext,
-      runtimeContext,
+      additionalContexts,
       agentGroup,
       agentDocuments,
       planTodo,
@@ -325,7 +324,6 @@ export class MessagesEngine {
       // Order matters: first executed = first in content
       // =============================================
 
-      new RuntimeAdditionalContextStableProvider({ runtimeContext }),
       // User memory
       new UserMemoryInjector({ ...userMemory, enabled: isUserMemoryEnabled }),
       // Group context (agent identity and group info for multi-agent chat)
@@ -429,8 +427,8 @@ export class MessagesEngine {
       }),
 
       // =============================================
-      // Phase 4.5: Virtual Tail Guidance
-      // Inject high-churn runtime guidance at the tail to preserve stable prefix caching
+      // Phase 4.5: Virtual Tail Context
+      // Inject per-call runtime context after the latest conversation message
       // =============================================
 
       // Onboarding synthetic state (fake getOnboardingState tool call pair to drive action loop)
@@ -443,7 +441,7 @@ export class MessagesEngine {
         enabled: !!onboardingContext?.phaseGuidance,
         onboardingContext,
       }),
-      new RuntimeAdditionalContextTailProvider({ runtimeContext }),
+      new RuntimeAdditionalContextProvider({ additionalContexts }),
 
       // =============================================
       // Phase 5: Message Transformation

@@ -76,12 +76,12 @@ export class ClientContextBuilder implements ContextBuilder {
     const prepared = await chatService.buildAssistantMessageContext(
       {
         agentId: effectiveAgentId || undefined,
+        additionalContexts: input.payload.additionalContexts,
         groupId,
         messages,
         model: input.model,
         provider: input.provider,
         resolvedAgentConfig: promptAgentConfig,
-        runtimeContext: input.payload.runtimeContext,
         topicId: topicId ?? undefined,
         ...agentConfig.params,
       },

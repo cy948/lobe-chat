@@ -1,9 +1,9 @@
 import type { RuntimeAdditionalContextFragment } from '@lobechat/types';
 import { describe, expect, it } from 'vitest';
 
-import { renderRuntimeAdditionalContexts } from '../runtimeAdditionalContextRenderer';
+import { renderRuntimeAdditionalContexts } from '../RuntimeAdditionalContextProvider';
 
-describe('renderRuntimeAdditionalContexts', () => {
+describe('RuntimeAdditionalContextProvider renderer', () => {
   it('renders ordered sections with format-specific escaping', () => {
     const fragments: RuntimeAdditionalContextFragment[] = [
       {
@@ -16,7 +16,6 @@ describe('renderRuntimeAdditionalContexts', () => {
           type: 'sections',
         },
         id: 'first',
-        placement: 'stable_prefix',
         wrapper: {
           attributes: { label: 'a"<&>' },
           tag: 'context',
@@ -25,12 +24,11 @@ describe('renderRuntimeAdditionalContexts', () => {
       {
         content: { text: 'Second & final.', type: 'text' },
         id: 'second',
-        placement: 'stable_prefix',
         wrapper: { tag: 'note' },
       },
     ];
 
-    expect(renderRuntimeAdditionalContexts(fragments, 'stable_prefix')).toBe(
+    expect(renderRuntimeAdditionalContexts(fragments)).toBe(
       [
         '<context label="a&quot;&lt;&amp;&gt;">',
         '<data>',
@@ -51,31 +49,29 @@ describe('renderRuntimeAdditionalContexts', () => {
     );
   });
 
-  it('filters by placement and preserves fragment order', () => {
+  it('preserves fragment order and returns null without fragments', () => {
     const fragments: RuntimeAdditionalContextFragment[] = [
       {
         content: { text: 'tail-one', type: 'text' },
         id: 'tail-one',
-        placement: 'virtual_tail',
         wrapper: { tag: 'one' },
       },
       {
         content: { text: 'stable', type: 'text' },
         id: 'stable',
-        placement: 'stable_prefix',
         wrapper: { tag: 'stable' },
       },
       {
         content: { text: 'tail-two', type: 'text' },
         id: 'tail-two',
-        placement: 'virtual_tail',
         wrapper: { tag: 'two' },
       },
     ];
 
-    expect(renderRuntimeAdditionalContexts(fragments, 'virtual_tail')).toBe(
-      '<one>\ntail-one\n</one>\n\n<two>\ntail-two\n</two>',
+    expect(renderRuntimeAdditionalContexts(fragments)).toBe(
+      '<one>\ntail-one\n</one>\n\n<stable>\nstable\n</stable>\n\n<two>\ntail-two\n</two>',
     );
-    expect(renderRuntimeAdditionalContexts(undefined, 'stable_prefix')).toBeNull();
+    expect(renderRuntimeAdditionalContexts([])).toBeNull();
+    expect(renderRuntimeAdditionalContexts(undefined)).toBeNull();
   });
 });

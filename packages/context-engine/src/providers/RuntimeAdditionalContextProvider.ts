@@ -1,17 +1,15 @@
+import { escapeXmlAttr, escapeXmlContent } from '@lobechat/prompts';
 import type {
   RuntimeAdditionalContextFragment,
   RuntimeAdditionalContextSection,
 } from '@lobechat/types';
 
-const escapeXmlAttribute = (value: string): string =>
-  value
-    .replaceAll('&', '&amp;')
-    .replaceAll('"', '&quot;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;');
+import { BaseVirtualLastUserContentProvider } from '../base/BaseVirtualLastUserContentProvider';
+import type { PipelineContext, ProcessorOptions } from '../types';
 
-const escapeXmlContent = (value: string): string =>
-  value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+export interface RuntimeAdditionalContextProviderConfig {
+  additionalContexts?: readonly RuntimeAdditionalContextFragment[];
+}
 
 const serializeJson = (value: RuntimeAdditionalContextSection['value'], compact: boolean): string =>
   JSON.stringify(value, null, compact ? undefined : 2)
@@ -31,7 +29,7 @@ const renderSection = (section: RuntimeAdditionalContextSection): string => {
 
 const renderFragment = (fragment: RuntimeAdditionalContextFragment): string => {
   const attributes = Object.entries(fragment.wrapper.attributes ?? {})
-    .map(([key, value]) => ` ${key}="${escapeXmlAttribute(value)}"`)
+    .map(([key, value]) => ` ${key}="${escapeXmlAttr(value)}"`)
     .join('');
   const content =
     fragment.content.type === 'text'
@@ -45,10 +43,23 @@ const renderFragment = (fragment: RuntimeAdditionalContextFragment): string => {
 
 export const renderRuntimeAdditionalContexts = (
   fragments: readonly RuntimeAdditionalContextFragment[] | undefined,
-  placement: RuntimeAdditionalContextFragment['placement'],
 ): string | null => {
-  const matchingFragments = fragments?.filter((fragment) => fragment.placement === placement);
-  if (!matchingFragments?.length) return null;
+  if (!fragments?.length) return null;
 
-  return matchingFragments.map(renderFragment).join('\n\n');
+  return fragments.map(renderFragment).join('\n\n');
 };
+
+export class RuntimeAdditionalContextProvider extends BaseVirtualLastUserContentProvider {
+  readonly name = 'RuntimeAdditionalContextProvider';
+
+  constructor(
+    private config: RuntimeAdditionalContextProviderConfig,
+    options: ProcessorOptions = {},
+  ) {
+    super(options);
+  }
+
+  protected buildContent(_context: PipelineContext): string | null {
+    return renderRuntimeAdditionalContexts(this.config.additionalContexts);
+  }
+}

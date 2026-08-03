@@ -2,11 +2,12 @@ import {
   type ChatToolPayload,
   type DynamicInterventionResolver,
   type GlobalInterventionAuditConfig,
-  type LLMRuntimeContext,
   type MessageToolCall,
+  type RuntimeAdditionalContextFragment,
 } from '@lobechat/types';
 
 export interface GeneralAgentCallLLMInstructionPayload {
+  additionalContexts?: readonly RuntimeAdditionalContextFragment[];
   allowedToolNames?: string[];
   /**
    * Reuse an existing assistant message instead of creating a new one. Set when
@@ -21,7 +22,6 @@ export interface GeneralAgentCallLLMInstructionPayload {
   model: string;
   parentMessageId?: string;
   provider: string;
-  runtimeContext?: LLMRuntimeContext;
   tools: any[];
 }
 

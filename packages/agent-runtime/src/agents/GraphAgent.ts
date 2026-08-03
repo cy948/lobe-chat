@@ -663,7 +663,7 @@ export class GraphAgent implements Agent {
       isAfterCompression: input.context.phase === 'compression_result',
       usedNodeRuntimeSteps,
     });
-    const runtimeContext = materializeGraphPromptContext({
+    const additionalContexts = materializeGraphPromptContext({
       ...(node.type === 'agent' && node.allowedToolApiNames !== undefined
         ? { allowedToolApiNames: node.allowedToolApiNames }
         : {}),
@@ -680,7 +680,7 @@ export class GraphAgent implements Agent {
       item.type === 'call_llm'
         ? {
             ...item,
-            payload: { ...item.payload, runtimeContext },
+            payload: { ...item.payload, additionalContexts },
           }
         : item;
 

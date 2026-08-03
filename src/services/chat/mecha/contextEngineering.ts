@@ -40,8 +40,8 @@ import { MessagesEngine, resolveTopicReferences } from '@lobechat/context-engine
 import { historySummaryPrompt } from '@lobechat/prompts';
 import {
   getActivePluginIds,
-  type LLMRuntimeContext,
   type OpenAIChatMessage,
+  type RuntimeAdditionalContextFragment,
   type RuntimeInitialContext,
   type RuntimeStepContext,
   type UIChatMessage,
@@ -86,6 +86,8 @@ import { resolveClientSkills } from './skillEngineering';
 const log = debug('context-engine:contextEngineering');
 
 interface ContextEngineeringContext {
+  /** Agent-materialized presentation contexts for this LLM call */
+  additionalContexts?: readonly RuntimeAdditionalContextFragment[];
   /** Agent Builder context for injecting current agent info */
   agentBuilderContext?: AgentBuilderContext;
   agentDocuments?: AgentContextDocument[];
@@ -124,8 +126,6 @@ interface ContextEngineeringContext {
   /** Agent's enabled plugin/tool/skill identifiers (from agentConfig.plugins) */
   plugins?: string[];
   provider: string;
-  /** Agent-materialized presentation context for this LLM call */
-  runtimeContext?: LLMRuntimeContext;
   sessionId?: string;
   /**
    * Step context from Agent Runtime
@@ -140,6 +140,7 @@ interface ContextEngineeringContext {
 
 // REVIEW: Maybe we can constrain identity, preference, exp to reorder or trim the context instead of passing everything in
 export const contextEngineering = async ({
+  additionalContexts,
   messages = [],
   manifests,
   tools,
@@ -157,7 +158,6 @@ export const contextEngineering = async ({
   disabledPluginIds,
   enableAgentMode,
   groupId,
-  runtimeContext,
   initialContext,
   plugins,
   stepContext,
@@ -700,12 +700,12 @@ export const contextEngineering = async ({
 
   // Create MessagesEngine with injected dependencies
   const engine = new MessagesEngine({
+    additionalContexts,
     // Agent configuration
     enableHistoryCount,
     formatHistorySummary: historySummaryPrompt,
     historyCount,
     historySummary,
-    runtimeContext,
     inputTemplate,
     systemRole,
 

@@ -1,7 +1,7 @@
 import type {
   ChatToolPayload,
-  LLMRuntimeContext,
   ModelUsage,
+  RuntimeAdditionalContextFragment,
   RuntimeInitialContext,
   RuntimeStepContext,
 } from '@lobechat/types';
@@ -120,13 +120,13 @@ export interface Agent {
 // ── Payloads ──────────────────────────────────────────────
 
 export interface CallLLMPayload {
+  additionalContexts?: readonly RuntimeAdditionalContextFragment[];
   allowedToolNames?: string[];
   isFirstMessage?: boolean;
   messages: any[];
   model: string;
   parentId?: string;
   provider: string;
-  runtimeContext?: LLMRuntimeContext;
   tools: any[];
 }
 

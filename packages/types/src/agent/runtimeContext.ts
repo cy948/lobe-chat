@@ -27,14 +27,8 @@ export interface RuntimeAdditionalContextFragment {
         readonly type: 'text';
       };
   readonly id: string;
-  readonly placement: 'stable_prefix' | 'virtual_tail';
   readonly wrapper: {
     readonly attributes?: Readonly<Record<string, string>>;
     readonly tag: string;
   };
-}
-
-/** Immutable presentation context materialized by an Agent for one LLM call. */
-export interface LLMRuntimeContext {
-  readonly additionalContexts?: readonly RuntimeAdditionalContextFragment[];
 }

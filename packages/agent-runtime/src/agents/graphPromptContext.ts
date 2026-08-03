@@ -1,6 +1,5 @@
 import type {
   AgentGraphNode,
-  LLMRuntimeContext,
   RuntimeAdditionalContextFragment,
   RuntimeAdditionalContextValue,
 } from '@lobechat/types';
@@ -72,7 +71,6 @@ const createGuidanceFragment = (
     type: 'text',
   },
   id: 'graph_runtime_guidance',
-  placement: 'virtual_tail',
   wrapper: {
     attributes: {
       stage,
@@ -84,8 +82,8 @@ const createGuidanceFragment = (
 
 export const materializeGraphPromptContext = (
   input: GraphPromptMaterializerInput,
-): LLMRuntimeContext => {
-  const stableFragment: RuntimeAdditionalContextFragment = {
+): readonly RuntimeAdditionalContextFragment[] => {
+  const nodeContextFragment: RuntimeAdditionalContextFragment = {
     content: {
       sections: [
         { format: 'json', tag: 'input_context', value: input.inputContext },
@@ -104,14 +102,11 @@ export const materializeGraphPromptContext = (
       type: 'sections',
     },
     id: 'graph_node_context',
-    placement: 'stable_prefix',
     wrapper: { tag: 'graph_node_context' },
   };
 
-  return {
-    additionalContexts: [
-      stableFragment,
-      ...(input.trigger ? [createGuidanceFragment(input.stage, input.budgetStatus)] : []),
-    ],
-  };
+  return [
+    nodeContextFragment,
+    ...(input.trigger ? [createGuidanceFragment(input.stage, input.budgetStatus)] : []),
+  ];
 };

@@ -3,11 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ToolNameResolver } from '@lobechat/context-engine';
-import type {
-  LLMRuntimeContext,
-  ReasoningGraph,
-  RuntimeAdditionalContextFragment,
-} from '@lobechat/types';
+import type { ReasoningGraph, RuntimeAdditionalContextFragment } from '@lobechat/types';
 import { AGENT_GRAPH_ROOT_NODE_ID, ReasoningGraphSchema } from '@lobechat/types';
 import { describe, expect, it } from 'vitest';
 
@@ -103,20 +99,20 @@ const getLastPrompt = (instruction: AgentInstruction | AgentInstruction[]) => {
   return typeof lastMessage?.content === 'string' ? lastMessage.content : '';
 };
 
-const getRuntimeContext = (
+const getAdditionalContexts = (
   instruction: AgentInstruction | AgentInstruction[],
-): LLMRuntimeContext => {
-  const runtimeContext = expectCallLlm(instruction).payload.runtimeContext;
-  expect(runtimeContext).toBeDefined();
+): readonly RuntimeAdditionalContextFragment[] => {
+  const additionalContexts = expectCallLlm(instruction).payload.additionalContexts;
+  expect(additionalContexts).toBeDefined();
 
-  return runtimeContext as LLMRuntimeContext;
+  return additionalContexts as readonly RuntimeAdditionalContextFragment[];
 };
 
 const getFragment = (
   instruction: AgentInstruction | AgentInstruction[],
   id: string,
 ): RuntimeAdditionalContextFragment | undefined =>
-  getRuntimeContext(instruction).additionalContexts?.find((fragment) => fragment.id === id);
+  getAdditionalContexts(instruction).find((fragment) => fragment.id === id);
 
 const getGraphNodeContext = (instruction: AgentInstruction | AgentInstruction[]) => {
   const fragment = getFragment(instruction, 'graph_node_context');
@@ -475,7 +471,7 @@ describe('GraphAgent', () => {
   });
 
   describe('prompt', () => {
-    it('should attach stable context and entry guidance without the legacy node envelope', async () => {
+    it('should attach node context and entry guidance without the legacy node envelope', async () => {
       const agent = new GraphAgent({
         agentConfig: { maxSteps: 100 },
         graph: loadGoalLoopGraph(),
@@ -486,7 +482,7 @@ describe('GraphAgent', () => {
 
       const instruction = await agent.runner(createContext('init'), state);
       const call = expectCallLlm(instruction);
-      const runtimeContext = getRuntimeContext(instruction);
+      const additionalContexts = getAdditionalContexts(instruction);
 
       expect(call.payload.messages).toEqual(messages);
       expect(call.payload.messages).not.toEqual(
@@ -494,9 +490,12 @@ describe('GraphAgent', () => {
           expect.objectContaining({ content: expect.stringContaining('<task_instruction>') }),
         ]),
       );
-      expect(runtimeContext.additionalContexts).toHaveLength(2);
+      expect(additionalContexts).toHaveLength(2);
+      expect(additionalContexts.map(({ id }) => id)).toEqual([
+        'graph_node_context',
+        'graph_runtime_guidance',
+      ]);
       expect(getFragment(instruction, 'graph_runtime_guidance')).toMatchObject({
-        placement: 'virtual_tail',
         wrapper: { attributes: { stage: 'plan' } },
       });
       expect(getGraphNodeSection(instruction, 'allowed_tool_api_names')).toEqual([
@@ -615,7 +614,7 @@ describe('GraphAgent', () => {
       expect(prompt).toContain('Concrete goals planned from the user request.');
       expect(prompt).toContain('<previous_error>');
       expect(prompt).toContain('The node output is not valid JSON.');
-      expect(expectCallLlm(extractionInstruction).payload.runtimeContext).toBeUndefined();
+      expect(expectCallLlm(extractionInstruction).payload.additionalContexts).toBeUndefined();
     });
 
     it('should render raw fallback context once when declared input fields are missing', async () => {
@@ -699,7 +698,7 @@ describe('GraphAgent', () => {
 
       expect(getFragment(stepSeven, 'graph_runtime_guidance')).toBeUndefined();
       expect(getFragment(stepSeven, 'graph_node_context')).toMatchObject({
-        placement: 'stable_prefix',
+        id: 'graph_node_context',
       });
       expect(getFragment(stepEight, 'graph_runtime_guidance')).toMatchObject({
         wrapper: { attributes: { stage: 'plan' } },
@@ -778,7 +777,7 @@ describe('GraphAgent', () => {
         wrapper: { attributes: { stage: 'plan' } },
       });
       expect(getFragment(instruction, 'graph_node_context')).toMatchObject({
-        placement: 'stable_prefix',
+        id: 'graph_node_context',
       });
     });
   });

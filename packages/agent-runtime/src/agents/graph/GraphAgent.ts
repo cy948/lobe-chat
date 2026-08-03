@@ -18,8 +18,8 @@ import type {
   FinishReason,
   GeneralAgentCallLLMInstructionPayload,
   GeneralAgentConfig,
-} from '../types';
-import { GeneralChatAgent } from './GeneralChatAgent';
+} from '../../types';
+import { GeneralChatAgent } from '../GeneralChatAgent';
 import {
   evaluateGraphPromptTrigger,
   getGraphBudgetStatus,

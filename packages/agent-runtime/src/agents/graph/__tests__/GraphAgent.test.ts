@@ -7,7 +7,7 @@ import type { ReasoningGraph, RuntimeAdditionalContextFragment } from '@lobechat
 import { AGENT_GRAPH_ROOT_NODE_ID, ReasoningGraphSchema } from '@lobechat/types';
 import { describe, expect, it } from 'vitest';
 
-import type { AgentInstruction, AgentRuntimeContext, AgentState } from '../../types';
+import type { AgentInstruction, AgentRuntimeContext, AgentState } from '../../../types';
 import { GraphAgent } from '../GraphAgent';
 
 const GRAPH_RUNTIME_STATE_KEY = '__graphRuntimeState';

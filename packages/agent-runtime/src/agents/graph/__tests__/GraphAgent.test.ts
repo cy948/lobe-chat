@@ -495,6 +495,10 @@ describe('GraphAgent', () => {
         'graph_node_context',
         'graph_runtime_guidance',
       ]);
+      expect(additionalContexts.map(({ placement }) => placement)).toEqual([
+        'stable_prefix',
+        'virtual_tail',
+      ]);
       expect(getFragment(instruction, 'graph_runtime_guidance')).toMatchObject({
         wrapper: { attributes: { stage: 'plan' } },
       });

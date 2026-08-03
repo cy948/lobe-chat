@@ -2369,11 +2369,13 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
           {
             content: { text: 'Inspect the repository.', type: 'text' as const },
             id: 'graph_node_context',
+            placement: 'stable_prefix' as const,
             wrapper: { tag: 'graph_node_context' },
           },
           {
             content: { text: 'Continue.', type: 'text' as const },
             id: 'graph_runtime_guidance',
+            placement: 'virtual_tail' as const,
             wrapper: {
               attributes: { stage: 'inspection' },
               tag: 'graph_runtime_guidance',

@@ -24,6 +24,7 @@ describe('RuntimeAdditionalContextProvider', () => {
           type: 'sections',
         },
         id: 'first',
+        placement: 'virtual_tail',
         wrapper: {
           attributes: { label: 'a"<&>' },
           tag: 'context',
@@ -32,6 +33,7 @@ describe('RuntimeAdditionalContextProvider', () => {
       {
         content: { text: 'Second & final.', type: 'text' },
         id: 'second',
+        placement: 'virtual_tail',
         wrapper: { tag: 'note' },
       },
     ];
@@ -68,16 +70,19 @@ describe('RuntimeAdditionalContextProvider', () => {
       {
         content: { text: 'tail-one', type: 'text' },
         id: 'tail-one',
+        placement: 'virtual_tail',
         wrapper: { tag: 'one' },
       },
       {
         content: { text: 'stable', type: 'text' },
         id: 'stable',
+        placement: 'stable_prefix',
         wrapper: { tag: 'stable' },
       },
       {
         content: { text: 'tail-two', type: 'text' },
         id: 'tail-two',
+        placement: 'virtual_tail',
         wrapper: { tag: 'two' },
       },
     ];
@@ -90,10 +95,15 @@ describe('RuntimeAdditionalContextProvider', () => {
     }).process(createContext());
     const undefinedResult = await new RuntimeAdditionalContextProvider({}).process(createContext());
 
-    expect(result.messages).toHaveLength(2);
-    expect(result.messages[0]).toEqual({ content: 'Hello', role: 'user' });
+    expect(result.messages).toHaveLength(3);
+    expect(result.messages[0]).toMatchObject({
+      content: '<stable>\nstable\n</stable>',
+      meta: { systemInjection: true },
+      role: 'user',
+    });
+    expect(result.messages[1]).toEqual({ content: 'Hello', role: 'user' });
     expect(result.messages.at(-1)?.content).toBe(
-      '<one>\ntail-one\n</one>\n\n<stable>\nstable\n</stable>\n\n<two>\ntail-two\n</two>',
+      '<one>\ntail-one\n</one>\n\n<two>\ntail-two\n</two>',
     );
     expect(emptyResult.messages).toEqual(createContext().messages);
     expect(undefinedResult.messages).toEqual(createContext().messages);
@@ -105,6 +115,7 @@ describe('RuntimeAdditionalContextProvider', () => {
         {
           content: { text: 'Current stage.', type: 'text' },
           id: 'stage',
+          placement: 'virtual_tail',
           wrapper: { tag: 'stage_context' },
         },
       ],
@@ -123,6 +134,34 @@ describe('RuntimeAdditionalContextProvider', () => {
     expect(result.messages).toHaveLength(2);
     expect(result.messages.at(-1)?.content).toBe(
       'Existing hint\n\n<stage_context>\nCurrent stage.\n</stage_context>',
+    );
+  });
+
+  it('prepends stable content to the shared system injection message', async () => {
+    const result = await new RuntimeAdditionalContextProvider({
+      additionalContexts: [
+        {
+          content: { text: 'Graph contract.', type: 'text' },
+          id: 'graph',
+          placement: 'stable_prefix',
+          wrapper: { tag: 'graph_node_context' },
+        },
+      ],
+    }).process({
+      ...createContext(),
+      messages: [
+        {
+          content: 'Existing stable context',
+          meta: { systemInjection: true },
+          role: 'user',
+        },
+        { content: 'Hello', role: 'user' },
+      ],
+    });
+
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[0].content).toBe(
+      '<graph_node_context>\nGraph contract.\n</graph_node_context>\n\nExisting stable context',
     );
   });
 });

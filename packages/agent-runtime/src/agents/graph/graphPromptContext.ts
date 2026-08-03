@@ -71,6 +71,7 @@ const createGuidanceFragment = (
     type: 'text',
   },
   id: 'graph_runtime_guidance',
+  placement: 'virtual_tail',
   wrapper: {
     attributes: {
       stage,
@@ -102,6 +103,7 @@ export const materializeGraphPromptContext = (
       type: 'sections',
     },
     id: 'graph_node_context',
+    placement: 'stable_prefix',
     wrapper: { tag: 'graph_node_context' },
   };
 

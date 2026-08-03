@@ -92,6 +92,7 @@ describe('ClientContextBuilder', () => {
       {
         content: { text: 'Inspect the question.', type: 'text' as const },
         id: 'inspection',
+        placement: 'stable_prefix' as const,
         wrapper: { tag: 'inspection' },
       },
     ];

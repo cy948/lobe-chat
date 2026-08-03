@@ -1317,7 +1317,7 @@ Document content here.
       expect(result.messages).toEqual([{ content: 'Question', role: 'user' }]);
     });
 
-    it('should inject the Graph contract and normal guidance together at the virtual tail', async () => {
+    it('should inject the Graph contract at the stable prefix and guidance at the virtual tail', async () => {
       const result = await new MessagesEngine(
         createBasicParams({
           additionalContexts: [
@@ -1358,6 +1358,7 @@ Document content here.
                 type: 'sections',
               },
               id: 'graph_node_context',
+              placement: 'stable_prefix',
               wrapper: { tag: 'graph_node_context' },
             },
             {
@@ -1366,6 +1367,7 @@ Document content here.
                 type: 'text',
               },
               id: 'graph_runtime_guidance',
+              placement: 'virtual_tail',
               wrapper: {
                 attributes: { stage: 'inspection' },
                 tag: 'graph_runtime_guidance',
@@ -1375,14 +1377,15 @@ Document content here.
         }),
       ).process();
       const serialized = JSON.stringify(result.messages);
+      const prefixContent = String(result.messages[0]?.content);
       const tail = result.messages.at(-1);
       const tailContent = String(tail?.content);
 
-      expect(result.messages).toHaveLength(3);
-      expect(tailContent.match(/<graph_node_context>/g)).toHaveLength(1);
+      expect(result.messages).toHaveLength(4);
+      expect(prefixContent.match(/<graph_node_context>/g)).toHaveLength(1);
       expect(serialized).toContain('<input_context>');
       expect(serialized).toContain('<output_contract>');
-      expect(tailContent).toContain(
+      expect(prefixContent).toContain(
         [
           '<allowed_tool_api_names>',
           '["readFile","searchFiles","grepContent","globFiles","createPlan","createTodos"]',
@@ -1392,9 +1395,14 @@ Document content here.
       expect(serialized).toContain(
         '<task_instruction>Inspect only. &lt;Do not mutate&gt; &amp; report findings.</task_instruction>',
       );
+      expect(result.messages[1]).toEqual({ content: 'Hello', role: 'user' });
       expect(tail).toMatchObject({ role: 'user' });
-      expect(tailContent).toContain(
-        '</graph_node_context>\n\n<graph_runtime_guidance stage="inspection">',
+      expect(tailContent).toBe(
+        [
+          '<graph_runtime_guidance stage="inspection">',
+          'The current Graph stage remains active. Continue following the constraints and output contract in graph_node_context.',
+          '</graph_runtime_guidance>',
+        ].join('\n'),
       );
     });
 
@@ -1405,6 +1413,7 @@ Document content here.
             {
               content: { text: 'Current stage.', type: 'text' },
               id: 'stage',
+              placement: 'virtual_tail',
               wrapper: { tag: 'stage_context' },
             },
           ],
@@ -1447,6 +1456,7 @@ Document content here.
                 type: 'text',
               },
               id: 'graph_runtime_guidance',
+              placement: 'virtual_tail',
               wrapper: {
                 attributes: { stage: 'work', budget_status: 'near_exhaustion' },
                 tag: 'graph_runtime_guidance',

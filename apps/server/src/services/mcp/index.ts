@@ -54,6 +54,20 @@ export class MCPService {
   // Store instances of the custom MCPClient, keyed by serialized MCPClientParams
   private clients: Map<string, MCPClient> = new Map();
 
+  async disconnectClientsByHeader(headerName: string, headerValue: string): Promise<void> {
+    const clients: MCPClient[] = [];
+
+    for (const [key, client] of this.clients) {
+      const params = safeParseJSON(key) as MCPClientParams | undefined;
+      if (params?.type !== 'http' || params.headers?.[headerName] !== headerValue) continue;
+
+      this.clients.delete(key);
+      clients.push(client);
+    }
+
+    await Promise.allSettled(clients.map((client) => client.disconnect()));
+  }
+
   /**
    * Process MCP tool call result with content blocks processing
    * This is a common utility method that can be used by both internal MCP calls and external services (e.g., Composio)

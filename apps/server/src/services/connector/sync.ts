@@ -130,3 +130,26 @@ export const syncConnectorToolsById = async (
 
   return { toolCount: syncInputs.length };
 };
+
+export const syncHttpConnectorToolsByIdentifiers = async (
+  identifiers: string[],
+  ctx: ConnectorToolSyncContext,
+  agentId?: string,
+): Promise<void> => {
+  const uniqueIdentifiers = [...new Set(identifiers)];
+  if (uniqueIdentifiers.length === 0) return;
+
+  const connectors = await ctx.connectorModel.resolveByIdentifiers(uniqueIdentifiers, agentId);
+  const connectorByIdentifier = new Map(
+    connectors.map((connector) => [connector.identifier, connector]),
+  );
+
+  for (const identifier of uniqueIdentifiers) {
+    const connector = connectorByIdentifier.get(identifier);
+    if (!connector) throw new Error(`Eval connector is unavailable: ${identifier}`);
+    if (connector.mcpConnectionType !== ConnectorMcpConnectionType.http) {
+      throw new Error(`Eval connector must use HTTP MCP: ${identifier}`);
+    }
+    await syncConnectorToolsById(connector.id, ctx);
+  }
+};

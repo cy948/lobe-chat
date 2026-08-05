@@ -1,4 +1,4 @@
-import type { EvalRunInputConfig, RubricType } from '@lobechat/types';
+import type { EvalRunInputConfig, EvalTestCaseContent, RubricType } from '@lobechat/types';
 
 import { lambdaClient } from '@/libs/trpc/client';
 
@@ -135,12 +135,7 @@ class AgentEvalService {
   }
 
   async createTestCase(params: {
-    content: {
-      category?: string;
-      choices?: string[];
-      expected?: string;
-      input: string;
-    };
+    content: EvalTestCaseContent;
     datasetId: string;
     evalConfig?: { judgePrompt?: string };
     evalMode?: RubricType;
@@ -154,11 +149,7 @@ class AgentEvalService {
 
   async updateTestCase(params: {
     id: string;
-    content?: {
-      category?: string;
-      expected?: string;
-      input: string;
-    };
+    content?: EvalTestCaseContent;
     evalConfig?: { judgePrompt?: string } | null;
     evalMode?: RubricType | null;
     metadata?: Record<string, unknown>;

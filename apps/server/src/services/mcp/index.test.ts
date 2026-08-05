@@ -25,6 +25,33 @@ describe('MCPService', () => {
     vi.spyOn(mcpService as any, 'getClient').mockResolvedValue(mockClient);
   });
 
+  it('disconnects only clients belonging to an eval session', async () => {
+    const matchingClient = { disconnect: vi.fn().mockResolvedValue(undefined) };
+    const otherClient = { disconnect: vi.fn().mockResolvedValue(undefined) };
+    const matchingParams = {
+      headers: { 'X-Lobe-Eval-Session': 'eval:op-1' },
+      name: 'state-mock',
+      type: 'http',
+      url: 'https://mock.example.com/mcp',
+    };
+    const otherParams = {
+      headers: { 'X-Lobe-Eval-Session': 'eval:op-2' },
+      name: 'state-mock',
+      type: 'http',
+      url: 'https://mock.example.com/mcp',
+    };
+    (mcpService as any).clients = new Map([
+      [(mcpService as any).serializeParams(matchingParams), matchingClient],
+      [(mcpService as any).serializeParams(otherParams), otherClient],
+    ]);
+
+    await mcpService.disconnectClientsByHeader('X-Lobe-Eval-Session', 'eval:op-1');
+
+    expect(matchingClient.disconnect).toHaveBeenCalledOnce();
+    expect(otherClient.disconnect).not.toHaveBeenCalled();
+    expect((mcpService as any).clients.size).toBe(1);
+  });
+
   describe('callTool', () => {
     const mockParams = {
       name: 'test-mcp',

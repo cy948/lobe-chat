@@ -229,6 +229,32 @@ describe('AgentEvalRunService', () => {
       );
     });
 
+    it('should pass the case tool environment as evalContext', async () => {
+      const { run, testCase } = await setupTrajectoryChain();
+      const environment = {
+        toolProviders: [
+          {
+            connectorIdentifier: 'slack-mock',
+            identifier: 'slack-mcp',
+          },
+        ],
+      };
+
+      mockExecAgent.mockResolvedValue({ operationId: 'op-slack' });
+
+      const service = new AgentEvalRunService(serverDB, userId);
+      await service.executeTrajectory({
+        run: { datasetId: run.datasetId, targetAgentId: null },
+        runId: run.id,
+        testCase: { content: { environment, input: 'Send the update' }, sortOrder: 1 },
+        testCaseId: testCase.id,
+      });
+
+      expect(mockExecAgent).toHaveBeenCalledWith(
+        expect.objectContaining({ evalContext: { environment } }),
+      );
+    });
+
     it('should not include evalContext when envPrompt is undefined', async () => {
       const { run, testCase } = await setupTrajectoryChain();
 
@@ -348,7 +374,7 @@ describe('AgentEvalRunService', () => {
       await service.executeTrajectory({
         run: { datasetId: run.datasetId, targetAgentId: null },
         runId: run.id,
-        testCase: { content: {}, sortOrder: null },
+        testCase: { content: { input: undefined as any }, sortOrder: null },
         testCaseId: testCase.id,
       });
 

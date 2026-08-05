@@ -191,6 +191,10 @@ export interface ToolExecutionContext {
    * bound to the builder builtin; only AgentBuilder tool methods read this.
    */
   editingAgentId?: string;
+  /** Physical connector used by an Eval provider rewrite for permission checks. */
+  evalConnectorIdentifier?: string;
+  /** Eval-owned session key forwarded to an external HTTP MCP mock service. */
+  evalMcpSessionId?: string;
   /**
    * Legacy agent invocation callback forwarded from RuntimeExecutorContext.
    * Kept for tool runtimes that still dispatch through exec_sub_agent style

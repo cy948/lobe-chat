@@ -8,6 +8,7 @@ import type {
   EvalRunInputConfig,
   EvalRunMetrics,
   EvalRunTopicResult,
+  EvalTestCaseContent,
   EvalThreadResult,
   RubricType,
 } from '@lobechat/types';
@@ -39,6 +40,14 @@ const roundCost = (v: number): number => Math.round(v * 1e6) / 1e6;
 const EVAL_AGENT_RUNTIME_QSTASH_RETRIES = 5;
 const EVAL_AGENT_RUNTIME_QSTASH_RETRY_DELAY = '10000 * (1 + retried)';
 const RESUMABLE_THREAD_STATUSES = new Set(['error', 'timeout']);
+
+const getEvalContextParams = (
+  envPrompt?: string,
+  environment?: EvalTestCaseContent['environment'],
+) => {
+  const evalContext = envPrompt || environment ? { environment, envPrompt } : undefined;
+  return evalContext ? { evalContext } : {};
+};
 
 /** Thrown when a caller-supplied run id exists with non-equivalent create params. */
 export const RUN_CREATE_ID_CONFLICT = 'Run id already exists with different create parameters';
@@ -714,7 +723,7 @@ export class AgentEvalRunService {
             },
           },
         ],
-        ...(envPrompt && { evalContext: { envPrompt } }),
+        ...getEvalContextParams(envPrompt, runTopic.testCase?.content.environment),
         initialStepCount: prevSteps,
         maxSteps,
         parentMessageId,
@@ -859,7 +868,7 @@ export class AgentEvalRunService {
             },
           },
         ],
-        ...(envPrompt && { evalContext: { envPrompt } }),
+        ...getEvalContextParams(envPrompt, runTopic.testCase?.content.environment),
         initialStepCount: prevSteps,
         maxSteps,
         parentMessageId,
@@ -1082,7 +1091,7 @@ export class AgentEvalRunService {
       targetAgentId?: string | null;
     };
     runId: string;
-    testCase: { content: { input?: string }; sortOrder?: number | null };
+    testCase: { content: EvalTestCaseContent; sortOrder?: number | null };
     testCaseId: string;
   }) {
     const { runId, testCaseId } = params;
@@ -1110,7 +1119,7 @@ export class AgentEvalRunService {
       targetAgentId?: string | null;
     };
     runId: string;
-    testCase: { content: { input?: string }; sortOrder?: number | null };
+    testCase: { content: EvalTestCaseContent; sortOrder?: number | null };
     testCaseId: string;
     topicId: string;
   }) {
@@ -1164,7 +1173,7 @@ export class AgentEvalRunService {
             },
           },
         ],
-        ...(envPrompt && { evalContext: { envPrompt } }),
+        ...getEvalContextParams(envPrompt, params.testCase.content.environment),
         maxSteps: run.config?.maxSteps,
         prompt: params.testCase.content.input || '',
         queueRetries: EVAL_AGENT_RUNTIME_QSTASH_RETRIES,
@@ -1383,7 +1392,7 @@ export class AgentEvalRunService {
       targetAgentId?: string | null;
     };
     runId: string;
-    testCase: { content: { input?: string }; sortOrder?: number | null };
+    testCase: { content: EvalTestCaseContent; sortOrder?: number | null };
     testCaseId: string;
     threadId: string;
     topicId: string;
@@ -1435,7 +1444,7 @@ export class AgentEvalRunService {
             },
           },
         ],
-        ...(envPrompt && { evalContext: { envPrompt } }),
+        ...getEvalContextParams(envPrompt, params.testCase.content.environment),
         maxSteps: run.config?.maxSteps,
         prompt: params.testCase.content.input || '',
         queueRetries: EVAL_AGENT_RUNTIME_QSTASH_RETRIES,

@@ -561,6 +561,79 @@ describe('Agent Eval Router Integration Tests', () => {
         expect(testCase).toBeDefined();
       });
 
+      it('should create a test case referencing an external connector', async () => {
+        const caller = agentEvalRouter.createCaller(createTestContext(userId));
+        const environment = {
+          toolProviders: [{ connectorIdentifier: 'state-mock', identifier: 'state-mock' }],
+        };
+
+        const result = await caller.createTestCase({
+          content: { environment, input: 'Increment a twice' },
+          datasetId,
+        });
+
+        expect(result.content.environment).toEqual(environment);
+      });
+
+      it('should accept an aliased external connector provider', async () => {
+        const caller = agentEvalRouter.createCaller(createTestContext(userId));
+
+        const result = await caller.createTestCase({
+          content: {
+            environment: {
+              toolProviders: [{ connectorIdentifier: 'state-mock', identifier: 'state-alias' }],
+            },
+            input: 'Increment a twice',
+          },
+          datasetId,
+        });
+
+        expect(result.content.environment).toEqual({
+          toolProviders: [{ connectorIdentifier: 'state-mock', identifier: 'state-alias' }],
+        });
+      });
+
+      it('should reject inline tool definitions', async () => {
+        const caller = agentEvalRouter.createCaller(createTestContext(userId));
+
+        await expect(
+          caller.createTestCase({
+            content: {
+              environment: {
+                toolProviders: [
+                  {
+                    connectorIdentifier: 'state-mock',
+                    identifier: 'state-alias',
+                    // @ts-expect-error Inline tool definitions are no longer supported.
+                    tools: [],
+                  },
+                ],
+              },
+              input: 'Increment a twice',
+            },
+            datasetId,
+          }),
+        ).rejects.toThrow();
+      });
+
+      it('should reject duplicate eval providers', async () => {
+        const caller = agentEvalRouter.createCaller(createTestContext(userId));
+        const provider = {
+          connectorIdentifier: 'state-mock',
+          identifier: 'state-mock',
+        };
+
+        await expect(
+          caller.createTestCase({
+            content: {
+              environment: { toolProviders: [provider, provider] },
+              input: 'Send the approved update',
+            },
+            datasetId,
+          }),
+        ).rejects.toThrow(/Duplicate eval tool provider/);
+      });
+
       it('should throw BAD_REQUEST when dataset not found', async () => {
         const caller = agentEvalRouter.createCaller(createTestContext(userId));
 

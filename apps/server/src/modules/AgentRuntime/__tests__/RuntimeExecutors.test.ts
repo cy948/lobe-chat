@@ -5721,6 +5721,59 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
         );
       });
 
+      it('should forward an external eval provider with an operation-scoped session', async () => {
+        const environment = {
+          toolProviders: [{ connectorIdentifier: 'state-mock', identifier: 'state-mock' }],
+        };
+        const executors = createRuntimeExecutors({ ...ctx, evalContext: { environment } });
+
+        await executors.call_tool!(
+          createToolInstruction({
+            toolCalling: {
+              apiName: 'add',
+              arguments: '{"key":"a","value":1}',
+              id: 'tc-state',
+              identifier: 'state-mock',
+              type: 'mcp' as const,
+            },
+          }),
+          createToolState(),
+        );
+
+        expect(mockToolExecutionService.executeTool).toHaveBeenCalledWith(
+          expect.objectContaining({ identifier: 'state-mock' }),
+          expect.objectContaining({ evalMcpSessionId: 'eval:op-123' }),
+        );
+      });
+
+      it('should route an aliased external eval provider while preserving the logical ID', async () => {
+        const environment = {
+          toolProviders: [{ connectorIdentifier: 'state-mock', identifier: 'state-alias' }],
+        };
+        const executors = createRuntimeExecutors({ ...ctx, evalContext: { environment } });
+
+        await executors.call_tool!(
+          createToolInstruction({
+            toolCalling: {
+              apiName: 'add',
+              arguments: '{"key":"a","value":1}',
+              id: 'tc-state-alias',
+              identifier: 'state-alias',
+              type: 'mcp' as const,
+            },
+          }),
+          createToolState(),
+        );
+
+        expect(mockToolExecutionService.executeTool).toHaveBeenCalledWith(
+          expect.objectContaining({ identifier: 'state-alias' }),
+          expect.objectContaining({
+            evalConnectorIdentifier: 'state-mock',
+            evalMcpSessionId: 'eval:op-123',
+          }),
+        );
+      });
+
       it('should dispatch onToolCallError when tool throws', async () => {
         mockToolExecutionService.executeTool.mockRejectedValue(new Error('Connection refused'));
 

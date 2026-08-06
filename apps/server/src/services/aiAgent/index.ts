@@ -158,6 +158,7 @@ import type { ConversationHistoryEntry } from '@/server/services/heterogeneousAg
 import { buildCloudHeteroContext } from '@/server/services/heterogeneousAgent/cloudHeteroContext';
 import { buildRemoteDeviceHeteroContext } from '@/server/services/heterogeneousAgent/remoteDeviceHeteroContext';
 import { MarketService } from '@/server/services/market';
+import { mcpService } from '@/server/services/mcp';
 import { isResourceAuthorOrAdmin } from '@/server/services/resourcePermission';
 import {
   buildConnectorOwnershipPrompt,
@@ -172,6 +173,7 @@ import {
   isDeviceToolIdentifier,
   REMOTE_DEVICE_TOOL_IDENTIFIERS,
 } from './deviceToolRegistry';
+import { injectEvalToolEnvironment } from './evalToolEnvironment';
 import { ingestAttachment } from './ingestAttachment';
 import { pruneRegeneratedBranch } from './pruneRegeneratedBranch';
 import {
@@ -2701,6 +2703,9 @@ export class AiAgentService {
         ...getActivePluginIds(agentConfig?.plugins),
         ...(additionalPluginIds || []),
         ...(selectedToolIds || []),
+        ...(evalContext?.environment?.toolProviders.flatMap((provider) =>
+          provider.connectorIdentifier ? [provider.connectorIdentifier] : [],
+        ) ?? []),
         ...(hasMentionedAgents ? ['lobe-agent-management'] : []),
       ]),
     ];
@@ -3565,6 +3570,19 @@ export class AiAgentService {
       toolsResult.enabledToolIds.push(CLIENT_FN_IDENTIFIER);
     }
 
+    if (evalContext?.environment) {
+      tools = injectEvalToolEnvironment(
+        {
+          enabledToolIds: toolsResult.enabledToolIds,
+          executorMap: toolExecutorMap,
+          manifestMap: toolManifestMap,
+          sourceMap: toolSourceMap,
+          tools: tools ?? [],
+        },
+        evalContext.environment,
+      ).tools;
+    }
+
     // Override RemoteDevice manifest's systemRole with the dynamic device
     // list prompt. Gated on `canUseDevice` so an external bot sender's turn
     // never sees the owner's device inventory in the LLM system prompt — the
@@ -3877,6 +3895,20 @@ export class AiAgentService {
     // 15. Generate operation ID: agt_{timestamp}_{agentId}_{topicId}_{random}
     const timestamp = Date.now();
     const operationId = `op_${timestamp}_${resolvedAgentId}_${topicId}_${nanoid(8)}`;
+    const hasExternalEvalConnector = evalContext?.environment?.toolProviders.some(
+      (provider) => 'connectorIdentifier' in provider,
+    );
+    const operationHooks = hasExternalEvalConnector
+      ? [
+          ...(hooks ?? []),
+          {
+            handler: async () =>
+              mcpService.disconnectClientsByHeader('X-Lobe-Eval-Session', `eval:${operationId}`),
+            id: `eval-mcp-cleanup:${operationId}`,
+            type: 'onComplete' as const,
+          },
+        ]
+      : hooks;
 
     // 16. Create initial context
     let initialContext: AgentRuntimeContext = {
@@ -4336,7 +4368,7 @@ export class AiAgentService {
         initialStepCount,
         maxSteps,
         modelRuntimeConfig: { model, provider },
-        hooks,
+        hooks: operationHooks,
         operationId,
         parentOperationId,
         signal,

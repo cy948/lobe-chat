@@ -3,12 +3,51 @@ import { serve } from '@upstash/workflow/nextjs';
 import debug from 'debug';
 
 import { AgentEvalRunModel, AgentEvalTestCaseModel } from '@/database/models/agentEval';
+import { ConnectorModel } from '@/database/models/connector';
+import { ConnectorToolModel } from '@/database/models/connectorTool';
 import { getServerDB } from '@/database/server';
 import { qstashClient } from '@/libs/qstash';
+import { KeyVaultsGateKeeper } from '@/server/modules/KeyVaultsEncrypt';
+import { syncHttpConnectorToolsByIdentifiers } from '@/server/services/connector/sync';
 import { AgentEvalRunWorkflow, type RunBenchmarkPayload } from '@/server/workflows/agentEvalRun';
 import { resolveAgentEvalRunWorkspace } from '@/server/workflows/agentEvalRun/utils';
 
 const log = debug('lobe-server:workflows:run-benchmark');
+
+const refreshEvalConnectors = async (
+  db: Awaited<ReturnType<typeof getServerDB>>,
+  userId: string,
+  workspaceId: string | undefined,
+  testCases: {
+    content?: { environment?: { toolProviders?: { connectorIdentifier: string }[] } };
+    id: string;
+  }[],
+  testCaseIds: string[],
+  agentId?: string,
+) => {
+  const connectorIdentifiers = [
+    ...new Set(
+      testCases
+        .filter((testCase) => testCaseIds.includes(testCase.id))
+        .flatMap(
+          (testCase) =>
+            testCase.content?.environment?.toolProviders?.map(
+              ({ connectorIdentifier }) => connectorIdentifier,
+            ) ?? [],
+        ),
+    ),
+  ];
+  if (connectorIdentifiers.length === 0) return;
+
+  const gateKeeper = await KeyVaultsGateKeeper.initWithEnvKey();
+  const connectorModel = new ConnectorModel(db, userId, workspaceId, gateKeeper);
+  const connectorToolModel = new ConnectorToolModel(db, userId, workspaceId);
+  await syncHttpConnectorToolsByIdentifiers(
+    connectorIdentifiers,
+    { connectorModel, connectorToolModel },
+    agentId,
+  );
+};
 
 /**
  * Run benchmark workflow - entry point for agent eval run execution
@@ -100,6 +139,24 @@ export const { POST } = serve<RunBenchmarkPayload>(
         ...result,
         message: 'All test cases already executed',
       };
+    }
+
+    try {
+      await context.run('agent-eval-run:refresh-eval-connectors', () =>
+        refreshEvalConnectors(
+          db,
+          userId,
+          wsId,
+          allTestCases,
+          testCaseIds,
+          run.targetAgentId ?? undefined,
+        ),
+      );
+    } catch (error) {
+      await context.run('agent-eval-run:mark-refresh-failed', () =>
+        runModel.update(runId, { status: 'failed' }),
+      );
+      throw error;
     }
 
     // Update run status to 'running'

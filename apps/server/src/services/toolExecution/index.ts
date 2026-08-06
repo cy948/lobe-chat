@@ -93,11 +93,12 @@ export class ToolExecutionService {
     // needs_approval is handled via humanIntervention in the manifest; we only
     // hard-block 'disabled' here (and needs_approval in headless/qstash context
     // since the manifest's humanIntervention auto-rejects them there already).
-    if (context.serverDB && context.userId && identifier && apiName) {
+    const permissionIdentifier = context.evalConnectorIdentifier ?? identifier;
+    if (context.serverDB && context.userId && permissionIdentifier && apiName) {
       const permission = await getConnectorToolPermission(
         context.serverDB,
         context.userId,
-        identifier,
+        permissionIdentifier,
         apiName,
         context.workspaceId,
         context.agentId,
@@ -257,9 +258,19 @@ export class ToolExecutionService {
       }
 
       // For stdio (in-process) / http/sse types, use standard MCP service
+      const clientParams =
+        mcpParams.type === 'http' && context.evalMcpSessionId
+          ? {
+              ...mcpParams,
+              headers: {
+                ...mcpParams.headers,
+                'X-Lobe-Eval-Session': context.evalMcpSessionId,
+              },
+            }
+          : mcpParams;
       const result = await this.mcpService.callTool({
         argsStr: args,
-        clientParams: mcpParams,
+        clientParams,
         toolName: apiName,
       });
 

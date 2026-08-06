@@ -6,6 +6,15 @@ import { getScopedOnlineDevices } from '@/server/services/deviceGateway/scopedDe
 
 import { ToolExecutionService } from '../index';
 
+const { getConnectorToolPermissionMock } = vi.hoisted(() => ({
+  getConnectorToolPermissionMock: vi.fn(),
+}));
+
+vi.mock('@/libs/mcp/connectorPermissionCheck', () => ({
+  buildBlockedToolResponse: vi.fn(),
+  getConnectorToolPermission: getConnectorToolPermissionMock,
+}));
+
 vi.mock('@/server/services/deviceGateway', () => ({
   deviceGateway: {
     executeMcpCall: vi.fn(),
@@ -20,6 +29,42 @@ vi.mock('@/server/services/deviceGateway/scopedDevices', () => ({
 }));
 
 describe('ToolExecutionService', () => {
+  it('checks rewritten eval tools against the physical connector permission', async () => {
+    const builtinToolsExecutor = {
+      execute: vi.fn().mockResolvedValue({ content: 'ok', success: true }),
+    };
+    const service = new ToolExecutionService({
+      builtinToolsExecutor: builtinToolsExecutor as any,
+      mcpService: {} as any,
+    });
+    const serverDB = {} as any;
+
+    await service.executeTool(
+      {
+        apiName: 'add',
+        arguments: '{}',
+        id: 'tool-call-1',
+        identifier: 'state-alias',
+        type: 'builtin',
+      },
+      {
+        evalConnectorIdentifier: 'state-mock',
+        serverDB,
+        toolManifestMap: {},
+        userId: 'user-1',
+      },
+    );
+
+    expect(getConnectorToolPermissionMock).toHaveBeenCalledWith(
+      serverDB,
+      'user-1',
+      'state-mock',
+      'add',
+      undefined,
+      undefined,
+    );
+  });
+
   it('can skip low-level result truncation for AgentRuntime archival', async () => {
     const builtinToolsExecutor = {
       execute: vi.fn().mockResolvedValue({
@@ -272,6 +317,34 @@ describe('ToolExecutionService', () => {
 
       expect(callTool).toHaveBeenCalledTimes(1);
       expect(deviceGateway.executeMcpCall).not.toHaveBeenCalled();
+    });
+
+    it('adds an eval session header without mutating connector params', async () => {
+      const callTool = vi.fn().mockResolvedValue({ ok: true });
+      const service = makeService({ callTool });
+      const mcpParams = {
+        headers: { 'X-Connector': 'original' },
+        name: 'my-mcp',
+        type: 'http',
+        url: 'https://mcp.example.com',
+      };
+
+      await service.executeTool(
+        mcpPayload,
+        contextWith(mcpParams, { evalMcpSessionId: 'eval:op-123' }),
+      );
+
+      expect(callTool).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientParams: expect.objectContaining({
+            headers: {
+              'X-Connector': 'original',
+              'X-Lobe-Eval-Session': 'eval:op-123',
+            },
+          }),
+        }),
+      );
+      expect(mcpParams.headers).toEqual({ 'X-Connector': 'original' });
     });
 
     it('fails fast when no device is reachable instead of executing on the server', async () => {

@@ -1,3 +1,4 @@
+import type { EvalCaseEnvironment } from '@lobechat/types';
 import debug from 'debug';
 
 import { BaseSystemRoleProvider } from '../base/BaseSystemRoleProvider';
@@ -12,6 +13,7 @@ declare module '../types' {
 const log = debug('context-engine:provider:EvalContextSystemInjector');
 
 export interface EvalContext {
+  environment?: EvalCaseEnvironment;
   envPrompt?: string;
 }
 

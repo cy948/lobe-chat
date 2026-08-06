@@ -11,12 +11,23 @@ export interface EvalConfig {
   judgePrompt?: string;
 }
 
+export interface EvalConnectorToolProvider {
+  connectorIdentifier: string;
+  identifier: string;
+  name?: string;
+}
+
+export interface EvalCaseEnvironment {
+  toolProviders: EvalConnectorToolProvider[];
+}
+
 /**
  * Test case content structure
  */
 export interface EvalTestCaseContent {
   category?: string;
   choices?: string[];
+  environment?: EvalCaseEnvironment;
   expected?: string;
   input: string;
 }

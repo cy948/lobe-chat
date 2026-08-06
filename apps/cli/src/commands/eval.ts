@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 
+import type { EvalCaseEnvironment, EvalTestCaseContent } from '@lobechat/types';
 import type { Command } from 'commander';
 import { InvalidArgumentError } from 'commander';
 import pc from 'picocolors';
@@ -24,6 +25,12 @@ interface JsonEnvelope<T> {
 
 interface JsonOption {
   json?: boolean;
+}
+
+interface TestCaseBatchItem {
+  content: EvalTestCaseContent;
+  metadata?: Record<string, unknown>;
+  sortOrder?: number;
 }
 
 const printJson = (data: unknown) => {
@@ -122,6 +129,16 @@ const parseJsonObject = (option: string) => (value: string) => {
     throw new InvalidArgumentError(`${option} must be a JSON object`);
   }
   return parsed;
+};
+
+const readJsonFile = async (filename: string) => {
+  const raw = await readFile(filename, 'utf8');
+
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    throw new InvalidArgumentError(`Invalid JSON file: ${filename}`);
+  }
 };
 
 const RUN_SET_STATUSES = ['running', 'completed', 'external', 'failed', 'aborted'] as const;
@@ -560,6 +577,7 @@ export function registerEvalCommand(program: Command) {
     .option('--expected <text>', 'Expected output')
     .option('--category <cat>', 'Category')
     .option('--case-id <id>', 'Dataset-native case ID (stored in metadata.caseId)')
+    .option('--environment-file <path>', 'JSON file containing content.environment')
     .option('--sort-order <n>', 'Sort order')
     .option('--json', 'Output JSON envelope')
     .action(
@@ -568,6 +586,7 @@ export function registerEvalCommand(program: Command) {
           caseId?: string;
           category?: string;
           datasetId: string;
+          environmentFile?: string;
           expected?: string;
           input: string;
           sortOrder?: string;
@@ -577,17 +596,51 @@ export function registerEvalCommand(program: Command) {
           options,
           async () => {
             const client = await getTrpcClient();
-            const content: Record<string, any> = { input: options.input };
+            const content: EvalTestCaseContent = { input: options.input };
             if (options.expected) content.expected = options.expected;
             if (options.category) content.category = options.category;
+            if (options.environmentFile) {
+              const environment = await readJsonFile(options.environmentFile);
+              if (!isRecord(environment) || Array.isArray(environment)) {
+                throw new InvalidArgumentError('--environment-file must contain a JSON object');
+              }
+              content.environment = environment as unknown as EvalCaseEnvironment;
+            }
 
-            const input: Record<string, any> = { content, datasetId: options.datasetId };
-            if (options.caseId) input.metadata = { caseId: options.caseId };
-            if (options.sortOrder) input.sortOrder = Number.parseInt(options.sortOrder, 10);
-            return client.agentEval.createTestCase.mutate(input as any);
+            return client.agentEval.createTestCase.mutate({
+              content,
+              datasetId: options.datasetId,
+              ...(options.caseId && { metadata: { caseId: options.caseId } }),
+              ...(options.sortOrder && { sortOrder: Number.parseInt(options.sortOrder, 10) }),
+            });
           },
           'Created test case',
         ),
+    );
+
+  testcaseCmd
+    .command('batch-create')
+    .description('Create test cases from a JSON file')
+    .requiredOption('--dataset-id <id>', 'Dataset ID')
+    .requiredOption('--file <path>', 'JSON file containing an array of test cases')
+    .option('--json', 'Output JSON envelope')
+    .action(async (options: JsonOption & { datasetId: string; file: string }) =>
+      executeCommand(
+        options,
+        async () => {
+          const cases = await readJsonFile(options.file);
+          if (!Array.isArray(cases)) {
+            throw new InvalidArgumentError('--file must contain a JSON array');
+          }
+
+          const client = await getTrpcClient();
+          return client.agentEval.batchCreateTestCases.mutate({
+            cases: cases as TestCaseBatchItem[],
+            datasetId: options.datasetId,
+          });
+        },
+        'Created test cases',
+      ),
     );
 
   testcaseCmd

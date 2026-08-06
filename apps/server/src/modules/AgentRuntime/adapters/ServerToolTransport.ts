@@ -117,9 +117,12 @@ export class ServerToolTransport implements ToolTransport {
 
     try {
       const hookResult = await this.dispatchBeforeToolCall(chatToolPayload, context);
+      const mockResult = hookResult?.isMocked
+        ? { content: hookResult.content, source: 'beforeToolCall hook', success: true }
+        : undefined;
       let toolCallMocked = false;
 
-      if (isDeviceToolIdentifier(chatToolPayload.identifier) && !hookResult?.isMocked) {
+      if (isDeviceToolIdentifier(chatToolPayload.identifier) && !mockResult) {
         const policy = context.state.metadata?.deviceAccessPolicy as
           { canUseDevice: boolean; reason: DeviceAccessReason } | undefined;
         logDeviceToolAudit({
@@ -136,13 +139,17 @@ export class ServerToolTransport implements ToolTransport {
       }
 
       let execution: ToolRunExecution;
-      if (hookResult?.isMocked) {
-        log(`[${operationLogId}] Tool ${context.toolName} mocked by beforeToolCall hook`);
+      if (mockResult) {
+        log(`[${operationLogId}] Tool ${context.toolName} mocked by ${mockResult.source}`);
         toolCallMocked = true;
         execution = {
           attempts: 0,
           mocked: true,
-          result: { content: hookResult.content, executionTime: 0, success: true },
+          result: {
+            content: mockResult.content,
+            executionTime: 0,
+            success: mockResult.success,
+          },
         };
       } else if (
         chatToolPayload.executor === 'client' &&
@@ -181,6 +188,7 @@ export class ServerToolTransport implements ToolTransport {
           manifest: context.effectiveManifestMap[chatToolPayload.identifier],
         });
         const agentVisibility = await this.resolveAgentVisibility(context);
+        const externalEvalProvider = this.resolveExternalEvalProvider(chatToolPayload.identifier);
 
         log(`[${operationLogId}] Executing tool ${context.toolName} ...`);
         execution = await executeToolWithRetry(
@@ -206,6 +214,10 @@ export class ServerToolTransport implements ToolTransport {
                 : undefined,
               documentId: context.state.metadata?.documentId,
               editingAgentId: context.state.metadata?.editingAgentId,
+              ...(externalEvalProvider && {
+                evalConnectorIdentifier: externalEvalProvider.connectorIdentifier,
+                evalMcpSessionId: `eval:${operationId}`,
+              }),
               execSubAgent: this.ctx.execSubAgent,
               executionTimeoutMs: timeoutMs,
               groupId: context.state.metadata?.groupId,
@@ -329,6 +341,14 @@ export class ServerToolTransport implements ToolTransport {
       identifier: chatToolPayload.identifier,
       stepIndex,
     });
+  }
+
+  private resolveExternalEvalProvider(identifier: string) {
+    const provider = this.ctx.evalContext?.environment?.toolProviders.find(
+      (candidate) => candidate.identifier === identifier,
+    );
+
+    return provider && 'connectorIdentifier' in provider ? provider : undefined;
   }
 
   private async dispatchAfterToolCall(

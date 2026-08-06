@@ -13,6 +13,7 @@ const { mockTrpcClient, mockResolveLocalDeviceId } = vi.hoisted(() => ({
   mockTrpcClient: {
     agentEval: {
       abortRun: { mutate: vi.fn() },
+      batchCreateTestCases: { mutate: vi.fn() },
       createBenchmark: { mutate: vi.fn() },
       createDataset: { mutate: vi.fn() },
       createExperiment: { mutate: vi.fn() },
@@ -397,6 +398,152 @@ describe('eval command', () => {
           metadata: { caseId: 'case-7' },
         }),
       );
+    });
+
+    it('should create a test case with an environment file', async () => {
+      mockTrpcClient.agentEval.createTestCase.mutate.mockResolvedValue({ id: 'tc1' });
+      const environmentFile = path.join(os.tmpdir(), `eval-environment-${process.pid}.json`);
+      const environment = {
+        toolProviders: [{ connectorIdentifier: 'lobbench-slack-mock', identifier: 'slack-mcp' }],
+      };
+      await writeFile(environmentFile, JSON.stringify(environment));
+
+      try {
+        const program = createProgram();
+        await program.parseAsync([
+          'node',
+          'test',
+          'eval',
+          'testcase',
+          'create',
+          '--dataset-id',
+          'd1',
+          '--input',
+          'Send the update',
+          '--environment-file',
+          environmentFile,
+        ]);
+
+        expect(mockTrpcClient.agentEval.createTestCase.mutate).toHaveBeenCalledWith({
+          content: { environment, input: 'Send the update' },
+          datasetId: 'd1',
+        });
+      } finally {
+        await rm(environmentFile, { force: true });
+      }
+    });
+
+    it('should reject a non-object environment file', async () => {
+      const environmentFile = path.join(os.tmpdir(), `eval-environment-array-${process.pid}.json`);
+      await writeFile(environmentFile, '[]');
+
+      try {
+        const program = createProgram();
+        await program.parseAsync([
+          'node',
+          'test',
+          'eval',
+          'testcase',
+          'create',
+          '--dataset-id',
+          'd1',
+          '--input',
+          'Q?',
+          '--environment-file',
+          environmentFile,
+        ]);
+
+        expect(mockTrpcClient.agentEval.createTestCase.mutate).not.toHaveBeenCalled();
+        expect(exitSpy).toHaveBeenCalledWith(1);
+      } finally {
+        await rm(environmentFile, { force: true });
+      }
+    });
+
+    it('should batch create test cases from a JSON file', async () => {
+      mockTrpcClient.agentEval.batchCreateTestCases.mutate.mockResolvedValue({ count: 1 });
+      const casesFile = path.join(os.tmpdir(), `eval-cases-${process.pid}.json`);
+      const cases = [
+        {
+          content: { input: 'Q?' },
+          metadata: { caseId: 'case-1' },
+          sortOrder: 0,
+        },
+      ];
+      await writeFile(casesFile, JSON.stringify(cases));
+
+      try {
+        const program = createProgram();
+        await program.parseAsync([
+          'node',
+          'test',
+          'eval',
+          'testcase',
+          'batch-create',
+          '--dataset-id',
+          'd1',
+          '--file',
+          casesFile,
+          '--json',
+        ]);
+
+        expect(mockTrpcClient.agentEval.batchCreateTestCases.mutate).toHaveBeenCalledWith({
+          cases,
+          datasetId: 'd1',
+        });
+      } finally {
+        await rm(casesFile, { force: true });
+      }
+    });
+
+    it('should reject a non-array batch file', async () => {
+      const casesFile = path.join(os.tmpdir(), `eval-cases-object-${process.pid}.json`);
+      await writeFile(casesFile, '{}');
+
+      try {
+        const program = createProgram();
+        await program.parseAsync([
+          'node',
+          'test',
+          'eval',
+          'testcase',
+          'batch-create',
+          '--dataset-id',
+          'd1',
+          '--file',
+          casesFile,
+        ]);
+
+        expect(mockTrpcClient.agentEval.batchCreateTestCases.mutate).not.toHaveBeenCalled();
+        expect(exitSpy).toHaveBeenCalledWith(1);
+      } finally {
+        await rm(casesFile, { force: true });
+      }
+    });
+
+    it('should reject invalid JSON before calling the API', async () => {
+      const casesFile = path.join(os.tmpdir(), `eval-cases-invalid-${process.pid}.json`);
+      await writeFile(casesFile, '{');
+
+      try {
+        const program = createProgram();
+        await program.parseAsync([
+          'node',
+          'test',
+          'eval',
+          'testcase',
+          'batch-create',
+          '--dataset-id',
+          'd1',
+          '--file',
+          casesFile,
+        ]);
+
+        expect(mockTrpcClient.agentEval.batchCreateTestCases.mutate).not.toHaveBeenCalled();
+        expect(exitSpy).toHaveBeenCalledWith(1);
+      } finally {
+        await rm(casesFile, { force: true });
+      }
     });
 
     it('should delete a test case', async () => {

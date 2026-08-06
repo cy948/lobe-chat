@@ -1,9 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { DecryptedConnector } from '@/database/models/connector';
 import type { ConnectorCredentials } from '@/database/schemas';
+import { mcpService } from '@/server/services/mcp';
 
-import { buildConnectorMcpParams, buildHttpAuthFromCredentials } from './sync';
+import {
+  buildConnectorMcpParams,
+  buildHttpAuthFromCredentials,
+  syncHttpConnectorToolsByIdentifiers,
+} from './sync';
 
 const httpConnector = (
   credentials: ConnectorCredentials | null,
@@ -21,6 +26,10 @@ const httpConnector = (
     name: 'My Connector',
     oidcConfig: null,
   }) as any;
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('buildHttpAuthFromCredentials', () => {
   it('returns nothing for no credentials (no-auth)', () => {
@@ -100,10 +109,7 @@ describe('buildConnectorMcpParams', () => {
   it('merges metadata.customHeaders alongside bearer auth', () => {
     expect(
       buildConnectorMcpParams(
-        httpConnector(
-          { token: 'tok', type: 'bearer' },
-          { customHeaders: { 'X-Tenant': 't1' } },
-        ),
+        httpConnector({ token: 'tok', type: 'bearer' }, { customHeaders: { 'X-Tenant': 't1' } }),
       ),
     ).toEqual({
       auth: { token: 'tok', type: 'bearer' },
@@ -116,9 +122,7 @@ describe('buildConnectorMcpParams', () => {
 
   it('applies metadata.customHeaders with no auth credential', () => {
     expect(
-      buildConnectorMcpParams(
-        httpConnector(null, { customHeaders: { 'X-Api-Key': 'abc' } }),
-      ),
+      buildConnectorMcpParams(httpConnector(null, { customHeaders: { 'X-Api-Key': 'abc' } })),
     ).toEqual({
       auth: undefined,
       headers: { 'X-Api-Key': 'abc' },
@@ -172,5 +176,51 @@ describe('buildConnectorMcpParams', () => {
       name: 'Local Connector',
       type: 'stdio',
     });
+  });
+});
+
+describe('syncHttpConnectorToolsByIdentifiers', () => {
+  it('deduplicates identifiers and synchronizes the remote tool list once', async () => {
+    const connector = httpConnector(null);
+    const connectorModel = {
+      findById: vi.fn().mockResolvedValue(connector),
+      resolveByIdentifiers: vi.fn().mockResolvedValue([connector]),
+      updateStatus: vi.fn().mockResolvedValue(undefined),
+    };
+    const connectorToolModel = { upsertMany: vi.fn().mockResolvedValue(undefined) };
+    vi.spyOn(mcpService, 'listRawTools').mockResolvedValue([
+      { description: 'Add a value', inputSchema: { type: 'object' }, name: 'add' } as any,
+    ]);
+
+    await syncHttpConnectorToolsByIdentifiers(['my-conn', 'my-conn'], {
+      connectorModel: connectorModel as any,
+      connectorToolModel: connectorToolModel as any,
+    });
+
+    expect(connectorModel.resolveByIdentifiers).toHaveBeenCalledWith(['my-conn'], undefined);
+    expect(mcpService.listRawTools).toHaveBeenCalledTimes(1);
+    expect(connectorToolModel.upsertMany).toHaveBeenCalledWith('c1', [
+      expect.objectContaining({ toolName: 'add' }),
+    ]);
+  });
+
+  it('fails before synchronization when the connector is unavailable', async () => {
+    await expect(
+      syncHttpConnectorToolsByIdentifiers(['missing'], {
+        connectorModel: { resolveByIdentifiers: vi.fn().mockResolvedValue([]) } as any,
+        connectorToolModel: {} as any,
+      }),
+    ).rejects.toThrow('Eval connector is unavailable: missing');
+  });
+
+  it('rejects non-HTTP connectors', async () => {
+    const connector = { ...httpConnector(null), mcpConnectionType: 'stdio' };
+
+    await expect(
+      syncHttpConnectorToolsByIdentifiers(['my-conn'], {
+        connectorModel: { resolveByIdentifiers: vi.fn().mockResolvedValue([connector]) } as any,
+        connectorToolModel: {} as any,
+      }),
+    ).rejects.toThrow('Eval connector must use HTTP MCP: my-conn');
   });
 });

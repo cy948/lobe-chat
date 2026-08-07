@@ -2218,31 +2218,31 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
         expect(mockFindPlanDocuments).not.toHaveBeenCalled();
       });
 
-      it.each([
-        { items: [], updatedAt: 'canonical-clear' },
-        [],
-      ])('treats canonical and legacy empty message states as clear tombstones', async (todos) => {
-        mockFindPlanDocuments.mockResolvedValue([
-          {
-            metadata: {
-              todos: { items: [{ status: 'todo', text: 'Stale metadata task' }] },
+      it.each([{ items: [], updatedAt: 'canonical-clear' }, []])(
+        'treats canonical and legacy empty message states as clear tombstones',
+        async (todos) => {
+          mockFindPlanDocuments.mockResolvedValue([
+            {
+              metadata: {
+                todos: { items: [{ status: 'todo', text: 'Stale metadata task' }] },
+              },
+              updatedAt: new Date(),
             },
-            updatedAt: new Date(),
-          },
-        ]);
+          ]);
 
-        const content = await callWithMessages(
-          [
-            { content: 'cleared', pluginState: { todos }, role: 'tool' },
-            { content: 'Continue', role: 'user' },
-          ],
-          stateWithLobeAgent(),
-        );
+          const content = await callWithMessages(
+            [
+              { content: 'cleared', pluginState: { todos }, role: 'tool' },
+              { content: 'Continue', role: 'user' },
+            ],
+            stateWithLobeAgent(),
+          );
 
-        expect(content).not.toContain('<todo_context>');
-        expect(content).not.toContain('Stale metadata task');
-        expect(mockFindPlanDocuments).not.toHaveBeenCalled();
-      });
+          expect(content).not.toContain('<todo_context>');
+          expect(content).not.toContain('Stale metadata task');
+          expect(mockFindPlanDocuments).not.toHaveBeenCalled();
+        },
+      );
 
       it.each([
         {

@@ -427,8 +427,8 @@ export class MessagesEngine {
       }),
 
       // =============================================
-      // Phase 4.5: Virtual Tail Context
-      // Inject per-call runtime context after the latest conversation message
+      // Phase 4.5: Virtual Tail Guidance
+      // Inject high-churn runtime guidance at the tail to preserve stable prefix caching
       // =============================================
 
       // Onboarding synthetic state (fake getOnboardingState tool call pair to drive action loop)

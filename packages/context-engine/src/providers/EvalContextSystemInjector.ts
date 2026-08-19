@@ -1,3 +1,4 @@
+import type { EvalToolForwardingConfig } from '@lobechat/types';
 import debug from 'debug';
 
 import { BaseSystemRoleProvider } from '../base/BaseSystemRoleProvider';
@@ -13,6 +14,7 @@ const log = debug('context-engine:provider:EvalContextSystemInjector');
 
 export interface EvalContext {
   envPrompt?: string;
+  toolForwarding?: EvalToolForwardingConfig;
 }
 
 export interface EvalContextSystemInjectorConfig {

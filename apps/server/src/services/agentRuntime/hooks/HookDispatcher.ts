@@ -12,6 +12,7 @@ import type {
   AnyHookEvent,
   SerializedHook,
   ToolCallHookEvent,
+  ToolCallMockInput,
 } from './types';
 
 const log = debug('lobe-server:hook-dispatcher');
@@ -209,12 +210,18 @@ export class HookDispatcher {
   async dispatchBeforeToolCall(
     operationId: string,
     event: Omit<ToolCallHookEvent, 'mock' | 'operationId'>,
-  ): Promise<{ content: string; isMocked: true } | null> {
+  ): Promise<{
+    content: string;
+    error?: { code: string; message: string };
+    isMocked: true;
+    state?: Record<string, unknown>;
+    success: boolean;
+  } | null> {
     const hooks = this.hooks.get(operationId)?.filter((h) => h.type === 'beforeToolCall') || [];
     if (hooks.length === 0) return null;
 
     let isMocked = false;
-    let mockedContent = '';
+    let mockedResult: ToolCallMockInput | undefined;
 
     const toolCallEvent: ToolCallHookEvent = {
       ...event,
@@ -222,7 +229,7 @@ export class HookDispatcher {
         // Only accept non-empty string content
         if (typeof result?.content === 'string' && result.content.length > 0) {
           isMocked = true;
-          mockedContent = result.content;
+          mockedResult = result;
         } else {
           log(
             '[%s][beforeToolCall] mock() called with invalid content (must be non-empty string), ignoring',
@@ -242,7 +249,9 @@ export class HookDispatcher {
       }
     }
 
-    return isMocked ? { content: mockedContent, isMocked: true } : null;
+    return isMocked && mockedResult
+      ? { ...mockedResult, isMocked: true, success: mockedResult.success ?? true }
+      : null;
   }
 
   /**

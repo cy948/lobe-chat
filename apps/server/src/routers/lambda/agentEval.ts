@@ -44,6 +44,34 @@ const rubricTypeSchema = z.enum([
 
 const evalConfigSchema = z.object({ judgePrompt: z.string().optional() }).passthrough();
 
+const evalToolForwardingRuleSchema = z
+  .object({
+    apiNames: z.array(z.string().trim().min(1)).min(1).optional(),
+    identifier: z.string().trim().min(1),
+  })
+  .strict();
+
+const evalCaseEnvironmentSchema = z
+  .object({
+    toolForwarding: z
+      .object({
+        endpoint: z.string().url(),
+        rules: z.array(evalToolForwardingRuleSchema).min(1),
+        timeoutMs: z.number().int().positive().optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+const evalTestCaseContentSchema = z.object({
+  category: z.string().optional(),
+  choices: z.array(z.string()).optional(),
+  environment: evalCaseEnvironmentSchema.optional(),
+  expected: z.string().optional(),
+  input: z.string(),
+});
+
 const log = debug('lobe-lambda-router:agent-eval');
 
 const agentEvalProcedure = wsCompatProcedure.use(serverDatabase).use(async (opts) => {
@@ -524,12 +552,7 @@ export const agentEvalRouter = router({
     .input(
       z.object({
         datasetId: z.string(),
-        content: z.object({
-          input: z.string(),
-          expected: z.string().optional(),
-          choices: z.array(z.string()).optional(),
-          category: z.string().optional(),
-        }),
+        content: evalTestCaseContentSchema,
         evalMode: rubricTypeSchema.optional(),
         evalConfig: evalConfigSchema.optional(),
         metadata: z.record(z.string(), z.unknown()).optional(),
@@ -567,12 +590,7 @@ export const agentEvalRouter = router({
         datasetId: z.string(),
         cases: z.array(
           z.object({
-            content: z.object({
-              input: z.string(),
-              expected: z.string().optional(),
-              choices: z.array(z.string()).optional(),
-              category: z.string().optional(),
-            }),
+            content: evalTestCaseContentSchema,
             metadata: z.record(z.string(), z.unknown()).optional(),
             sortOrder: z.number().optional(),
           }),
@@ -608,9 +626,11 @@ export const agentEvalRouter = router({
         id: z.string(),
         content: z
           .object({
-            input: z.string(),
+            input: z.string().optional(),
             expected: z.string().optional(),
+            choices: z.array(z.string()).optional(),
             category: z.string().optional(),
+            environment: evalCaseEnvironmentSchema.optional(),
           })
           .optional(),
         evalMode: rubricTypeSchema.nullish(),

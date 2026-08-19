@@ -148,9 +148,16 @@ export interface ToolCallHookEvent {
   args: Record<string, any>;
   callIndex: number;
   identifier: string;
-  mock: (result: { content: string }) => void;
+  mock: (result: ToolCallMockInput) => void;
   operationId: string;
   stepIndex: number;
+}
+
+export interface ToolCallMockInput {
+  content: string;
+  error?: { code: string; message: string };
+  state?: Record<string, unknown>;
+  success?: boolean;
 }
 
 /**

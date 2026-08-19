@@ -9,6 +9,23 @@ export interface EvalConfig {
   [key: string]: unknown;
   envPrompt?: string;
   judgePrompt?: string;
+  toolForwarding?: EvalToolForwardingConfig;
+}
+
+export interface EvalToolForwardingConfig {
+  endpoint: string;
+  rules: EvalToolForwardingRule[];
+  timeoutMs?: number;
+}
+
+export interface EvalToolForwardingRule {
+  apiNames?: string[];
+  identifier: string;
+}
+
+/** Per-test-case runtime configuration used only by eval trajectories. */
+export interface EvalCaseEnvironment {
+  toolForwarding?: EvalToolForwardingConfig;
 }
 
 /**
@@ -17,6 +34,7 @@ export interface EvalConfig {
 export interface EvalTestCaseContent {
   category?: string;
   choices?: string[];
+  environment?: EvalCaseEnvironment;
   expected?: string;
   input: string;
 }

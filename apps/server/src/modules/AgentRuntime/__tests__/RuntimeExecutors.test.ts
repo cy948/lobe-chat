@@ -5745,7 +5745,7 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
           dispatch: vi.fn().mockResolvedValue(undefined),
           dispatchBeforeToolCall: vi
             .fn()
-            .mockResolvedValue({ content: '{"mocked":true}', isMocked: true }),
+            .mockResolvedValue({ content: '{"mocked":true}', isMocked: true, success: true }),
         };
 
         const ctxWithHooks = { ...ctx, hookDispatcher: mockDispatcher as any };

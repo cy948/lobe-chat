@@ -515,7 +515,7 @@ describe('HookDispatcher', () => {
         stepIndex: 0,
       });
 
-      expect(result).toEqual({ content: '{"mocked":true}', isMocked: true });
+      expect(result).toEqual({ content: '{"mocked":true}', isMocked: true, success: true });
     });
 
     it('should return null when handler does not call mock()', async () => {
@@ -797,7 +797,7 @@ describe('HookDispatcher', () => {
         stepIndex: 0,
       });
 
-      expect(result).toEqual({ content: '{"second":true}', isMocked: true });
+      expect(result).toEqual({ content: '{"second":true}', isMocked: true, success: true });
     });
 
     it('should return mock when only one of multiple handlers calls mock()', async () => {
@@ -822,7 +822,7 @@ describe('HookDispatcher', () => {
       });
 
       expect(observeHandler).toHaveBeenCalled();
-      expect(result).toEqual({ content: '{"mocked":true}', isMocked: true });
+      expect(result).toEqual({ content: '{"mocked":true}', isMocked: true, success: true });
     });
 
     it('should only mock in local mode, not production mode', async () => {
@@ -849,7 +849,7 @@ describe('HookDispatcher', () => {
 
       // In local mode this would return the mock, but hooks are still in-memory
       // so it should still work (dispatchBeforeToolCall doesn't check queue mode)
-      expect(result).toEqual({ content: '{"mocked":true}', isMocked: true });
+      expect(result).toEqual({ content: '{"mocked":true}', isMocked: true, success: true });
     });
 
     it('should not affect other hook types when beforeToolCall is registered', async () => {
@@ -910,7 +910,7 @@ describe('HookDispatcher', () => {
       });
 
       expect(mockHandler).toHaveBeenCalled();
-      expect(result).toEqual({ content: '{"recovered":true}', isMocked: true });
+      expect(result).toEqual({ content: '{"recovered":true}', isMocked: true, success: true });
     });
   });
 
@@ -1013,7 +1013,7 @@ describe('HookDispatcher', () => {
         identifier: 'twitter',
         stepIndex: 0,
       });
-      expect(localResult).toEqual({ content: '{"mocked":true}', isMocked: true });
+      expect(localResult).toEqual({ content: '{"mocked":true}', isMocked: true, success: true });
 
       // dispatchBeforeToolCall does NOT use serializedHooks — it only reads
       // from this.hooks (in-memory). In QStash mode where a different worker

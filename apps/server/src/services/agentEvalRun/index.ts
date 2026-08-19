@@ -8,7 +8,9 @@ import type {
   EvalRunInputConfig,
   EvalRunMetrics,
   EvalRunTopicResult,
+  EvalTestCaseContent,
   EvalThreadResult,
+  EvalToolForwardingConfig,
   RubricType,
 } from '@lobechat/types';
 import { getActivePluginIds, RequestTrigger } from '@lobechat/types';
@@ -39,6 +41,14 @@ const roundCost = (v: number): number => Math.round(v * 1e6) / 1e6;
 const EVAL_AGENT_RUNTIME_QSTASH_RETRIES = 5;
 const EVAL_AGENT_RUNTIME_QSTASH_RETRY_DELAY = '10000 * (1 + retried)';
 const RESUMABLE_THREAD_STATUSES = new Set(['error', 'timeout']);
+
+const getEvalContextParams = (envPrompt?: string, toolForwarding?: EvalToolForwardingConfig) =>
+  envPrompt || toolForwarding ? { evalContext: { envPrompt, toolForwarding } } : {};
+
+const getToolForwarding = (
+  testCase: { content: EvalTestCaseContent },
+  datasetConfig?: { toolForwarding?: EvalToolForwardingConfig } | null,
+) => testCase.content.environment?.toolForwarding ?? datasetConfig?.toolForwarding;
 
 /** Thrown when a caller-supplied run id exists with non-equivalent create params. */
 export const RUN_CREATE_ID_CONFLICT = 'Run id already exists with different create parameters';
@@ -527,7 +537,7 @@ export class AgentEvalRunService {
     }
 
     const target = await this.resolveTrajectoryResumeTarget(params);
-    const { envPrompt, parentMessageId, run, thread, topicId } = target;
+    const { envPrompt, parentMessageId, run, thread, toolForwarding, topicId } = target;
     log(
       'resumeTrajectory: resolved target — topicId=%s parentMessageId=%s threadId=%s',
       topicId,
@@ -547,6 +557,7 @@ export class AgentEvalRunService {
         testCaseId: params.testCaseId,
         threadId: thread.id,
         topicId,
+        toolForwarding,
         userId: this.userId,
       });
     } else {
@@ -560,6 +571,7 @@ export class AgentEvalRunService {
         targetAgentId: run.targetAgentId ?? undefined,
         testCaseId: params.testCaseId,
         topicId,
+        toolForwarding,
         userId: this.userId,
       });
     }
@@ -631,6 +643,7 @@ export class AgentEvalRunService {
       targetAgentId,
       testCaseId,
       topicId,
+      toolForwarding,
     } = params;
 
     const resumeCheck = await this.canResumeTrajectory({ runId, testCaseId });
@@ -714,7 +727,7 @@ export class AgentEvalRunService {
             },
           },
         ],
-        ...(envPrompt && { evalContext: { envPrompt } }),
+        ...getEvalContextParams(envPrompt, toolForwarding),
         initialStepCount: prevSteps,
         maxSteps,
         parentMessageId,
@@ -769,6 +782,7 @@ export class AgentEvalRunService {
       targetAgentId,
       testCaseId,
       threadId,
+      toolForwarding,
       topicId,
     } = params;
 
@@ -859,7 +873,7 @@ export class AgentEvalRunService {
             },
           },
         ],
-        ...(envPrompt && { evalContext: { envPrompt } }),
+        ...getEvalContextParams(envPrompt, toolForwarding),
         initialStepCount: prevSteps,
         maxSteps,
         parentMessageId,
@@ -918,7 +932,7 @@ export class AgentEvalRunService {
       throw new Error(loaded.error);
     }
 
-    const { envPrompt, run } = loaded;
+    const { envPrompt, run, toolForwarding } = loaded;
     const runTopic = await this.runTopicModel.findByRunAndTestCase(params.runId, params.testCaseId);
     if (!runTopic?.topicId) throw new Error('RunTopic topicId is required');
 
@@ -966,6 +980,7 @@ export class AgentEvalRunService {
       run,
       runTopic,
       thread,
+      toolForwarding,
       topicId: runTopic.topicId,
     };
   }
@@ -1066,12 +1081,14 @@ export class AgentEvalRunService {
     if (!testCase) return { error: 'Test case not found' as const };
 
     let envPrompt: string | undefined;
+    let toolForwarding: EvalToolForwardingConfig | undefined;
     if (run.datasetId) {
       const dataset = await this.datasetModel.findById(run.datasetId);
       envPrompt = dataset?.evalConfig?.envPrompt;
+      toolForwarding = getToolForwarding(testCase, dataset?.evalConfig);
     }
 
-    return { envPrompt, run, testCase };
+    return { envPrompt, run, testCase, toolForwarding };
   }
 
   async executeTrajectory(params: {
@@ -1084,6 +1101,7 @@ export class AgentEvalRunService {
     runId: string;
     testCase: { content: { input?: string }; sortOrder?: number | null };
     testCaseId: string;
+    toolForwarding?: EvalToolForwardingConfig;
   }) {
     const { runId, testCaseId } = params;
 
@@ -1113,8 +1131,9 @@ export class AgentEvalRunService {
     testCase: { content: { input?: string }; sortOrder?: number | null };
     testCaseId: string;
     topicId: string;
+    toolForwarding?: EvalToolForwardingConfig;
   }) {
-    const { envPrompt, run, runId, testCaseId, topicId } = params;
+    const { envPrompt, run, runId, testCaseId, toolForwarding, topicId } = params;
 
     // Update status from 'pending' to 'running'
     await this.runTopicModel.updateByRunAndTopic(runId, topicId, { status: 'running' });
@@ -1164,7 +1183,7 @@ export class AgentEvalRunService {
             },
           },
         ],
-        ...(envPrompt && { evalContext: { envPrompt } }),
+        ...getEvalContextParams(envPrompt, toolForwarding),
         maxSteps: run.config?.maxSteps,
         prompt: params.testCase.content.input || '',
         queueRetries: EVAL_AGENT_RUNTIME_QSTASH_RETRIES,
@@ -1270,6 +1289,7 @@ export class AgentEvalRunService {
     const testCaseId = testCase.id;
     const dataset = await this.datasetModel.findById(run.datasetId);
     const envPrompt = dataset?.evalConfig?.envPrompt;
+    const toolForwarding = getToolForwarding(testCase, dataset?.evalConfig);
 
     // Idempotent re-run of a terminal case: drop only the old RunTopic
     // association (the old Topic is preserved) and link a fresh one.
@@ -1304,6 +1324,7 @@ export class AgentEvalRunService {
       },
       testCaseId,
       topicId: topic.id,
+      toolForwarding,
     });
 
     return { ...result, testCaseId };
@@ -1387,8 +1408,9 @@ export class AgentEvalRunService {
     testCaseId: string;
     threadId: string;
     topicId: string;
+    toolForwarding?: EvalToolForwardingConfig;
   }) {
-    const { envPrompt, run, runId, testCaseId, threadId, topicId } = params;
+    const { envPrompt, run, runId, testCaseId, threadId, toolForwarding, topicId } = params;
 
     const aiAgentService = new AiAgentService(this.db, this.userId, {
       workspaceId: this.workspaceId,
@@ -1435,7 +1457,7 @@ export class AgentEvalRunService {
             },
           },
         ],
-        ...(envPrompt && { evalContext: { envPrompt } }),
+        ...getEvalContextParams(envPrompt, toolForwarding),
         maxSteps: run.config?.maxSteps,
         prompt: params.testCase.content.input || '',
         queueRetries: EVAL_AGENT_RUNTIME_QSTASH_RETRIES,

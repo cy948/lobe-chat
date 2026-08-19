@@ -2,7 +2,10 @@ import type { AgentHookType, AnyHookEvent, ToolCallHookEvent } from '../types';
 
 export interface ToolCallMockResult {
   content: string;
+  error?: { code: string; message: string };
   isMocked: true;
+  state?: Record<string, unknown>;
+  success: boolean;
 }
 
 export interface LifecycleDispatchParams {

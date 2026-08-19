@@ -1,3 +1,4 @@
+import type { EvalToolForwardingConfig } from '@lobechat/types';
 import debug from 'debug';
 
 import { AgentEvalRunTopicModel } from '@/database/models/agentEval';
@@ -55,6 +56,7 @@ export interface ResumeAgentTrajectoryPayload {
   runId: string;
   targetAgentId?: string;
   testCaseId: string;
+  toolForwarding?: EvalToolForwardingConfig;
   topicId: string;
   userId: string;
 }
@@ -98,6 +100,7 @@ export interface ResumeThreadTrajectoryPayload {
   targetAgentId?: string;
   testCaseId: string;
   threadId: string;
+  toolForwarding?: EvalToolForwardingConfig;
   topicId: string;
   userId: string;
 }

@@ -45,10 +45,8 @@ const RESUMABLE_THREAD_STATUSES = new Set(['error', 'timeout']);
 const getEvalContextParams = (envPrompt?: string, toolForwarding?: EvalToolForwardingConfig) =>
   envPrompt || toolForwarding ? { evalContext: { envPrompt, toolForwarding } } : {};
 
-const getToolForwarding = (
-  testCase: { content: EvalTestCaseContent },
-  datasetConfig?: { toolForwarding?: EvalToolForwardingConfig } | null,
-) => testCase.content.environment?.toolForwarding ?? datasetConfig?.toolForwarding;
+const getToolForwarding = (testCase: { content: EvalTestCaseContent }) =>
+  testCase.content.environment?.toolForwarding;
 
 /** Thrown when a caller-supplied run id exists with non-equivalent create params. */
 export const RUN_CREATE_ID_CONFLICT = 'Run id already exists with different create parameters';
@@ -1085,7 +1083,7 @@ export class AgentEvalRunService {
     if (run.datasetId) {
       const dataset = await this.datasetModel.findById(run.datasetId);
       envPrompt = dataset?.evalConfig?.envPrompt;
-      toolForwarding = getToolForwarding(testCase, dataset?.evalConfig);
+      toolForwarding = getToolForwarding(testCase);
     }
 
     return { envPrompt, run, testCase, toolForwarding };
@@ -1289,7 +1287,7 @@ export class AgentEvalRunService {
     const testCaseId = testCase.id;
     const dataset = await this.datasetModel.findById(run.datasetId);
     const envPrompt = dataset?.evalConfig?.envPrompt;
-    const toolForwarding = getToolForwarding(testCase, dataset?.evalConfig);
+    const toolForwarding = getToolForwarding(testCase);
 
     // Idempotent re-run of a terminal case: drop only the old RunTopic
     // association (the old Topic is preserved) and link a fresh one.

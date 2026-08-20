@@ -12,7 +12,6 @@ import type {
   AnyHookEvent,
   SerializedHook,
   ToolCallHookEvent,
-  ToolCallMockInput,
 } from './types';
 
 const log = debug('lobe-server:hook-dispatcher');
@@ -212,16 +211,13 @@ export class HookDispatcher {
     event: Omit<ToolCallHookEvent, 'mock' | 'operationId'>,
   ): Promise<{
     content: string;
-    error?: { code: string; message: string };
     isMocked: true;
-    state?: Record<string, unknown>;
-    success: boolean;
   } | null> {
     const hooks = this.hooks.get(operationId)?.filter((h) => h.type === 'beforeToolCall') || [];
     if (hooks.length === 0) return null;
 
     let isMocked = false;
-    let mockedResult: ToolCallMockInput | undefined;
+    let mockedResult: { content: string } | undefined;
 
     const toolCallEvent: ToolCallHookEvent = {
       ...event,
@@ -249,9 +245,7 @@ export class HookDispatcher {
       }
     }
 
-    return isMocked && mockedResult
-      ? { ...mockedResult, isMocked: true, success: mockedResult.success ?? true }
-      : null;
+    return isMocked && mockedResult ? { ...mockedResult, isMocked: true } : null;
   }
 
   /**

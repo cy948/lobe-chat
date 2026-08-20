@@ -9,7 +9,6 @@ export interface EvalConfig {
   [key: string]: unknown;
   envPrompt?: string;
   judgePrompt?: string;
-  toolForwarding?: EvalToolForwardingConfig;
 }
 
 export interface EvalToolForwardingConfig {

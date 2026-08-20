@@ -42,7 +42,9 @@ const rubricTypeSchema = z.enum([
   'external',
 ]);
 
-const evalConfigSchema = z.object({ judgePrompt: z.string().optional() }).passthrough();
+const evalConfigSchema = z
+  .object({ judgePrompt: z.string().optional(), toolForwarding: z.never().optional() })
+  .passthrough();
 
 const evalToolForwardingRuleSchema = z
   .object({

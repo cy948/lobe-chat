@@ -353,6 +353,24 @@ describe('Agent Eval Router Integration Tests', () => {
           }),
         ).rejects.toThrow(/not found/);
       });
+
+      it('should reject tool forwarding in dataset evalConfig', async () => {
+        const caller = agentEvalRouter.createCaller(createTestContext(userId));
+
+        await expect(
+          caller.createDataset({
+            benchmarkId,
+            evalConfig: {
+              toolForwarding: {
+                endpoint: 'https://mock.test/tool-calls',
+                rules: [{ identifier: 'memory' }],
+              },
+            },
+            identifier: 'dataset-with-forwarding',
+            name: 'Dataset with forwarding',
+          } as any),
+        ).rejects.toThrow();
+      });
     });
 
     describe('listDatasets', () => {

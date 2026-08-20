@@ -25,7 +25,6 @@ export type {
   StopByHumanInterventionHookEvent,
   ToolCallErrorHookEvent,
   ToolCallHookEvent,
-  ToolCallMockInput,
 } from '@lobechat/agent-runtime';
 
 // ── Server-side Hook Types ───────────────────────────────

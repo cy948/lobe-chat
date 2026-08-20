@@ -1,3 +1,4 @@
+import type { EvalToolForwardingConfig } from '@lobechat/types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getTestDB } from '@/database/core/getTestDB';
@@ -60,6 +61,7 @@ async function setupTrajectoryChain(opts?: {
   input?: string;
   sortOrder?: number;
   targetAgentId?: string | null;
+  toolForwarding?: EvalToolForwardingConfig;
 }) {
   const benchmarkModel = new AgentEvalBenchmarkModel(serverDB, userId);
   const benchmark = await benchmarkModel.create({
@@ -83,7 +85,11 @@ async function setupTrajectoryChain(opts?: {
   const [testCase] = await serverDB
     .insert(agentEvalTestCases)
     .values({
-      content: { expected: '42', input: opts?.input ?? 'What is 6*7?' },
+      content: {
+        ...(opts?.toolForwarding && { environment: { toolForwarding: opts.toolForwarding } }),
+        expected: '42',
+        input: opts?.input ?? 'What is 6*7?',
+      },
       datasetId: dataset.id,
       sortOrder: opts?.sortOrder ?? 1,
       userId,
@@ -127,6 +133,20 @@ describe('AgentEvalRunService', () => {
       if (!('error' in data)) {
         expect(data.envPrompt).toBeUndefined();
       }
+    });
+
+    it('should load tool forwarding only from the test case environment', async () => {
+      const toolForwarding = {
+        endpoint: 'https://mock.test/tool-calls',
+        rules: [{ identifier: 'memory' }],
+      };
+      const { run, testCase } = await setupTrajectoryChain({ toolForwarding });
+
+      const service = new AgentEvalRunService(serverDB, userId);
+      const data = await service.loadTrajectoryData(run.id, testCase.id);
+
+      expect('error' in data).toBe(false);
+      if (!('error' in data)) expect(data.toolForwarding).toEqual(toolForwarding);
     });
 
     it('should return error when run not found', async () => {
@@ -226,6 +246,29 @@ describe('AgentEvalRunService', () => {
         expect.objectContaining({
           evalContext: { envPrompt: 'You are a math tutor.' },
         }),
+      );
+    });
+
+    it('should pass case tool forwarding as evalContext', async () => {
+      const { run, testCase } = await setupTrajectoryChain();
+      const toolForwarding = {
+        endpoint: 'https://mock.test/tool-calls',
+        rules: [{ identifier: 'memory' }],
+      };
+
+      mockExecAgent.mockResolvedValue({ operationId: 'op-789' });
+
+      const service = new AgentEvalRunService(serverDB, userId);
+      await service.executeTrajectory({
+        run: { datasetId: run.datasetId, targetAgentId: null },
+        runId: run.id,
+        testCase: { content: { input: 'What is 6*7?' }, sortOrder: testCase.sortOrder },
+        testCaseId: testCase.id,
+        toolForwarding,
+      });
+
+      expect(mockExecAgent).toHaveBeenCalledWith(
+        expect.objectContaining({ evalContext: { envPrompt: undefined, toolForwarding } }),
       );
     });
 

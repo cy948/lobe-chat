@@ -150,10 +150,6 @@ import { AgentRuntimeService } from '@/server/services/agentRuntime';
 import { getAbortError, isAbortError, throwIfAborted } from '@/server/services/agentRuntime/abort';
 import { CompletionLifecycle } from '@/server/services/agentRuntime/CompletionLifecycle';
 import { hookDispatcher } from '@/server/services/agentRuntime/hooks';
-import {
-  createToolForwardingHook,
-  shouldEnableEvalToolForwarding,
-} from '@/server/services/agentRuntime/hooks/toolForwarding';
 import type { AgentHook } from '@/server/services/agentRuntime/hooks/types';
 import type {
   ExecGroupMemberParams,
@@ -4301,15 +4297,6 @@ export class AiAgentService {
     // 15. Generate operation ID: agt_{timestamp}_{agentId}_{topicId}_{random}
     const timestamp = Date.now();
     const operationId = `op_${timestamp}_${resolvedAgentId}_${topicId}_${nanoid(8)}`;
-    const evalToolForwardingHook = shouldEnableEvalToolForwarding(
-      trigger,
-      evalContext?.toolForwarding,
-    )
-      ? createToolForwardingHook(evalContext!.toolForwarding!)
-      : undefined;
-    const operationHooks = evalToolForwardingHook
-      ? [evalToolForwardingHook, ...(hooks ?? [])]
-      : hooks;
 
     if (params.topicStartOwnerOperationId) {
       const attached = await this.topicModel.appendRunningOperationChild(
@@ -4342,7 +4329,6 @@ export class AiAgentService {
         };
       }
     }
-
     // 16. Create initial context
     let initialContext: AgentRuntimeContext = {
       payload: {
@@ -4832,7 +4818,7 @@ export class AiAgentService {
         initialStepCount,
         maxSteps,
         modelRuntimeConfig: { model, provider },
-        hooks: operationHooks,
+        hooks,
         operationId,
         parentOperationId,
         signal,

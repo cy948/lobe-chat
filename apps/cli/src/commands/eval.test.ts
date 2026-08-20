@@ -414,7 +414,7 @@ describe('eval command', () => {
         '--input',
         'Q?',
         '--environment',
-        '{"toolForwarding":{"endpoint":"https://mock.test/tool-calls","rules":[{"identifier":"memory"}]}}',
+        '{"toolForwarding":{"memory":{"endpoint":"https://mock.test/tool-calls"}}}',
       ]);
 
       expect(mockTrpcClient.agentEval.createTestCase.mutate).toHaveBeenCalledWith(
@@ -422,8 +422,7 @@ describe('eval command', () => {
           content: expect.objectContaining({
             environment: {
               toolForwarding: {
-                endpoint: 'https://mock.test/tool-calls',
-                rules: [{ identifier: 'memory' }],
+                memory: { endpoint: 'https://mock.test/tool-calls' },
               },
             },
           }),
@@ -444,15 +443,14 @@ describe('eval command', () => {
         '--id',
         'tc1',
         '--environment',
-        '{"toolForwarding":{"endpoint":"https://mock.test/tool-calls","rules":[{"identifier":"memory"}]}}',
+        '{"toolForwarding":{"memory":{"endpoint":"https://mock.test/tool-calls"}}}',
       ]);
 
       expect(mockTrpcClient.agentEval.updateTestCase.mutate).toHaveBeenCalledWith({
         content: {
           environment: {
             toolForwarding: {
-              endpoint: 'https://mock.test/tool-calls',
-              rules: [{ identifier: 'memory' }],
+              memory: { endpoint: 'https://mock.test/tool-calls' },
             },
           },
         },

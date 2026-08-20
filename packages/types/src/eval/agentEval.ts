@@ -12,14 +12,12 @@ export interface EvalConfig {
 }
 
 export interface EvalToolForwardingConfig {
-  endpoint: string;
-  rules: EvalToolForwardingRule[];
-  timeoutMs?: number;
+  [identifier: string]: EvalToolForwardingTarget;
 }
 
-export interface EvalToolForwardingRule {
-  apiNames?: string[];
-  identifier: string;
+export interface EvalToolForwardingTarget {
+  endpoint: string;
+  timeoutMs?: number;
 }
 
 /** Per-test-case runtime configuration used only by eval trajectories. */

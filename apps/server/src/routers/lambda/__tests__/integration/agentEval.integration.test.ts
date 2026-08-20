@@ -362,8 +362,7 @@ describe('Agent Eval Router Integration Tests', () => {
             benchmarkId,
             evalConfig: {
               toolForwarding: {
-                endpoint: 'https://mock.test/tool-calls',
-                rules: [{ identifier: 'memory' }],
+                memory: { endpoint: 'https://mock.test/tool-calls' },
               },
             },
             identifier: 'dataset-with-forwarding',

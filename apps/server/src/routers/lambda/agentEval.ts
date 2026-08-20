@@ -46,22 +46,18 @@ const evalConfigSchema = z
   .object({ judgePrompt: z.string().optional(), toolForwarding: z.never().optional() })
   .passthrough();
 
-const evalToolForwardingRuleSchema = z
-  .object({
-    apiNames: z.array(z.string().trim().min(1)).min(1).optional(),
-    identifier: z.string().trim().min(1),
-  })
-  .strict();
-
 const evalCaseEnvironmentSchema = z
   .object({
     toolForwarding: z
-      .object({
-        endpoint: z.string().url(),
-        rules: z.array(evalToolForwardingRuleSchema).min(1),
-        timeoutMs: z.number().int().positive().optional(),
-      })
-      .strict()
+      .record(
+        z.string().trim().min(1),
+        z
+          .object({
+            endpoint: z.string().url(),
+            timeoutMs: z.number().int().positive().optional(),
+          })
+          .strict(),
+      )
       .optional(),
   })
   .strict();

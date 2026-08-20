@@ -15,7 +15,7 @@ import {
   tracer as agentRuntimeTracer,
 } from '@lobechat/observability-otel/modules/agent-runtime';
 import { ssrfSafeFetch } from '@lobechat/ssrf-safe-fetch';
-import type { ChatToolPayload, EvalToolForwardingConfig } from '@lobechat/types';
+import type { ChatToolPayload } from '@lobechat/types';
 import { RequestTrigger } from '@lobechat/types';
 import { isRecord } from '@lobechat/utils';
 
@@ -43,28 +43,6 @@ import {
 import { resolveRunActiveDeviceId } from '../executors/resolveRunActiveDeviceId';
 import { resolveRunProjectSkills } from '../executors/resolveRunProjectSkills';
 import { resolveToolTimeoutMs } from '../resolveToolTimeout';
-
-const TOOL_FORWARDING_RESPONSE_MAX_BYTES = 1024 * 1024;
-
-const matchesToolForwardingRule = (toolCall: ChatToolPayload, config: EvalToolForwardingConfig) =>
-  config.rules.some(
-    (rule) =>
-      rule.identifier === toolCall.identifier &&
-      (!rule.apiNames || rule.apiNames.length === 0 || rule.apiNames.includes(toolCall.apiName)),
-  );
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : String(error);
-
-const toToolForwardingFailure = (error: unknown): ToolRunResult => {
-  const message = `Tool forwarding failed: ${getErrorMessage(error)}`;
-
-  return {
-    content: message,
-    error: { code: 'TOOL_FORWARDING_ERROR', message },
-    success: false,
-  };
-};
 
 const isToolRunResult = (value: unknown): value is ToolRunResult =>
   isRecord(value) && typeof value.content === 'string' && typeof value.success === 'boolean';
@@ -396,29 +374,21 @@ export class ServerToolTransport implements ToolTransport {
     chatToolPayload: ChatToolPayload,
     context: ToolRunContext,
   ): Promise<ToolRunResult | null> {
-    const config = this.ctx.evalContext?.toolForwarding;
-    if (
-      context.state.metadata?.trigger !== RequestTrigger.Eval ||
-      !config ||
-      !matchesToolForwardingRule(chatToolPayload, config)
-    ) {
+    const forwarding = this.ctx.evalContext?.toolForwarding?.[chatToolPayload.identifier];
+    if (context.state.metadata?.trigger !== RequestTrigger.Eval || !forwarding) {
       return null;
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), config.timeoutMs ?? 5000);
+    const timeout = setTimeout(() => controller.abort(), forwarding.timeoutMs ?? 15_000);
 
     try {
-      const response = await ssrfSafeFetch(
-        config.endpoint,
-        {
-          body: JSON.stringify(chatToolPayload),
-          headers: { 'Content-Type': 'application/json' },
-          method: 'POST',
-          signal: controller.signal,
-        },
-        { maxContentLength: TOOL_FORWARDING_RESPONSE_MAX_BYTES },
-      );
+      const response = await ssrfSafeFetch(forwarding.endpoint, {
+        body: JSON.stringify(chatToolPayload),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        signal: controller.signal,
+      });
 
       if (!response.ok) {
         throw new Error(`Tool forwarding server responded with HTTP ${response.status}`);
@@ -429,7 +399,12 @@ export class ServerToolTransport implements ToolTransport {
 
       return result;
     } catch (error) {
-      return toToolForwardingFailure(error);
+      const message = `Tool forwarding failed: ${error instanceof Error ? error.message : String(error)}`;
+      return {
+        content: message,
+        error: { code: 'TOOL_FORWARDING_ERROR', message },
+        success: false,
+      };
     } finally {
       clearTimeout(timeout);
     }

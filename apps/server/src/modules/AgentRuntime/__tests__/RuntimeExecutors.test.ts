@@ -5778,6 +5778,7 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
       });
 
       it('forwards matching eval tools from a reconstructed worker context', async () => {
+        const timeoutSpy = vi.spyOn(global, 'setTimeout');
         mockSsrfSafeFetch.mockResolvedValue(
           new Response(JSON.stringify({ content: 'fixture result', success: true })),
         );
@@ -5785,8 +5786,7 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
           ...ctx,
           evalContext: {
             toolForwarding: {
-              endpoint: 'https://mock.test/tool-calls',
-              rules: [{ identifier: 'twitter' }],
+              twitter: { endpoint: 'https://mock.test/tool-calls' },
             },
           },
         });
@@ -5801,8 +5801,8 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
         expect(mockSsrfSafeFetch).toHaveBeenCalledWith(
           'https://mock.test/tool-calls',
           expect.objectContaining({ method: 'POST' }),
-          { maxContentLength: 1024 * 1024 },
         );
+        expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Function), 15_000);
         expect(JSON.parse(mockSsrfSafeFetch.mock.calls[0][1].body)).toEqual(
           expect.objectContaining({
             apiName: 'search_tweets',
@@ -5822,8 +5822,7 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
           ...ctx,
           evalContext: {
             toolForwarding: {
-              endpoint: 'https://mock.test/tool-calls',
-              rules: [{ identifier: 'other-tool' }],
+              'other-tool': { endpoint: 'https://mock.test/tool-calls' },
             },
           },
         });
@@ -5845,8 +5844,7 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
           ...ctx,
           evalContext: {
             toolForwarding: {
-              endpoint: 'https://mock.test/tool-calls',
-              rules: [{ identifier: 'twitter' }],
+              twitter: { endpoint: 'https://mock.test/tool-calls' },
             },
           },
         });

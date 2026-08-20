@@ -2,7 +2,6 @@ import type {
   AgentState,
   ToolRunContext,
   ToolRunExecution,
-  ToolRunResult,
   ToolTransport,
   ToolWorkRegistration,
 } from '@lobechat/agent-runtime';
@@ -14,10 +13,7 @@ import {
   executeToolSpanName,
   tracer as agentRuntimeTracer,
 } from '@lobechat/observability-otel/modules/agent-runtime';
-import { ssrfSafeFetch } from '@lobechat/ssrf-safe-fetch';
 import type { ChatToolPayload } from '@lobechat/types';
-import { RequestTrigger } from '@lobechat/types';
-import { isRecord } from '@lobechat/utils';
 
 import { AgentModel } from '@/database/models/agent';
 import { isDeviceCapablePlan, isLocalSandboxEnabled } from '@/helpers/executionTarget';
@@ -43,9 +39,6 @@ import {
 import { resolveRunActiveDeviceId } from '../executors/resolveRunActiveDeviceId';
 import { resolveRunProjectSkills } from '../executors/resolveRunProjectSkills';
 import { resolveToolTimeoutMs } from '../resolveToolTimeout';
-
-const isToolRunResult = (value: unknown): value is ToolRunResult =>
-  isRecord(value) && typeof value.content === 'string' && typeof value.success === 'boolean';
 
 export class ServerToolTransport implements ToolTransport {
   maxRetries = TOOL_MAX_RETRIES;
@@ -123,17 +116,10 @@ export class ServerToolTransport implements ToolTransport {
     });
 
     try {
-      const forwardingResult = await this.forwardEvalToolCall(chatToolPayload, context);
-      const hookResult = forwardingResult
-        ? null
-        : await this.dispatchBeforeToolCall(chatToolPayload, context);
+      const hookResult = await this.dispatchBeforeToolCall(chatToolPayload, context);
       let toolCallMocked = false;
 
-      if (
-        isDeviceToolIdentifier(chatToolPayload.identifier) &&
-        !forwardingResult &&
-        !hookResult?.isMocked
-      ) {
+      if (isDeviceToolIdentifier(chatToolPayload.identifier) && !hookResult?.isMocked) {
         const policy = context.state.metadata?.deviceAccessPolicy as
           { canUseDevice: boolean; reason: DeviceAccessReason } | undefined;
         logDeviceToolAudit({
@@ -150,25 +136,13 @@ export class ServerToolTransport implements ToolTransport {
       }
 
       let execution: ToolRunExecution;
-      if (forwardingResult) {
-        log(`[${operationLogId}] Tool ${context.toolName} forwarded by eval pre-tool interception`);
-        toolCallMocked = true;
-        execution = {
-          attempts: 0,
-          mocked: true,
-          result: { ...forwardingResult, executionTime: 0 },
-        };
-      } else if (hookResult?.isMocked) {
+      if (hookResult?.isMocked) {
         log(`[${operationLogId}] Tool ${context.toolName} mocked by beforeToolCall hook`);
         toolCallMocked = true;
         execution = {
           attempts: 0,
           mocked: true,
-          result: {
-            content: hookResult.content,
-            executionTime: 0,
-            success: true,
-          },
+          result: hookResult.result,
         };
       } else if (
         chatToolPayload.executor === 'client' &&
@@ -368,46 +342,6 @@ export class ServerToolTransport implements ToolTransport {
       identifier: chatToolPayload.identifier,
       stepIndex,
     });
-  }
-
-  private async forwardEvalToolCall(
-    chatToolPayload: ChatToolPayload,
-    context: ToolRunContext,
-  ): Promise<ToolRunResult | null> {
-    const forwarding = this.ctx.evalContext?.toolForwarding?.[chatToolPayload.identifier];
-    if (context.state.metadata?.trigger !== RequestTrigger.Eval || !forwarding) {
-      return null;
-    }
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), forwarding.timeoutMs ?? 15_000);
-
-    try {
-      const response = await ssrfSafeFetch(forwarding.endpoint, {
-        body: JSON.stringify(chatToolPayload),
-        headers: { 'Content-Type': 'application/json' },
-        method: 'POST',
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error(`Tool forwarding server responded with HTTP ${response.status}`);
-      }
-
-      const result = (await response.json()) as unknown;
-      if (!isToolRunResult(result)) throw new Error('Invalid tool forwarding response');
-
-      return result;
-    } catch (error) {
-      const message = `Tool forwarding failed: ${error instanceof Error ? error.message : String(error)}`;
-      return {
-        content: message,
-        error: { code: 'TOOL_FORWARDING_ERROR', message },
-        success: false,
-      };
-    } finally {
-      clearTimeout(timeout);
-    }
   }
 
   private async dispatchAfterToolCall(

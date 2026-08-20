@@ -42,9 +42,7 @@ const rubricTypeSchema = z.enum([
   'external',
 ]);
 
-const evalConfigSchema = z
-  .object({ judgePrompt: z.string().optional(), toolForwarding: z.never().optional() })
-  .passthrough();
+const evalConfigSchema = z.object({ judgePrompt: z.string().optional() }).passthrough();
 
 const evalCaseEnvironmentSchema = z
   .object({
@@ -639,7 +637,7 @@ export const agentEvalRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
-      const result = await ctx.testCaseModel.update(id, data);
+      const result = await ctx.testCaseModel.update(id, data as any);
       if (!result) {
         throw new TRPCError({
           code: 'NOT_FOUND',

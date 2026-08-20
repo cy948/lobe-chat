@@ -41,6 +41,7 @@ export interface EvalTestCaseContent {
  */
 export interface EvalTestCaseMetadata {
   [key: string]: unknown;
+  caseId?: string;
   difficulty?: 'easy' | 'hard' | 'medium';
   source?: string;
   tags?: string[];

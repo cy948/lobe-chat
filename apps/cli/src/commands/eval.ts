@@ -1,6 +1,5 @@
 import { readFile } from 'node:fs/promises';
 
-import type { EvalCaseEnvironment, EvalTestCaseContent } from '@lobechat/types';
 import type { Command } from 'commander';
 import { InvalidArgumentError } from 'commander';
 import pc from 'picocolors';
@@ -584,11 +583,10 @@ export function registerEvalCommand(program: Command) {
           options,
           async () => {
             const client = await getTrpcClient();
-            const content: EvalTestCaseContent = { input: options.input };
+            const content: Record<string, unknown> = { input: options.input };
             if (options.expected) content.expected = options.expected;
             if (options.category) content.category = options.category;
-            if (options.environment)
-              content.environment = options.environment as EvalCaseEnvironment;
+            if (options.environment) content.environment = options.environment;
 
             const input: Record<string, any> = { content, datasetId: options.datasetId };
             if (options.caseId) input.metadata = { caseId: options.caseId };
@@ -633,8 +631,7 @@ export function registerEvalCommand(program: Command) {
             if (options.input) content.input = options.input;
             if (options.expected) content.expected = options.expected;
             if (options.category) content.category = options.category;
-            if (options.environment)
-              content.environment = options.environment as EvalCaseEnvironment;
+            if (options.environment) content.environment = options.environment;
             if (Object.keys(content).length > 0) input.content = content;
             if (options.sortOrder) input.sortOrder = Number.parseInt(options.sortOrder, 10);
             return client.agentEval.updateTestCase.mutate(input as any);

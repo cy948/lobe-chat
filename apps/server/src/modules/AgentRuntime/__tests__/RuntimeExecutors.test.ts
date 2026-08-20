@@ -138,9 +138,6 @@ vi.mock('@/envs/file', () => ({
   fileEnv: { NEXT_PUBLIC_S3_FILE_PATH: 'files' },
 }));
 
-const { mockSsrfSafeFetch } = vi.hoisted(() => ({ mockSsrfSafeFetch: vi.fn() }));
-vi.mock('@lobechat/ssrf-safe-fetch', () => ({ ssrfSafeFetch: mockSsrfSafeFetch }));
-
 // FileService is constructed by the runtime to persist model-generated images.
 // `mockUploadBase64` is the spy multimodal-image tests assert against.
 const { mockUploadBase64 } = vi.hoisted(() => ({ mockUploadBase64: vi.fn() }));
@@ -201,7 +198,6 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
     mockRegisterTask.mockResolvedValue({ id: 'work-1' });
     mockFindPlanDocuments.mockReset();
     mockFindPlanDocuments.mockResolvedValue([]);
-    mockSsrfSafeFetch.mockReset();
     vi.mocked(initModelRuntimeFromDB).mockReset();
     mockCreateCompressionGroup.mockReset();
     mockCancelCompression.mockReset();
@@ -5747,9 +5743,10 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
       it('should skip real execution when beforeToolCall returns mock', async () => {
         const mockDispatcher = {
           dispatch: vi.fn().mockResolvedValue(undefined),
-          dispatchBeforeToolCall: vi
-            .fn()
-            .mockResolvedValue({ content: '{"mocked":true}', isMocked: true }),
+          dispatchBeforeToolCall: vi.fn().mockResolvedValue({
+            isMocked: true,
+            result: { content: '{"mocked":true}', success: true },
+          }),
         };
 
         const ctxWithHooks = { ...ctx, hookDispatcher: mockDispatcher as any };
@@ -5777,91 +5774,29 @@ describe('RuntimeExecutors', { timeout: 60_000 }, () => {
         );
       });
 
-      it('forwards matching eval tools from a reconstructed worker context', async () => {
-        const timeoutSpy = vi.spyOn(global, 'setTimeout');
-        mockSsrfSafeFetch.mockResolvedValue(
-          new Response(JSON.stringify({ content: 'fixture result', success: true })),
-        );
-        const executors = createRuntimeExecutors({
-          ...ctx,
-          evalContext: {
-            toolForwarding: {
-              twitter: { endpoint: 'https://mock.test/tool-calls' },
-            },
-          },
-        });
+      it('should preserve failed mock results without executing the real tool', async () => {
+        const mockDispatcher = {
+          dispatch: vi.fn().mockResolvedValue(undefined),
+          dispatchBeforeToolCall: vi.fn().mockResolvedValue({
+            isMocked: true,
+            result: { content: 'fixture error', error: 'fixture error', success: false },
+          }),
+        };
 
-        await executors.call_tool!(
+        await createRuntimeExecutors({ ...ctx, hookDispatcher: mockDispatcher as any }).call_tool!(
           createToolInstruction(),
-          createToolState({
-            metadata: { agentId: 'agent-123', topicId: 'topic-123', trigger: 'eval' },
-          }),
-        );
-
-        expect(mockSsrfSafeFetch).toHaveBeenCalledWith(
-          'https://mock.test/tool-calls',
-          expect.objectContaining({ method: 'POST' }),
-        );
-        expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Function), 15_000);
-        expect(JSON.parse(mockSsrfSafeFetch.mock.calls[0][1].body)).toEqual(
-          expect.objectContaining({
-            apiName: 'search_tweets',
-            arguments: '{"query":"test"}',
-            id: 'tc-1',
-            identifier: 'twitter',
-          }),
-        );
-        expect(mockToolExecutionService.executeTool).not.toHaveBeenCalled();
-        expect(mockMessageModel.create).toHaveBeenCalledWith(
-          expect.objectContaining({ content: 'fixture result', role: 'tool' }),
-        );
-      });
-
-      it('does not forward unmatched eval tools', async () => {
-        const executors = createRuntimeExecutors({
-          ...ctx,
-          evalContext: {
-            toolForwarding: {
-              'other-tool': { endpoint: 'https://mock.test/tool-calls' },
-            },
-          },
-        });
-
-        await executors.call_tool!(
-          createToolInstruction(),
-          createToolState({
-            metadata: { agentId: 'agent-123', topicId: 'topic-123', trigger: 'eval' },
-          }),
-        );
-
-        expect(mockSsrfSafeFetch).not.toHaveBeenCalled();
-        expect(mockToolExecutionService.executeTool).toHaveBeenCalledOnce();
-      });
-
-      it('returns a handled failed result when forwarding fails', async () => {
-        mockSsrfSafeFetch.mockRejectedValue(new Error('SSRF blocked'));
-        const executors = createRuntimeExecutors({
-          ...ctx,
-          evalContext: {
-            toolForwarding: {
-              twitter: { endpoint: 'https://mock.test/tool-calls' },
-            },
-          },
-        });
-
-        await executors.call_tool!(
-          createToolInstruction(),
-          createToolState({
-            metadata: { agentId: 'agent-123', topicId: 'topic-123', trigger: 'eval' },
-          }),
+          createToolState(),
         );
 
         expect(mockToolExecutionService.executeTool).not.toHaveBeenCalled();
         expect(mockMessageModel.create).toHaveBeenCalledWith(
-          expect.objectContaining({
-            content: expect.stringContaining('SSRF blocked'),
-            role: 'tool',
-          }),
+          expect.objectContaining({ content: 'fixture error', role: 'tool' }),
+        );
+        expect(mockDispatcher.dispatch).toHaveBeenCalledWith(
+          'op-123',
+          'afterToolCall',
+          expect.objectContaining({ mocked: true, success: false }),
+          undefined,
         );
       });
 

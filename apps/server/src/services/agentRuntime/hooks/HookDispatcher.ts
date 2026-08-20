@@ -1,3 +1,4 @@
+import type { ToolRunResult } from '@lobechat/agent-runtime';
 import debug from 'debug';
 import urlJoin from 'url-join';
 
@@ -210,28 +211,20 @@ export class HookDispatcher {
     operationId: string,
     event: Omit<ToolCallHookEvent, 'mock' | 'operationId'>,
   ): Promise<{
-    content: string;
     isMocked: true;
+    result: ToolRunResult;
   } | null> {
     const hooks = this.hooks.get(operationId)?.filter((h) => h.type === 'beforeToolCall') || [];
     if (hooks.length === 0) return null;
 
     let isMocked = false;
-    let mockedResult: { content: string } | undefined;
+    let mockedResult: ToolRunResult | undefined;
 
     const toolCallEvent: ToolCallHookEvent = {
       ...event,
       mock: (result) => {
-        // Only accept non-empty string content
-        if (typeof result?.content === 'string' && result.content.length > 0) {
-          isMocked = true;
-          mockedResult = result;
-        } else {
-          log(
-            '[%s][beforeToolCall] mock() called with invalid content (must be non-empty string), ignoring',
-            operationId,
-          );
-        }
+        isMocked = true;
+        mockedResult = result;
       },
       operationId,
     };
@@ -245,7 +238,7 @@ export class HookDispatcher {
       }
     }
 
-    return isMocked && mockedResult ? { ...mockedResult, isMocked: true } : null;
+    return isMocked && mockedResult ? { isMocked: true, result: mockedResult } : null;
   }
 
   /**
@@ -269,6 +262,10 @@ export class HookDispatcher {
    */
   hasHooks(operationId: string): boolean {
     return (this.hooks.get(operationId)?.length ?? 0) > 0;
+  }
+
+  hasHook(operationId: string, hookId: string): boolean {
+    return this.hooks.get(operationId)?.some((hook) => hook.id === hookId) ?? false;
   }
 
   /**

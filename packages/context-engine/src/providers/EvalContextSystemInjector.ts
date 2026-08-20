@@ -13,6 +13,7 @@ declare module '../types' {
 const log = debug('context-engine:provider:EvalContextSystemInjector');
 
 export interface EvalContext {
+  caseId?: string;
   envPrompt?: string;
   toolForwarding?: EvalToolForwardingConfig;
 }

@@ -9,6 +9,7 @@ import type {
   EvalRunInputConfig,
   EvalRunMetrics,
   EvalRunTopicResult,
+  EvalTestCaseMetadata,
   EvalThreadResult,
   RubricType,
 } from '@lobechat/types';
@@ -41,10 +42,22 @@ const EVAL_AGENT_RUNTIME_QSTASH_RETRIES = 5;
 const EVAL_AGENT_RUNTIME_QSTASH_RETRY_DELAY = '10000 * (1 + retried)';
 const RESUMABLE_THREAD_STATUSES = new Set(['error', 'timeout']);
 
-const getEvalContextParams = (envPrompt?: string, environment?: EvalCaseEnvironment) =>
-  envPrompt || environment
-    ? { evalContext: { envPrompt, toolForwarding: environment?.toolForwarding } }
+const getEvalContextParams = (
+  envPrompt?: string,
+  environment?: EvalCaseEnvironment,
+  caseId?: string,
+) =>
+  envPrompt || environment || caseId
+    ? {
+        evalContext: {
+          ...(caseId && { caseId }),
+          envPrompt,
+          toolForwarding: environment?.toolForwarding,
+        },
+      }
     : {};
+
+const getCaseId = (metadata?: EvalTestCaseMetadata | null) => metadata?.caseId;
 
 /** Thrown when a caller-supplied run id exists with non-equivalent create params. */
 export const RUN_CREATE_ID_CONFLICT = 'Run id already exists with different create parameters';
@@ -533,7 +546,7 @@ export class AgentEvalRunService {
     }
 
     const target = await this.resolveTrajectoryResumeTarget(params);
-    const { envPrompt, environment, parentMessageId, run, thread, topicId } = target;
+    const { caseId, envPrompt, environment, parentMessageId, run, thread, topicId } = target;
     log(
       'resumeTrajectory: resolved target — topicId=%s parentMessageId=%s threadId=%s',
       topicId,
@@ -545,6 +558,7 @@ export class AgentEvalRunService {
       log('resumeTrajectory: triggering resume-thread-trajectory');
       await AgentEvalRunWorkflow.triggerResumeThreadTrajectory({
         appContext: { threadId: thread.id, topicId },
+        caseId,
         envPrompt,
         maxSteps: run.config?.maxSteps,
         parentMessageId,
@@ -560,6 +574,7 @@ export class AgentEvalRunService {
       log('resumeTrajectory: triggering resume-agent-trajectory');
       await AgentEvalRunWorkflow.triggerResumeAgentTrajectory({
         appContext: { topicId },
+        caseId,
         envPrompt,
         maxSteps: run.config?.maxSteps,
         parentMessageId,
@@ -723,7 +738,7 @@ export class AgentEvalRunService {
             },
           },
         ],
-        ...getEvalContextParams(envPrompt, environment),
+        ...getEvalContextParams(envPrompt, environment, params.caseId),
         initialStepCount: prevSteps,
         maxSteps,
         parentMessageId,
@@ -771,6 +786,7 @@ export class AgentEvalRunService {
   async executeResumedThreadTrajectory(params: ResumeThreadTrajectoryPayload) {
     const {
       appContext,
+      caseId,
       envPrompt,
       maxSteps,
       parentMessageId,
@@ -869,7 +885,7 @@ export class AgentEvalRunService {
             },
           },
         ],
-        ...getEvalContextParams(envPrompt, environment),
+        ...getEvalContextParams(envPrompt, environment, caseId),
         initialStepCount: prevSteps,
         maxSteps,
         parentMessageId,
@@ -928,7 +944,7 @@ export class AgentEvalRunService {
       throw new Error(loaded.error);
     }
 
-    const { envPrompt, environment, run } = loaded;
+    const { envPrompt, environment, run, testCase } = loaded;
     const runTopic = await this.runTopicModel.findByRunAndTestCase(params.runId, params.testCaseId);
     if (!runTopic?.topicId) throw new Error('RunTopic topicId is required');
 
@@ -971,6 +987,7 @@ export class AgentEvalRunService {
       appContext: thread
         ? { threadId: thread.id, topicId: runTopic.topicId }
         : { topicId: runTopic.topicId },
+      caseId: getCaseId(testCase.metadata),
       envPrompt,
       parentMessageId,
       run,
@@ -1095,7 +1112,11 @@ export class AgentEvalRunService {
       targetAgentId?: string | null;
     };
     runId: string;
-    testCase: { content: { input?: string }; sortOrder?: number | null };
+    testCase: {
+      content: { input?: string };
+      metadata?: EvalTestCaseMetadata | null;
+      sortOrder?: number | null;
+    };
     testCaseId: string;
     environment?: EvalCaseEnvironment;
   }) {
@@ -1124,12 +1145,17 @@ export class AgentEvalRunService {
       targetAgentId?: string | null;
     };
     runId: string;
-    testCase: { content: { input?: string }; sortOrder?: number | null };
+    testCase: {
+      content: { input?: string };
+      metadata?: EvalTestCaseMetadata | null;
+      sortOrder?: number | null;
+    };
     testCaseId: string;
     topicId: string;
     environment?: EvalCaseEnvironment;
   }) {
     const { envPrompt, environment, run, runId, testCaseId, topicId } = params;
+    const caseId = getCaseId(params.testCase.metadata);
 
     // Update status from 'pending' to 'running'
     await this.runTopicModel.updateByRunAndTopic(runId, topicId, { status: 'running' });
@@ -1179,7 +1205,7 @@ export class AgentEvalRunService {
             },
           },
         ],
-        ...getEvalContextParams(envPrompt, environment),
+        ...getEvalContextParams(envPrompt, environment, caseId),
         maxSteps: run.config?.maxSteps,
         prompt: params.testCase.content.input || '',
         queueRetries: EVAL_AGENT_RUNTIME_QSTASH_RETRIES,
@@ -1316,6 +1342,7 @@ export class AgentEvalRunService {
       runId,
       testCase: {
         content: { ...testCase.content, input: params.prompt ?? testCase.content.input },
+        metadata: testCase.metadata,
         sortOrder: testCase.sortOrder,
       },
       testCaseId,
@@ -1400,13 +1427,18 @@ export class AgentEvalRunService {
       targetAgentId?: string | null;
     };
     runId: string;
-    testCase: { content: { input?: string }; sortOrder?: number | null };
+    testCase: {
+      content: { input?: string };
+      metadata?: EvalTestCaseMetadata | null;
+      sortOrder?: number | null;
+    };
     testCaseId: string;
     threadId: string;
     topicId: string;
     environment?: EvalCaseEnvironment;
   }) {
     const { envPrompt, environment, run, runId, testCaseId, threadId, topicId } = params;
+    const caseId = getCaseId(params.testCase.metadata);
 
     const aiAgentService = new AiAgentService(this.db, this.userId, {
       workspaceId: this.workspaceId,
@@ -1453,7 +1485,7 @@ export class AgentEvalRunService {
             },
           },
         ],
-        ...getEvalContextParams(envPrompt, environment),
+        ...getEvalContextParams(envPrompt, environment, caseId),
         maxSteps: run.config?.maxSteps,
         prompt: params.testCase.content.input || '',
         queueRetries: EVAL_AGENT_RUNTIME_QSTASH_RETRIES,

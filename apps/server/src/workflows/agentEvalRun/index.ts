@@ -50,6 +50,7 @@ export interface RunAgentTrajectoryPayload {
 
 export interface ResumeAgentTrajectoryPayload {
   appContext: { topicId: string };
+  caseId?: string;
   environment?: EvalCaseEnvironment;
   envPrompt?: string;
   maxSteps?: number;
@@ -93,6 +94,7 @@ export interface RunThreadTrajectoryPayload {
 
 export interface ResumeThreadTrajectoryPayload {
   appContext: { threadId: string; topicId: string };
+  caseId?: string;
   environment?: EvalCaseEnvironment;
   envPrompt?: string;
   maxSteps?: number;

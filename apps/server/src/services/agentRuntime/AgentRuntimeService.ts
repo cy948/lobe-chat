@@ -5,6 +5,10 @@ import type {
   AgentRuntimeContext,
   AgentState,
   GeneralAgentConfig,
+  ToolCallHookEvent,
+  ToolForwardingRequest,
+  ToolForwardingResponse,
+  ToolRunResult,
 } from '@lobechat/agent-runtime';
 import {
   AgentRuntime,
@@ -29,13 +33,16 @@ import {
   invokeAgentSpanName,
   tracer as agentRuntimeTracer,
 } from '@lobechat/observability-otel/modules/agent-runtime';
+import { ssrfSafeFetch } from '@lobechat/ssrf-safe-fetch';
 import {
   type ChatToolPayload,
+  type EvalToolForwardingConfig,
   type ExecSubAgentParams,
   type ExecSubAgentResult,
   type ExecVirtualSubAgentParams,
   type UIChatMessage,
 } from '@lobechat/types';
+import { RequestTrigger } from '@lobechat/types';
 import debug from 'debug';
 import urlJoin from 'url-join';
 
@@ -72,7 +79,7 @@ import {
   normalizeCompletionMessages,
 } from './CompletionLifecycle';
 import { logToolCallPc } from './formalObservation';
-import { hookDispatcher } from './hooks';
+import { type AgentHook, hookDispatcher } from './hooks';
 import { HumanInterventionHandler } from './HumanInterventionHandler';
 import { OperationTraceRecorder } from './OperationTraceRecorder';
 import { createDefaultSnapshotStore } from './snapshotStore';
@@ -127,6 +134,52 @@ const ASYNC_TOOL_VERIFY_MAX_DELAY_MS = 240_000;
 
 const STEP_LOCK_TTL_SECONDS = 120;
 const STEP_LOCK_HEARTBEAT_MS = 30_000;
+const EVAL_TOOL_FORWARDING_HOOK_ID = 'eval-tool-forwarding';
+
+const toToolForwardingFailure = (error?: unknown): ToolRunResult => ({
+  content: error === undefined ? 'Tool forwarding failed' : String(error),
+  error,
+  success: false,
+});
+
+export const createEvalToolForwardingHook = (
+  toolForwarding: EvalToolForwardingConfig,
+  caseId?: string,
+): AgentHook => ({
+  handler: async (event) => {
+    const { apiName, args, callIndex, identifier, mock, operationId, stepIndex } =
+      event as unknown as ToolCallHookEvent;
+    const target = toolForwarding[identifier];
+    if (!target) return;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), target.timeoutMs ?? 15_000);
+
+    try {
+      const payload: ToolForwardingRequest = {
+        data: { apiName, args, identifier },
+        metadata: { ...(caseId && { caseId }), callIndex, operationId, stepIndex },
+        type: 'toolCall',
+      };
+      const response = await ssrfSafeFetch(target.endpoint, {
+        body: JSON.stringify(payload),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        signal: controller.signal,
+      });
+      if (!response.ok) throw `Tool forwarding server responded with HTTP ${response.status}`;
+
+      const body = (await response.json()) as ToolForwardingResponse;
+      mock(body.success ? body.data : toToolForwardingFailure(body.error));
+    } catch (error) {
+      mock(toToolForwardingFailure(error));
+    } finally {
+      clearTimeout(timeout);
+    }
+  },
+  id: EVAL_TOOL_FORWARDING_HOOK_ID,
+  type: 'beforeToolCall',
+});
 
 /**
  * Exponential backoff delay for the Nth (1-based) watchdog re-check:
@@ -2776,6 +2829,19 @@ export class AgentRuntimeService {
       operationId,
       userId: metadata?.userId,
     };
+
+    if (
+      metadata?.trigger === RequestTrigger.Eval &&
+      metadata.evalContext?.toolForwarding &&
+      !hookDispatcher.hasHook(operationId, EVAL_TOOL_FORWARDING_HOOK_ID)
+    ) {
+      hookDispatcher.register(operationId, [
+        createEvalToolForwardingHook(
+          metadata.evalContext.toolForwarding,
+          metadata.evalContext.caseId,
+        ),
+      ]);
+    }
 
     const agent = this.agentFactory
       ? this.agentFactory(generalConfig)

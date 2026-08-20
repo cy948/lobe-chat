@@ -276,6 +276,28 @@ describe('AgentEvalRunService', () => {
       );
     });
 
+    it('should pass the dataset case id through evalContext', async () => {
+      const { run, testCase } = await setupTrajectoryChain();
+
+      mockExecAgent.mockResolvedValue({ operationId: 'op-case-id' });
+
+      const service = new AgentEvalRunService(serverDB, userId);
+      await service.executeTrajectory({
+        run: { datasetId: run.datasetId, targetAgentId: null },
+        runId: run.id,
+        testCase: {
+          content: { input: 'What is 6*7?' },
+          metadata: { caseId: 'case-42' },
+          sortOrder: testCase.sortOrder,
+        },
+        testCaseId: testCase.id,
+      });
+
+      expect(mockExecAgent).toHaveBeenCalledWith(
+        expect.objectContaining({ evalContext: { caseId: 'case-42' } }),
+      );
+    });
+
     it('should not include evalContext when envPrompt is undefined', async () => {
       const { run, testCase } = await setupTrajectoryChain();
 

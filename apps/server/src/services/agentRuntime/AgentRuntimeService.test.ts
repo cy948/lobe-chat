@@ -7,8 +7,9 @@ import type { MockInstance } from 'vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentOperationModel } from '@/database/models/agentOperation';
+import { appEnv } from '@/envs/app';
 
-import { AgentRuntimeService } from './AgentRuntimeService';
+import { AgentRuntimeService, createEvalToolForwardingHook } from './AgentRuntimeService';
 import { hookDispatcher } from './hooks';
 import {
   type AgentExecutionParams,
@@ -28,6 +29,9 @@ vi.mock('@lobechat/model-runtime', () => ({
   getErrorCodeSpec: () => undefined,
   refineErrorCode: () => undefined,
 }));
+
+const { ssrfSafeFetch: mockSsrfSafeFetch } = vi.hoisted(() => ({ ssrfSafeFetch: vi.fn() }));
+vi.mock('@lobechat/ssrf-safe-fetch', () => ({ ssrfSafeFetch: mockSsrfSafeFetch }));
 
 // Mock trusted client to avoid server-side env access
 vi.mock('@/libs/trusted-client', () => ({
@@ -246,11 +250,105 @@ describe('AgentRuntimeService', () => {
     hookDispatcher.unregister('test-operation-1');
   });
 
+  describe('eval tool forwarding hook', () => {
+    const event = {
+      apiName: 'search_tweets',
+      args: { query: 'test' },
+      callIndex: 2,
+      identifier: 'twitter',
+      mock: vi.fn(),
+      operationId: 'op-forwarding',
+      stepIndex: 3,
+    };
+
+    beforeEach(() => {
+      event.mock.mockReset();
+      mockSsrfSafeFetch.mockReset();
+    });
+
+    it('forwards the beforeToolCall payload and preserves the returned tool result', async () => {
+      const timeoutSpy = vi.spyOn(global, 'setTimeout');
+      const result = { content: 'fixture result', state: { source: 'mock' }, success: true };
+      mockSsrfSafeFetch.mockResolvedValue(
+        new Response(JSON.stringify({ data: result, success: true })),
+      );
+      const hook = createEvalToolForwardingHook({
+        twitter: { endpoint: 'https://mock.test/tool-calls' },
+      });
+
+      await hook.handler(event as any);
+
+      expect(mockSsrfSafeFetch).toHaveBeenCalledWith(
+        'https://mock.test/tool-calls',
+        expect.objectContaining({ method: 'POST' }),
+      );
+      expect(JSON.parse(mockSsrfSafeFetch.mock.calls[0][1].body)).toEqual({
+        data: { apiName: 'search_tweets', args: { query: 'test' }, identifier: 'twitter' },
+        metadata: { callIndex: 2, operationId: 'op-forwarding', stepIndex: 3 },
+        type: 'toolCall',
+      });
+      expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Function), 15_000);
+      expect(event.mock).toHaveBeenCalledWith(result);
+      timeoutSpy.mockRestore();
+    });
+
+    it('includes the dataset case id in forwarding metadata', async () => {
+      const result = { content: 'fixture result', success: true };
+      mockSsrfSafeFetch.mockResolvedValue(
+        new Response(JSON.stringify({ data: result, success: true })),
+      );
+      const hook = createEvalToolForwardingHook(
+        { twitter: { endpoint: 'https://mock.test/tool-calls' } },
+        'case-42',
+      );
+
+      await hook.handler(event as any);
+
+      expect(JSON.parse(mockSsrfSafeFetch.mock.calls[0][1].body)).toMatchObject({
+        metadata: { caseId: 'case-42' },
+      });
+    });
+
+    it('mocks a failed result without executing the real tool', async () => {
+      mockSsrfSafeFetch.mockResolvedValue(
+        new Response(JSON.stringify({ error: 'fixture unavailable', success: false })),
+      );
+      const hook = createEvalToolForwardingHook({
+        twitter: { endpoint: 'https://mock.test/tool-calls' },
+      });
+
+      await hook.handler(event as any);
+
+      expect(event.mock).toHaveBeenCalledWith({
+        content: 'fixture unavailable',
+        error: 'fixture unavailable',
+        success: false,
+      });
+    });
+
+    it('mocks transport failures', async () => {
+      mockSsrfSafeFetch.mockRejectedValue('SSRF blocked');
+      const hook = createEvalToolForwardingHook({
+        twitter: { endpoint: 'https://mock.test/tool-calls' },
+      });
+
+      await hook.handler(event as any);
+
+      expect(event.mock).toHaveBeenCalledWith({
+        content: 'SSRF blocked',
+        error: 'SSRF blocked',
+        success: false,
+      });
+    });
+  });
+
   describe('constructor', () => {
-    it('should initialize with default base URL', () => {
+    it('should initialize with the configured base URL', () => {
       delete process.env.AGENT_RUNTIME_BASE_URL;
       const newService = new AgentRuntimeService(mockDb, mockUserId);
-      expect((newService as any).baseURL).toBe('http://localhost:3210/api/agent');
+      expect((newService as any).baseURL).toBe(
+        `${appEnv.APP_URL || 'http://localhost:3010'}/api/agent`,
+      );
     });
 
     it('should initialize with custom base URL from environment', () => {

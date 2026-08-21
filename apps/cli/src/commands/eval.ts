@@ -124,21 +124,6 @@ const parseJsonObject = (option: string) => (value: string) => {
   return parsed;
 };
 
-const parseMessagesFile = async (path: string) => {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(await readFile(path, 'utf8'));
-  } catch {
-    throw new InvalidArgumentError('--messages-file must contain a JSON array');
-  }
-
-  if (!Array.isArray(parsed)) {
-    throw new InvalidArgumentError('--messages-file must contain a JSON array');
-  }
-
-  return parsed;
-};
-
 const RUN_SET_STATUSES = ['running', 'completed', 'external', 'failed', 'aborted'] as const;
 type RunSetStatus = (typeof RUN_SET_STATUSES)[number];
 
@@ -604,7 +589,9 @@ export function registerEvalCommand(program: Command) {
             if (options.expected) content.expected = options.expected;
             if (options.category) content.category = options.category;
             if (options.environment) content.environment = options.environment;
-            if (options.messagesFile) content.messages = await parseMessagesFile(options.messagesFile);
+            if (options.messagesFile) {
+              content.messages = JSON.parse(await readFile(options.messagesFile, 'utf8'));
+            }
 
             const input: Record<string, any> = { content, datasetId: options.datasetId };
             if (options.caseId) input.metadata = { caseId: options.caseId };
@@ -652,7 +639,9 @@ export function registerEvalCommand(program: Command) {
             if (options.expected) content.expected = options.expected;
             if (options.category) content.category = options.category;
             if (options.environment) content.environment = options.environment;
-            if (options.messagesFile) content.messages = await parseMessagesFile(options.messagesFile);
+            if (options.messagesFile) {
+              content.messages = JSON.parse(await readFile(options.messagesFile, 'utf8'));
+            }
             if (Object.keys(content).length > 0) input.content = content;
             if (options.sortOrder) input.sortOrder = Number.parseInt(options.sortOrder, 10);
             return client.agentEval.updateTestCase.mutate(input as any);

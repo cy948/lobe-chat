@@ -174,13 +174,15 @@ export const createEvalToolForwardingHook = (
 
       if (body.success === true) {
         const result = body.data;
-        mock(
+        if (
           isRecord(result) &&
-            typeof result.content === 'string' &&
-            typeof result.success === 'boolean'
-            ? (result as ToolRunResult)
-            : { content: 'No tool result', success: true },
-        );
+          typeof result.content === 'string' &&
+          typeof result.success === 'boolean'
+        ) {
+          mock({ ...result, content: result.content, success: result.success });
+        } else {
+          mock({ content: 'No tool result', success: true });
+        }
       } else {
         mock(toToolForwardingFailure(body.error));
       }

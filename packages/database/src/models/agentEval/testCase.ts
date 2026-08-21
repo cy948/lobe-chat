@@ -128,9 +128,16 @@ export class AgentEvalTestCaseModel {
    * Update test case
    */
   update = async (id: string, value: Partial<Omit<NewAgentEvalTestCase, 'userId'>>) => {
+    const { content, ...data } = value;
     const [result] = await this.db
       .update(agentEvalTestCases)
-      .set({ ...value, updatedAt: new Date() })
+      .set({
+        ...data,
+        ...(content !== undefined && {
+          content: sql`COALESCE(${agentEvalTestCases.content}, '{}'::jsonb) || ${JSON.stringify(content)}::jsonb`,
+        }),
+        updatedAt: new Date(),
+      })
       .where(and(eq(agentEvalTestCases.id, id), this.ownership()))
       .returning();
     return result;

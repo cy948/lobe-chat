@@ -326,6 +326,45 @@ describe('AgentRuntimeService', () => {
       });
     });
 
+    it('mocks a placeholder when a successful response has no tool result', async () => {
+      mockSsrfSafeFetch.mockResolvedValue(new Response(JSON.stringify({ success: true })));
+      const hook = createEvalToolForwardingHook({
+        twitter: { endpoint: 'https://mock.test/tool-calls' },
+      });
+
+      await hook.handler(event as any);
+
+      expect(event.mock).toHaveBeenCalledWith({ content: 'No tool result', success: true });
+    });
+
+    it('mocks a placeholder when a successful response has an invalid tool result', async () => {
+      mockSsrfSafeFetch.mockResolvedValue(
+        new Response(JSON.stringify({ data: { content: 1, success: true }, success: true })),
+      );
+      const hook = createEvalToolForwardingHook({
+        twitter: { endpoint: 'https://mock.test/tool-calls' },
+      });
+
+      await hook.handler(event as any);
+
+      expect(event.mock).toHaveBeenCalledWith({ content: 'No tool result', success: true });
+    });
+
+    it('mocks a failed result when the forwarding response is not JSON', async () => {
+      mockSsrfSafeFetch.mockResolvedValue(new Response('not-json'));
+      const hook = createEvalToolForwardingHook({
+        twitter: { endpoint: 'https://mock.test/tool-calls' },
+      });
+
+      await hook.handler(event as any);
+
+      expect(event.mock).toHaveBeenCalledWith({
+        content: expect.stringContaining('SyntaxError'),
+        error: expect.any(SyntaxError),
+        success: false,
+      });
+    });
+
     it('mocks transport failures', async () => {
       mockSsrfSafeFetch.mockRejectedValue('SSRF blocked');
       const hook = createEvalToolForwardingHook({

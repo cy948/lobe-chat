@@ -7,7 +7,6 @@ import type {
   GeneralAgentConfig,
   ToolCallHookEvent,
   ToolForwardingRequest,
-  ToolForwardingResponse,
   ToolRunResult,
 } from '@lobechat/agent-runtime';
 import {
@@ -43,6 +42,7 @@ import {
   type UIChatMessage,
 } from '@lobechat/types';
 import { RequestTrigger } from '@lobechat/types';
+import { isRecord } from '@lobechat/utils/object';
 import debug from 'debug';
 import urlJoin from 'url-join';
 
@@ -169,8 +169,21 @@ export const createEvalToolForwardingHook = (
       });
       if (!response.ok) throw `Tool forwarding server responded with HTTP ${response.status}`;
 
-      const body = (await response.json()) as ToolForwardingResponse;
-      mock(body.success ? body.data : toToolForwardingFailure(body.error));
+      const body: unknown = await response.json();
+      if (!isRecord(body)) throw new Error('Invalid tool forwarding response');
+
+      if (body.success === true) {
+        const result = body.data;
+        mock(
+          isRecord(result) &&
+            typeof result.content === 'string' &&
+            typeof result.success === 'boolean'
+            ? (result as ToolRunResult)
+            : { content: 'No tool result', success: true },
+        );
+      } else {
+        mock(toToolForwardingFailure(body.error));
+      }
     } catch (error) {
       mock(toToolForwardingFailure(error));
     } finally {

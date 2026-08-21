@@ -3,6 +3,8 @@
  * Defines test cases, run configurations, and metadata for agent evaluation
  */
 
+import type { ImportedMessage } from '../export';
+
 export type { RubricType as EvalMode } from './rubric';
 
 export interface EvalConfig {
@@ -34,6 +36,8 @@ export interface EvalTestCaseContent {
   environment?: EvalCaseEnvironment;
   expected?: string;
   input: string;
+  /** Conversation history restored into the eval topic before `input` is sent. */
+  messages?: ImportedMessage[];
 }
 
 /**

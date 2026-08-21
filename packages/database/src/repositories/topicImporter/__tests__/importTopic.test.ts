@@ -59,6 +59,54 @@ describe('TopicImporterRepo.importTopic', () => {
     });
   });
 
+  describe('restoreMessages', () => {
+    it('should restore messages into an existing topic and return the restored tail', async () => {
+      const repo = new TopicImporterRepo(serverDB, userId);
+      const [topic] = await serverDB
+        .insert(topics)
+        .values({ agentId, title: 'Existing Topic', userId })
+        .returning();
+
+      const result = await repo.restoreMessages({
+        agentId,
+        messages: [
+          { content: 'Previous question', id: 'source-user', role: 'user' },
+          {
+            content: 'Previous answer',
+            id: 'source-assistant',
+            parentId: 'source-user',
+            role: 'assistant',
+          },
+          {
+            content: 'Approval required',
+            parentId: 'source-assistant',
+            pluginIntervention: { status: 'pending' },
+            role: 'tool',
+          },
+        ],
+        topicId: topic.id,
+      });
+
+      const restored = await serverDB
+        .select()
+        .from(messages)
+        .where(eq(messages.topicId, topic.id))
+        .orderBy(messages.createdAt);
+
+      const [plugin] = await serverDB
+        .select()
+        .from(messagePlugins)
+        .where(eq(messagePlugins.id, restored[2].id));
+
+      expect(result.messageCount).toBe(3);
+      expect(result.lastMessageId).toBe(restored[2].id);
+      expect(restored[1].parentId).toBe(restored[0].id);
+      expect(restored[2].parentId).toBe(restored[1].id);
+      expect(plugin).toBeDefined();
+      expect(plugin!.intervention).toEqual({ status: 'pending' });
+    });
+  });
+
   describe('full format (ExportedTopic with parentId)', () => {
     it('should restore parentId chain from real exported data', async () => {
       const repo = new TopicImporterRepo(serverDB, userId);

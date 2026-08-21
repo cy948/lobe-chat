@@ -27,6 +27,7 @@ import {
 import { MessageModel } from '@/database/models/message';
 import { ThreadModel } from '@/database/models/thread';
 import { TopicModel } from '@/database/models/topic';
+import { TopicImporterRepo } from '@/database/repositories/topicImporter';
 import { AgentService } from '@/server/services/agent';
 import { AgentRuntimeService } from '@/server/services/agentRuntime/AgentRuntimeService';
 import { AiAgentService } from '@/server/services/aiAgent';
@@ -40,6 +41,7 @@ import {
 const roundCost = (v: number): number => Math.round(v * 1e6) / 1e6;
 const EVAL_AGENT_RUNTIME_QSTASH_RETRIES = 5;
 const EVAL_AGENT_RUNTIME_QSTASH_RETRY_DELAY = '10000 * (1 + retried)';
+const EVAL_HISTORY_TAIL_METADATA_KEY = 'evalHistoryTailMessageId';
 const RESUMABLE_THREAD_STATUSES = new Set(['error', 'timeout']);
 
 const getEvalContextParams = (
@@ -120,6 +122,7 @@ export class AgentEvalRunService {
   private readonly messageModel: MessageModel;
   private readonly threadModel: ThreadModel;
   private readonly topicModel: TopicModel;
+  private readonly topicImporterRepo: TopicImporterRepo;
   private readonly agentService: AgentService;
 
   private workspaceId?: string;
@@ -137,6 +140,7 @@ export class AgentEvalRunService {
     this.messageModel = new MessageModel(db, userId, workspaceId);
     this.threadModel = new ThreadModel(db, userId, workspaceId);
     this.topicModel = new TopicModel(db, userId, workspaceId);
+    this.topicImporterRepo = new TopicImporterRepo(db, userId, workspaceId);
     this.agentService = new AgentService(db, userId, workspaceId);
   }
 
@@ -282,6 +286,22 @@ export class AgentEvalRunService {
           title: `[Eval Case #${(tc.sortOrder ?? 0) + 1}] ${tc.content?.input?.slice(0, 50) || 'Test Case'}...`,
           trigger: RequestTrigger.Eval,
         })),
+      );
+
+      await Promise.all(
+        createdTopics.map(async (topic, index) => {
+          const history = testCases[index].content.messages;
+          if (!history) return;
+
+          const { lastMessageId } = await this.topicImporterRepo.restoreMessages({
+            agentId: targetAgentId,
+            messages: history,
+            topicId: topic.id,
+          });
+          await this.topicModel.updateMetadata(topic.id, {
+            [EVAL_HISTORY_TAIL_METADATA_KEY]: lastMessageId,
+          });
+        }),
       );
 
       await this.runTopicModel.batchCreate(
@@ -1331,6 +1351,17 @@ export class AgentEvalRunService {
       },
     ]);
 
+    if (testCase.content.messages) {
+      const { lastMessageId } = await this.topicImporterRepo.restoreMessages({
+        agentId: run.targetAgentId,
+        messages: testCase.content.messages,
+        topicId: topic.id,
+      });
+      await this.topicModel.updateMetadata(topic.id, {
+        [EVAL_HISTORY_TAIL_METADATA_KEY]: lastMessageId,
+      });
+    }
+
     await this.runTopicModel.batchCreate([
       { runId, status: 'pending' as const, testCaseId, topicId: topic.id },
     ]);
@@ -1375,6 +1406,10 @@ export class AgentEvalRunService {
     }
 
     const topicId = runTopic.topicId;
+    const topic = await this.topicModel.findById(topicId);
+    const historyTailMessageId = topic?.metadata?.[EVAL_HISTORY_TAIL_METADATA_KEY];
+    const sourceMessageId =
+      typeof historyTailMessageId === 'string' ? historyTailMessageId : undefined;
 
     // Update status from 'pending' to 'running'
     await this.runTopicModel.updateByRunAndTopic(runId, topicId, { status: 'running' });
@@ -1383,6 +1418,7 @@ export class AgentEvalRunService {
     const threadIds: string[] = [];
     for (let i = 0; i < k; i++) {
       const thread = await this.threadModel.create({
+        sourceMessageId,
         topicId,
         type: 'eval',
       });

@@ -163,6 +163,41 @@ describe('eval command', () => {
     });
   });
 
+  describe('testcase', () => {
+    it('should create a test case with messages from a JSON file', async () => {
+      const tmpFile = path.join(os.tmpdir(), `eval-messages-${process.pid}.json`);
+      await writeFile(tmpFile, JSON.stringify([{ content: 'Earlier turn', role: 'user' }]));
+      mockTrpcClient.agentEval.createTestCase.mutate.mockResolvedValue({ id: 'case-1' });
+
+      try {
+        const program = createProgram();
+        await program.parseAsync([
+          'node',
+          'test',
+          'eval',
+          'testcase',
+          'create',
+          '--dataset-id',
+          'dataset-1',
+          '--input',
+          'Continue',
+          '--messages-file',
+          tmpFile,
+        ]);
+
+        expect(mockTrpcClient.agentEval.createTestCase.mutate).toHaveBeenCalledWith({
+          content: {
+            input: 'Continue',
+            messages: [{ content: 'Earlier turn', role: 'user' }],
+          },
+          datasetId: 'dataset-1',
+        });
+      } finally {
+        await rm(tmpFile, { force: true });
+      }
+    });
+  });
+
   // ============================================
   // Dataset tests
   // ============================================

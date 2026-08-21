@@ -124,6 +124,21 @@ const parseJsonObject = (option: string) => (value: string) => {
   return parsed;
 };
 
+const parseMessagesFile = async (path: string) => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(path, 'utf8'));
+  } catch {
+    throw new InvalidArgumentError('--messages-file must contain a JSON array');
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw new InvalidArgumentError('--messages-file must contain a JSON array');
+  }
+
+  return parsed;
+};
+
 const RUN_SET_STATUSES = ['running', 'completed', 'external', 'failed', 'aborted'] as const;
 type RunSetStatus = (typeof RUN_SET_STATUSES)[number];
 
@@ -559,6 +574,7 @@ export function registerEvalCommand(program: Command) {
     .requiredOption('--input <text>', 'Input text')
     .option('--expected <text>', 'Expected output')
     .option('--category <cat>', 'Category')
+    .option('--messages-file <path>', 'JSON file containing the prior message sequence')
     .option('--case-id <id>', 'Dataset-native case ID (stored in metadata.caseId)')
     .option(
       '--environment <json>',
@@ -576,6 +592,7 @@ export function registerEvalCommand(program: Command) {
           environment?: Record<string, unknown>;
           expected?: string;
           input: string;
+          messagesFile?: string;
           sortOrder?: string;
         },
       ) =>
@@ -587,6 +604,7 @@ export function registerEvalCommand(program: Command) {
             if (options.expected) content.expected = options.expected;
             if (options.category) content.category = options.category;
             if (options.environment) content.environment = options.environment;
+            if (options.messagesFile) content.messages = await parseMessagesFile(options.messagesFile);
 
             const input: Record<string, any> = { content, datasetId: options.datasetId };
             if (options.caseId) input.metadata = { caseId: options.caseId };
@@ -604,6 +622,7 @@ export function registerEvalCommand(program: Command) {
     .option('--input <text>', 'New input text')
     .option('--expected <text>', 'New expected output')
     .option('--category <cat>', 'New category')
+    .option('--messages-file <path>', 'JSON file containing the prior message sequence')
     .option(
       '--environment <json>',
       'Test case environment JSON object',
@@ -619,6 +638,7 @@ export function registerEvalCommand(program: Command) {
           environment?: Record<string, unknown>;
           id: string;
           input?: string;
+          messagesFile?: string;
           sortOrder?: string;
         },
       ) =>
@@ -632,6 +652,7 @@ export function registerEvalCommand(program: Command) {
             if (options.expected) content.expected = options.expected;
             if (options.category) content.category = options.category;
             if (options.environment) content.environment = options.environment;
+            if (options.messagesFile) content.messages = await parseMessagesFile(options.messagesFile);
             if (Object.keys(content).length > 0) input.content = content;
             if (options.sortOrder) input.sortOrder = Number.parseInt(options.sortOrder, 10);
             return client.agentEval.updateTestCase.mutate(input as any);

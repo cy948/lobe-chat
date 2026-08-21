@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentEvalBenchmarkModel, AgentEvalRunTopicModel } from '@/database/models/agentEval';
-import { agentEvalDatasets, agentEvalTestCases, topics } from '@/database/schemas';
+import { agentEvalDatasets, agentEvalTestCases, messages, threads, topics } from '@/database/schemas';
 import { AgentEvalRunService } from '@/server/services/agentEvalRun';
 
 import { cleanupDB, serverDB, userId } from './_setup';
@@ -11,6 +11,12 @@ vi.mock('@/server/services/agentRuntime/AgentRuntimeService', () => ({
   AgentRuntimeService: vi.fn().mockImplementation(() => ({
     interruptOperation: vi.fn().mockResolvedValue(true),
   })),
+}));
+
+vi.mock('@/server/workflows/agentEvalRun', () => ({
+  AgentEvalRunWorkflow: {
+    triggerRunThreadTrajectory: vi.fn(),
+  },
 }));
 
 beforeEach(cleanupDB);
@@ -116,6 +122,75 @@ describe('AgentEvalRunService', () => {
       // Storage-only scope: internal pre-creation is unaffected (all cases)
       const runTopicModel = new AgentEvalRunTopicModel(serverDB, userId);
       expect(await runTopicModel.findByRunId(run.id)).toHaveLength(2);
+    });
+
+    it('should restore case messages and use their tail as the eval-thread source', async () => {
+      const benchmarkModel = new AgentEvalBenchmarkModel(serverDB, userId);
+      const benchmark = await benchmarkModel.create({
+        identifier: 'history-benchmark',
+        isSystem: false,
+        name: 'History Benchmark',
+        rubrics: [],
+      });
+      const [dataset] = await serverDB
+        .insert(agentEvalDatasets)
+        .values({
+          benchmarkId: benchmark.id,
+          identifier: 'history-dataset',
+          name: 'History Dataset',
+          userId,
+        })
+        .returning();
+      const [testCase] = await serverDB
+        .insert(agentEvalTestCases)
+        .values({
+          content: {
+            input: 'Continue from the prior answer',
+            messages: [
+              { content: 'Prior question', id: 'history-user', role: 'user' },
+              {
+                content: 'Prior answer',
+                id: 'history-assistant',
+                parentId: 'history-user',
+                role: 'assistant',
+              },
+            ],
+          },
+          datasetId: dataset.id,
+          sortOrder: 1,
+          userId,
+        })
+        .returning();
+
+      const service = new AgentEvalRunService(serverDB, userId);
+      const run = await service.createRun({ config: { k: 2 }, datasetId: dataset.id });
+      const runTopicModel = new AgentEvalRunTopicModel(serverDB, userId);
+      const runTopic = await runTopicModel.findByRunAndTestCase(run.id, testCase.id);
+      const restored = await serverDB
+        .select()
+        .from(messages)
+        .where(eq(messages.topicId, runTopic!.topicId))
+        .orderBy(messages.createdAt);
+
+      expect(restored.map((message) => message.content)).toEqual(['Prior question', 'Prior answer']);
+
+      await service.executeMultiThreadTrajectory({
+        k: 2,
+        run: { config: run.config, datasetId: run.datasetId, targetAgentId: run.targetAgentId },
+        runId: run.id,
+        testCaseId: testCase.id,
+      });
+
+      const attempts = await serverDB
+        .select()
+        .from(threads)
+        .where(eq(threads.topicId, runTopic!.topicId));
+
+      expect(attempts).toHaveLength(2);
+      expect(attempts.map((thread) => thread.sourceMessageId)).toEqual([
+        restored[1].id,
+        restored[1].id,
+      ]);
     });
 
     it('should handle dataset with no test cases', async () => {

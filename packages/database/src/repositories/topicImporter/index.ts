@@ -17,7 +17,6 @@ export interface ImportTopicResult {
 }
 
 export interface RestoreTopicMessagesParams {
-  agentId?: string | null;
   messages: ImportedMessage[];
   topicId: string;
 }
@@ -28,7 +27,7 @@ export interface RestoreTopicMessagesResult {
 }
 
 interface PreparedMessage {
-  agentId?: string | null;
+  agentId: string | null;
   content: string;
   createdAt: Date;
   error?: Record<string, any> | null;
@@ -54,7 +53,6 @@ interface PreparedMessagePlugin {
   error?: Record<string, any> | null;
   id: string;
   identifier?: string | null;
-  intervention?: Record<string, any> | null;
   state?: Record<string, any> | null;
   toolCallId?: string | null;
   type?: string | null;
@@ -134,7 +132,7 @@ export class TopicImporterRepo {
   restoreMessages = async (
     params: RestoreTopicMessagesParams,
   ): Promise<RestoreTopicMessagesResult> => {
-    const { agentId, messages: importedMessages, topicId } = params;
+    const { messages: importedMessages, topicId } = params;
     const filteredMessages = importedMessages.filter((message) => message.role !== 'system');
 
     if (filteredMessages.length === 0) {
@@ -145,7 +143,7 @@ export class TopicImporterRepo {
       const { messages: preparedMessages, plugins: preparedPlugins } = this.prepareMessages(
         filteredMessages,
         topicId,
-        agentId,
+        null,
       );
 
       await tx.insert(messages).values(preparedMessages as any);
@@ -189,7 +187,7 @@ export class TopicImporterRepo {
   private prepareMessages(
     importedMessages: ImportedMessage[],
     topicId: string,
-    agentId?: string | null,
+    agentId: string | null,
   ): { messages: PreparedMessage[]; plugins: PreparedMessagePlugin[] } {
     const now = Date.now();
 
@@ -260,7 +258,6 @@ export class TopicImporterRepo {
         msg.plugin ||
         msg.pluginState ||
         msg.pluginError ||
-        msg.pluginIntervention ||
         msg.tool_call_id
       ) {
         const plugin = msg.plugin as Record<string, any> | undefined;
@@ -270,7 +267,6 @@ export class TopicImporterRepo {
           error: msg.pluginError || null,
           id: msg.newId,
           identifier: plugin?.identifier || null,
-          intervention: msg.pluginIntervention || null,
           state: msg.pluginState || null,
           toolCallId: msg.tool_call_id || null,
           type: plugin?.type || null,

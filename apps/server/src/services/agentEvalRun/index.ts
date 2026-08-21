@@ -294,7 +294,6 @@ export class AgentEvalRunService {
           if (!history) return;
 
           const { lastMessageId } = await this.topicImporterRepo.restoreMessages({
-            agentId: targetAgentId,
             messages: history,
             topicId: topic.id,
           });
@@ -1353,7 +1352,6 @@ export class AgentEvalRunService {
 
     if (testCase.content.messages) {
       const { lastMessageId } = await this.topicImporterRepo.restoreMessages({
-        agentId: run.targetAgentId,
         messages: testCase.content.messages,
         topicId: topic.id,
       });

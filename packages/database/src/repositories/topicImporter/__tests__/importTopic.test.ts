@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { getTestDB } from '../../../core/getTestDB';
-import { agents, messagePlugins, messages, topics, users } from '../../../schemas';
+import { agents, messages, topics, users } from '../../../schemas';
 import type { LobeChatDatabase } from '../../../type';
 import { TopicImporterRepo } from '../index';
 
@@ -68,7 +68,6 @@ describe('TopicImporterRepo.importTopic', () => {
         .returning();
 
       const result = await repo.restoreMessages({
-        agentId,
         messages: [
           { content: 'Previous question', id: 'source-user', role: 'user' },
           {
@@ -78,9 +77,8 @@ describe('TopicImporterRepo.importTopic', () => {
             role: 'assistant',
           },
           {
-            content: 'Approval required',
+            content: 'Prior result',
             parentId: 'source-assistant',
-            pluginIntervention: { status: 'pending' },
             role: 'tool',
           },
         ],
@@ -93,17 +91,11 @@ describe('TopicImporterRepo.importTopic', () => {
         .where(eq(messages.topicId, topic.id))
         .orderBy(messages.createdAt);
 
-      const [plugin] = await serverDB
-        .select()
-        .from(messagePlugins)
-        .where(eq(messagePlugins.id, restored[2].id));
-
       expect(result.messageCount).toBe(3);
       expect(result.lastMessageId).toBe(restored[2].id);
+      expect(restored[0].agentId).toBeNull();
       expect(restored[1].parentId).toBe(restored[0].id);
       expect(restored[2].parentId).toBe(restored[1].id);
-      expect(plugin).toBeDefined();
-      expect(plugin!.intervention).toEqual({ status: 'pending' });
     });
   });
 

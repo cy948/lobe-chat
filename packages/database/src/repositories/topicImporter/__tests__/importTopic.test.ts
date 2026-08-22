@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { getTestDB } from '../../../core/getTestDB';
-import { agents, messages, topics, users } from '../../../schemas';
+import { agents, messagePlugins, messages, topics, users } from '../../../schemas';
 import type { LobeChatDatabase } from '../../../type';
 import { TopicImporterRepo } from '../index';
 
@@ -56,46 +56,6 @@ describe('TopicImporterRepo.importTopic', () => {
       expect(insertedMessages[0].parentId).toBeNull();
       expect(insertedMessages[1].parentId).toBe(insertedMessages[0].id);
       expect(insertedMessages[2].parentId).toBe(insertedMessages[1].id);
-    });
-  });
-
-  describe('restoreMessages', () => {
-    it('should restore messages into an existing topic and return the restored tail', async () => {
-      const repo = new TopicImporterRepo(serverDB, userId);
-      const [topic] = await serverDB
-        .insert(topics)
-        .values({ agentId, title: 'Existing Topic', userId })
-        .returning();
-
-      const result = await repo.restoreMessages({
-        messages: [
-          { content: 'Previous question', id: 'source-user', role: 'user' },
-          {
-            content: 'Previous answer',
-            id: 'source-assistant',
-            parentId: 'source-user',
-            role: 'assistant',
-          },
-          {
-            content: 'Prior result',
-            parentId: 'source-assistant',
-            role: 'tool',
-          },
-        ],
-        topicId: topic.id,
-      });
-
-      const restored = await serverDB
-        .select()
-        .from(messages)
-        .where(eq(messages.topicId, topic.id))
-        .orderBy(messages.createdAt);
-
-      expect(result.messageCount).toBe(3);
-      expect(result.lastMessageId).toBe(restored[2].id);
-      expect(restored[0].agentId).toBeNull();
-      expect(restored[1].parentId).toBe(restored[0].id);
-      expect(restored[2].parentId).toBe(restored[1].id);
     });
   });
 

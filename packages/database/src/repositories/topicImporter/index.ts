@@ -16,18 +16,8 @@ export interface ImportTopicResult {
   topicId: string;
 }
 
-export interface RestoreTopicMessagesParams {
-  messages: ImportedMessage[];
-  topicId: string;
-}
-
-export interface RestoreTopicMessagesResult {
-  lastMessageId: string;
-  messageCount: number;
-}
-
 interface PreparedMessage {
-  agentId: string | null;
+  agentId: string;
   content: string;
   createdAt: Date;
   error?: Record<string, any> | null;
@@ -128,37 +118,6 @@ export class TopicImporterRepo {
     });
   };
 
-  /** Restore imported messages into a topic that already exists. */
-  restoreMessages = async (
-    params: RestoreTopicMessagesParams,
-  ): Promise<RestoreTopicMessagesResult> => {
-    const { messages: importedMessages, topicId } = params;
-    const filteredMessages = importedMessages.filter((message) => message.role !== 'system');
-
-    if (filteredMessages.length === 0) {
-      throw new Error('No valid messages to import');
-    }
-
-    return this.db.transaction(async (tx) => {
-      const { messages: preparedMessages, plugins: preparedPlugins } = this.prepareMessages(
-        filteredMessages,
-        topicId,
-        null,
-      );
-
-      await tx.insert(messages).values(preparedMessages as any);
-
-      if (preparedPlugins.length > 0) {
-        await tx.insert(messagePlugins).values(preparedPlugins as any);
-      }
-
-      return {
-        lastMessageId: preparedMessages.at(-1)!.id,
-        messageCount: preparedMessages.length,
-      };
-    });
-  };
-
   /**
    * Parse import data to extract messages and title
    * Supports both simple array format and full ExportedTopic format
@@ -187,7 +146,7 @@ export class TopicImporterRepo {
   private prepareMessages(
     importedMessages: ImportedMessage[],
     topicId: string,
-    agentId: string | null,
+    agentId: string,
   ): { messages: PreparedMessage[]; plugins: PreparedMessagePlugin[] } {
     const now = Date.now();
 
@@ -254,12 +213,7 @@ export class TopicImporterRepo {
       });
 
       // If message has plugin data (tool messages), prepare plugin record
-      if (
-        msg.plugin ||
-        msg.pluginState ||
-        msg.pluginError ||
-        msg.tool_call_id
-      ) {
+      if (msg.plugin || msg.pluginState || msg.pluginError || msg.tool_call_id) {
         const plugin = msg.plugin as Record<string, any> | undefined;
         preparedPlugins.push({
           apiName: plugin?.apiName || null,

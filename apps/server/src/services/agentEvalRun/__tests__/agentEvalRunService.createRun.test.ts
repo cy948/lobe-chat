@@ -2,7 +2,13 @@ import { eq } from 'drizzle-orm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentEvalBenchmarkModel, AgentEvalRunTopicModel } from '@/database/models/agentEval';
-import { agentEvalDatasets, agentEvalTestCases, messages, threads, topics } from '@/database/schemas';
+import {
+  agentEvalDatasets,
+  agentEvalTestCases,
+  messages,
+  threads,
+  topics,
+} from '@/database/schemas';
 import { AgentEvalRunService } from '@/server/services/agentEvalRun';
 
 import { cleanupDB, serverDB, userId } from './_setup';
@@ -172,7 +178,14 @@ describe('AgentEvalRunService', () => {
         .where(eq(messages.topicId, runTopic!.topicId))
         .orderBy(messages.createdAt);
 
-      expect(restored.map((message) => message.content)).toEqual(['Prior question', 'Prior answer']);
+      expect(restored.map((message) => message.content)).toEqual([
+        'Prior question',
+        'Prior answer',
+      ]);
+      expect(restored.map((message) => message.agentId)).toEqual([null, null]);
+
+      const [topic] = await serverDB.select().from(topics).where(eq(topics.id, runTopic!.topicId));
+      expect(topic.metadata?.evalHistoryTailMessageId).toBe(restored[1].id);
 
       await service.executeMultiThreadTrajectory({
         k: 2,

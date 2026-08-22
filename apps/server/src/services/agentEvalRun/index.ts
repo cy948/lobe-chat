@@ -1,5 +1,5 @@
 import { LOADING_FLAT } from '@lobechat/const';
-import { type LobeChatDatabase } from '@lobechat/database';
+import type { LobeChatDatabase } from '@lobechat/database';
 import { evaluate } from '@lobechat/eval-rubric';
 import type {
   EvalBenchmarkRubric,
@@ -27,7 +27,6 @@ import {
 import { MessageModel } from '@/database/models/message';
 import { ThreadModel } from '@/database/models/thread';
 import { TopicModel } from '@/database/models/topic';
-import { TopicImporterRepo } from '@/database/repositories/topicImporter';
 import { AgentService } from '@/server/services/agent';
 import { AgentRuntimeService } from '@/server/services/agentRuntime/AgentRuntimeService';
 import { AiAgentService } from '@/server/services/aiAgent';
@@ -36,6 +35,9 @@ import {
   type ResumeAgentTrajectoryPayload,
   type ResumeThreadTrajectoryPayload,
 } from '@/server/workflows/agentEvalRun';
+
+import type { EvalRunTopicProvisionCase } from './provisionRunTopics';
+import { provisionRunTopics as provisionEvalRunTopics } from './provisionRunTopics';
 
 /** Round cost to at most 6 decimal places to avoid floating-point noise */
 const roundCost = (v: number): number => Math.round(v * 1e6) / 1e6;
@@ -122,7 +124,6 @@ export class AgentEvalRunService {
   private readonly messageModel: MessageModel;
   private readonly threadModel: ThreadModel;
   private readonly topicModel: TopicModel;
-  private readonly topicImporterRepo: TopicImporterRepo;
   private readonly agentService: AgentService;
 
   private workspaceId?: string;
@@ -140,7 +141,6 @@ export class AgentEvalRunService {
     this.messageModel = new MessageModel(db, userId, workspaceId);
     this.threadModel = new ThreadModel(db, userId, workspaceId);
     this.topicModel = new TopicModel(db, userId, workspaceId);
-    this.topicImporterRepo = new TopicImporterRepo(db, userId, workspaceId);
     this.agentService = new AgentService(db, userId, workspaceId);
   }
 
@@ -280,40 +280,25 @@ export class AgentEvalRunService {
     const testCases = await this.testCaseModel.findByDatasetId(datasetId);
 
     if (testCases.length > 0) {
-      const createdTopics = await this.topicModel.batchCreate(
-        testCases.map((tc) => ({
-          agentId: targetAgentId ?? undefined,
-          title: `[Eval Case #${(tc.sortOrder ?? 0) + 1}] ${tc.content?.input?.slice(0, 50) || 'Test Case'}...`,
-          trigger: RequestTrigger.Eval,
-        })),
-      );
-
-      await Promise.all(
-        createdTopics.map(async (topic, index) => {
-          const history = testCases[index].content.messages;
-          if (!history) return;
-
-          const { lastMessageId } = await this.topicImporterRepo.restoreMessages({
-            messages: history,
-            topicId: topic.id,
-          });
-          await this.topicModel.updateMetadata(topic.id, {
-            [EVAL_HISTORY_TAIL_METADATA_KEY]: lastMessageId,
-          });
-        }),
-      );
-
-      await this.runTopicModel.batchCreate(
-        createdTopics.map((topic, index) => ({
-          runId: run.id,
-          status: 'pending' as const,
-          testCaseId: testCases[index].id,
-          topicId: topic.id,
-        })),
-      );
+      await this.provisionRunTopics(run.id, targetAgentId, testCases);
     }
 
     return run;
+  }
+
+  private provisionRunTopics(
+    runId: string,
+    targetAgentId: string | null | undefined,
+    testCases: EvalRunTopicProvisionCase[],
+  ) {
+    return provisionEvalRunTopics({
+      db: this.db,
+      runId,
+      targetAgentId,
+      testCases,
+      userId: this.userId,
+      workspaceId: this.workspaceId,
+    });
   }
 
   async deleteRun(id: string) {
@@ -369,9 +354,9 @@ export class AgentEvalRunService {
 
     // Collect test case IDs and info for recreation
     const errorTestCases = errorTopics.map((t) => ({
+      content: t.testCase?.content ?? { input: '' },
       id: t.testCaseId,
-      input: t.testCase?.content?.input,
-      sortOrder: t.testCase?.sortOrder,
+      sortOrder: t.testCase?.sortOrder ?? null,
     }));
 
     // 1. Delete error/terminal RunTopics (the filter above excludes active
@@ -380,23 +365,8 @@ export class AgentEvalRunService {
 
     // 2. Preserve old Topics (old conversations are kept for audit/history);
     // only the RunTopic association is replaced.
-    // 3. Create new Topics and pending RunTopics for the error test cases
-    const createdTopics = await this.topicModel.batchCreate(
-      errorTestCases.map((tc) => ({
-        agentId: run.targetAgentId ?? undefined,
-        title: `[Eval Case #${(tc.sortOrder ?? 0) + 1}] ${tc.input?.slice(0, 50) || 'Test Case'}...`,
-        trigger: RequestTrigger.Eval,
-      })),
-    );
-
-    await this.runTopicModel.batchCreate(
-      createdTopics.map((topic, index) => ({
-        runId,
-        status: 'pending' as const,
-        testCaseId: errorTestCases[index].id,
-        topicId: topic.id,
-      })),
-    );
+    // 3. Create fresh Topics, histories, and pending RunTopics together.
+    await this.provisionRunTopics(runId, run.targetAgentId, errorTestCases);
 
     // 4. Set run status to pending
     await this.runModel.update(runId, { status: 'pending' });
@@ -420,22 +390,12 @@ export class AgentEvalRunService {
     await this.runTopicModel.deleteByRunAndTestCase(runId, testCaseId);
 
     // 2. Preserve the old Topic (conversation history); only re-link.
-    // 3. Create new Topic
-    const [newTopic] = await this.topicModel.batchCreate([
+    // 3. Create a fresh Topic, its history, and its RunTopic together.
+    await this.provisionRunTopics(runId, run.targetAgentId, [
       {
-        agentId: run.targetAgentId ?? undefined,
-        title: `[Eval Case #${(runTopic.testCase?.sortOrder ?? 0) + 1}] ${runTopic.testCase?.content?.input?.slice(0, 50) || 'Test Case'}...`,
-        trigger: RequestTrigger.Eval,
-      },
-    ]);
-
-    // 4. Create new RunTopic with pending status
-    await this.runTopicModel.batchCreate([
-      {
-        runId,
-        status: 'pending' as const,
-        testCaseId,
-        topicId: newTopic.id,
+        content: runTopic.testCase?.content ?? { input: '' },
+        id: testCaseId,
+        sortOrder: runTopic.testCase?.sortOrder ?? null,
       },
     ]);
 
@@ -1342,27 +1302,11 @@ export class AgentEvalRunService {
       await this.runTopicModel.deleteByRunAndTestCase(runId, testCaseId);
     }
 
-    const [topic] = await this.topicModel.batchCreate([
-      {
-        agentId: run.targetAgentId ?? undefined,
-        title: `[Eval Case #${(testCase.sortOrder ?? 0) + 1}] ${(testCase.content?.input ?? '').slice(0, 50)}...`,
-        trigger: RequestTrigger.Eval,
-      },
-    ]);
-
-    if (testCase.content.messages) {
-      const { lastMessageId } = await this.topicImporterRepo.restoreMessages({
-        messages: testCase.content.messages,
-        topicId: topic.id,
-      });
-      await this.topicModel.updateMetadata(topic.id, {
-        [EVAL_HISTORY_TAIL_METADATA_KEY]: lastMessageId,
-      });
-    }
-
-    await this.runTopicModel.batchCreate([
-      { runId, status: 'pending' as const, testCaseId, topicId: topic.id },
-    ]);
+    const topicId = (
+      await this.provisionRunTopics(runId, run.targetAgentId, [
+        { content: testCase.content, id: testCaseId, sortOrder: testCase.sortOrder },
+      ])
+    )[0]!;
 
     const result = await this.executeTrajectoryCore({
       deviceId: params.deviceId,
@@ -1375,7 +1319,7 @@ export class AgentEvalRunService {
         sortOrder: testCase.sortOrder,
       },
       testCaseId,
-      topicId: topic.id,
+      topicId,
       environment,
     });
 

@@ -144,6 +144,7 @@ import type {
   AgentExecutionParams,
   AgentExecutionResult,
   AgentRuntimeServiceOptions,
+  EvalRuntimeContext,
   SubAgentBridgeParams,
 } from '@/server/services/agentRuntime';
 import { AgentRuntimeService } from '@/server/services/agentRuntime';
@@ -419,6 +420,8 @@ interface InternalExecAgentParams extends ExecAgentParams {
    * as well as activator-discoverable manifests.
    */
   exclusivePluginIds?: string[];
+  /** Eval execution controls, such as fixture tool forwarding. */
+  evalRuntime?: EvalRuntimeContext;
   /** External files to upload to S3 and attach to the user message */
   files?: Array<{
     /** Pre-downloaded buffer (from adapter/platform layer) */
@@ -1392,6 +1395,7 @@ export class AiAgentService {
       cronJobId,
       taskId,
       evalContext,
+      evalRuntime,
       maxSteps,
       disableLocalSystem,
       initialStepCount,
@@ -4814,6 +4818,7 @@ export class AiAgentService {
         deviceAccessPolicy: { canUseDevice, reason: deviceAccessReason },
         discordContext,
         evalContext,
+        evalRuntime,
         enableExpertise,
         expertise,
         initialContext,

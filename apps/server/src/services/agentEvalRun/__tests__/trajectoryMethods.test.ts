@@ -296,12 +296,12 @@ describe('AgentEvalRunService', () => {
 
       expect(mockExecAgent).toHaveBeenCalledWith(
         expect.objectContaining({
-          evalContext: { envPrompt: undefined, toolForwarding: environment.toolForwarding },
+          evalRuntime: { toolForwarding: environment.toolForwarding },
         }),
       );
     });
 
-    it('should pass the dataset case id through evalContext', async () => {
+    it('should pass the dataset case id through evalRuntime', async () => {
       const { run, testCase } = await setupTrajectoryChain();
 
       mockExecAgent.mockResolvedValue({ operationId: 'op-case-id' });
@@ -319,7 +319,7 @@ describe('AgentEvalRunService', () => {
       });
 
       expect(mockExecAgent).toHaveBeenCalledWith(
-        expect.objectContaining({ evalContext: { caseId: 'case-42' } }),
+        expect.objectContaining({ evalRuntime: { caseId: 'case-42' } }),
       );
     });
 

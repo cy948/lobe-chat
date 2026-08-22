@@ -509,6 +509,25 @@ describe('AgentRuntimeService', () => {
       );
     });
 
+    it('should keep eval runtime controls separate from context injection metadata', async () => {
+      mockQueueService.scheduleMessage.mockResolvedValueOnce('message-123');
+
+      const evalRuntime = {
+        caseId: 'case-42',
+        toolForwarding: { memory: { endpoint: 'https://mock.test/tool-calls' } },
+      };
+      await service.createOperation({ ...mockParams, evalRuntime });
+
+      expect(mockCoordinator.saveAgentState).toHaveBeenCalledWith(
+        'test-operation-1',
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            evalRuntime,
+          }),
+        }),
+      );
+    });
+
     it('should persist the operation expertise snapshot in runtime state', async () => {
       mockQueueService.scheduleMessage.mockResolvedValueOnce('message-123');
       const expertise = {

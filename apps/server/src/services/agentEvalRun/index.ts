@@ -29,6 +29,7 @@ import { ThreadModel } from '@/database/models/thread';
 import { TopicModel } from '@/database/models/topic';
 import { AgentService } from '@/server/services/agent';
 import { AgentRuntimeService } from '@/server/services/agentRuntime/AgentRuntimeService';
+import type { EvalRuntimeContext } from '@/server/services/agentRuntime/types';
 import { AiAgentService } from '@/server/services/aiAgent';
 import {
   AgentEvalRunWorkflow,
@@ -53,16 +54,15 @@ const getEvalContextParams = (
 ) => {
   const envPrompt =
     [datasetEnvPrompt, environment?.envPrompt].filter(Boolean).join('\n\n') || undefined;
+  const evalRuntime: EvalRuntimeContext | undefined =
+    caseId || environment?.toolForwarding
+      ? { ...(caseId && { caseId }), toolForwarding: environment?.toolForwarding }
+      : undefined;
 
-  return envPrompt || environment || caseId
-    ? {
-        evalContext: {
-          ...(caseId && { caseId }),
-          envPrompt,
-          toolForwarding: environment?.toolForwarding,
-        },
-      }
-    : {};
+  return {
+    ...(envPrompt && { evalContext: { envPrompt } }),
+    ...(evalRuntime && { evalRuntime }),
+  };
 };
 
 const getCaseId = (metadata?: EvalTestCaseMetadata | null) => metadata?.caseId;

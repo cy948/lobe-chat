@@ -46,6 +46,7 @@ const evalConfigSchema = z.object({ judgePrompt: z.string().optional() }).passth
 
 const evalCaseEnvironmentSchema = z
   .object({
+    envPrompt: z.string().optional(),
     toolForwarding: z
       .record(
         z.string().trim().min(1),
@@ -100,7 +101,11 @@ const evalTestCaseMessagesSchema = z
     for (const [index, message] of messages.entries()) {
       if (!message.id) continue;
       if (ids.has(message.id)) {
-        ctx.addIssue({ code: 'custom', message: 'Message ids must be unique', path: [index, 'id'] });
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Message ids must be unique',
+          path: [index, 'id'],
+        });
       }
       ids.add(message.id);
     }

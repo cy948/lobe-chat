@@ -24,6 +24,8 @@ export interface EvalToolForwardingTarget {
 
 /** Per-test-case runtime configuration used only by eval trajectories. */
 export interface EvalCaseEnvironment {
+  /** Case-specific system context appended after the dataset eval prompt. */
+  envPrompt?: string;
   toolForwarding?: EvalToolForwardingConfig;
 }
 

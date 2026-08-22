@@ -47,11 +47,14 @@ const EVAL_HISTORY_TAIL_METADATA_KEY = 'evalHistoryTailMessageId';
 const RESUMABLE_THREAD_STATUSES = new Set(['error', 'timeout']);
 
 const getEvalContextParams = (
-  envPrompt?: string,
+  datasetEnvPrompt?: string,
   environment?: EvalCaseEnvironment,
   caseId?: string,
-) =>
-  envPrompt || environment || caseId
+) => {
+  const envPrompt =
+    [datasetEnvPrompt, environment?.envPrompt].filter(Boolean).join('\n\n') || undefined;
+
+  return envPrompt || environment || caseId
     ? {
         evalContext: {
           ...(caseId && { caseId }),
@@ -60,6 +63,7 @@ const getEvalContextParams = (
         },
       }
     : {};
+};
 
 const getCaseId = (metadata?: EvalTestCaseMetadata | null) => metadata?.caseId;
 

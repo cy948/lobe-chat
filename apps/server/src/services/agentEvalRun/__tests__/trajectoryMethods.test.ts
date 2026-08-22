@@ -137,6 +137,7 @@ describe('AgentEvalRunService', () => {
 
     it('should load the complete environment from the test case', async () => {
       const environment = {
+        envPrompt: 'Use the case fixture.',
         toolForwarding: {
           memory: { endpoint: 'https://mock.test/tool-calls' },
         },
@@ -148,6 +149,30 @@ describe('AgentEvalRunService', () => {
 
       expect('error' in data).toBe(false);
       if (!('error' in data)) expect(data.environment).toEqual(environment);
+    });
+
+    it('appends the case envPrompt after the dataset envPrompt when executing', async () => {
+      const { run, testCase } = await setupTrajectoryChain({
+        envPrompt: 'Dataset context.',
+        environment: { envPrompt: 'Case context.' },
+      });
+      mockExecAgent.mockResolvedValue({ operationId: 'op-123' });
+
+      const service = new AgentEvalRunService(serverDB, userId);
+      await service.executeTrajectory({
+        envPrompt: 'Dataset context.',
+        environment: { envPrompt: 'Case context.' },
+        run,
+        runId: run.id,
+        testCase,
+        testCaseId: testCase.id,
+      });
+
+      expect(mockExecAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          evalContext: expect.objectContaining({ envPrompt: 'Dataset context.\n\nCase context.' }),
+        }),
+      );
     });
 
     it('should return error when run not found', async () => {

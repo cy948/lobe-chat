@@ -571,6 +571,17 @@ describe('Agent Eval Router Integration Tests', () => {
           }),
         ).rejects.toThrow(/not found/);
       });
+
+      it('should accept an empty message history', async () => {
+        const caller = agentEvalRouter.createCaller(createTestContext(userId));
+
+        const result = await caller.createTestCase({
+          content: { input: 'Fresh conversation', messages: [] },
+          datasetId,
+        });
+
+        expect(result.content.messages).toEqual([]);
+      });
     });
 
     describe('batchCreateTestCases', () => {
@@ -710,6 +721,24 @@ describe('Agent Eval Router Integration Tests', () => {
         expect(result.content.expected).toBe('New answer');
         expect(result.metadata).toEqual({ reviewed: true });
         expect(result.sortOrder).toBe(5);
+      });
+
+      it('should clear a test case message history', async () => {
+        const caller = agentEvalRouter.createCaller(createTestContext(userId));
+        const created = await caller.createTestCase({
+          content: {
+            input: 'Original',
+            messages: [{ content: 'Old turn', role: 'user' }],
+          },
+          datasetId,
+        });
+
+        const result = await caller.updateTestCase({
+          content: { input: 'Original', messages: [] },
+          id: created.id,
+        });
+
+        expect(result.content.messages).toEqual([]);
       });
     });
 

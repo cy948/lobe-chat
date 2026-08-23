@@ -4,7 +4,6 @@ export * from './models/agentHistoryJob';
 export * from './models/agentTransferJob';
 export * from './repositories/compression';
 export * from './repositories/onboardingUnderstanding';
-export * from './repositories/topicImporter';
 export * from './type';
 export * from './utils/copiedTranscript';
 export * from './utils/copyMessagesInDatabase';

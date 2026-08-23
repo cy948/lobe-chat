@@ -2,9 +2,7 @@
  * @vitest-environment node
  */
 import { NextRequest } from 'next/server';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-import { auth } from '@/auth';
+import { describe, expect, it, vi } from 'vitest';
 
 import { defineConfig } from './define-config';
 
@@ -23,23 +21,6 @@ const run = async (url: string, userAgent?: string) => {
 
 const MOBILE_USER_AGENT =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1';
-
-beforeEach(() => {
-  vi.mocked(auth.api.getSession).mockResolvedValue({ user: { id: 'user-1' } } as never);
-});
-
-describe('defineConfig Better Auth failures', () => {
-  it('redirects to sign-in when a protected route has an invalid session cookie', async () => {
-    vi.mocked(auth.api.getSession).mockRejectedValueOnce(new Error('Failed to get session'));
-
-    const response = await middleware(new NextRequest('http://localhost:3010/'));
-    const location = response.headers.get('location');
-
-    expect(response.status).toBe(302);
-    expect(location).toBeTruthy();
-    expect(new URL(location!).pathname).toBe('/signin');
-  });
-});
 
 describe('defineConfig locale path-traversal hardening', () => {
   it('rewrites a normal locale into /spa-auth/<locale>', async () => {

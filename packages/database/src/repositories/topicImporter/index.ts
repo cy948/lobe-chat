@@ -1,10 +1,8 @@
 import type { ExportedTopic, ImportedMessage } from '@lobechat/types';
 
 import { messagePlugins, messages, topics } from '../../schemas';
-import type { LobeChatDatabase, Transaction } from '../../type';
+import type { LobeChatDatabase } from '../../type';
 import { idGenerator } from '../../utils/idGenerator';
-
-export const TOPIC_IMPORT_MESSAGE_BATCH_SIZE = 500;
 
 export interface ImportTopicParams {
   agentId: string;
@@ -19,7 +17,7 @@ export interface ImportTopicResult {
 }
 
 interface PreparedMessage {
-  agentId: string | null;
+  agentId: string;
   content: string;
   createdAt: Date;
   error?: Record<string, any> | null;
@@ -50,18 +48,6 @@ interface PreparedMessagePlugin {
   type?: string | null;
   userId: string;
   workspaceId: string | null;
-}
-
-export interface RestoreMessagesParams {
-  agentId?: string | null;
-  importedMessages: ImportedMessage[];
-  topicId: string;
-  transaction: Transaction;
-}
-
-export interface RestoreMessagesResult {
-  messageCount: number;
-  tailMessageId?: string;
 }
 
 export class TopicImporterRepo {
@@ -98,6 +84,13 @@ export class TopicImporterRepo {
       // Generate new topic ID
       const topicId = idGenerator('topics');
 
+      // Prepare messages with new IDs and rebuild parentId chain
+      const { messages: preparedMessages, plugins: preparedPlugins } = this.prepareMessages(
+        filteredMessages,
+        topicId,
+        agentId,
+      );
+
       // Insert topic first
       await tx.insert(topics).values({
         agentId,
@@ -108,52 +101,21 @@ export class TopicImporterRepo {
         workspaceId: this.workspaceId ?? null,
       });
 
-      const restored = await this.restoreMessages({
-        agentId,
-        importedMessages: filteredMessages,
-        topicId,
-        transaction: tx,
-      });
+      // Batch insert messages
+      if (preparedMessages.length > 0) {
+        await tx.insert(messages).values(preparedMessages as any);
+      }
+
+      // Batch insert message plugins (for tool messages)
+      if (preparedPlugins.length > 0) {
+        await tx.insert(messagePlugins).values(preparedPlugins as any);
+      }
 
       return {
-        messageCount: restored.messageCount,
+        messageCount: preparedMessages.length,
         topicId,
       };
     });
-  };
-
-  /**
-   * Restore imported messages into a topic that already belongs to the caller's transaction.
-   */
-  restoreMessages = async ({
-    agentId = null,
-    importedMessages,
-    topicId,
-    transaction,
-  }: RestoreMessagesParams): Promise<RestoreMessagesResult> => {
-    const history = importedMessages.filter((message) => message.role !== 'system');
-    if (history.length === 0) return { messageCount: 0 };
-
-    const { messages: preparedMessages, plugins: preparedPlugins } = this.prepareMessages(
-      history,
-      topicId,
-      agentId,
-    );
-
-    for (let index = 0; index < preparedMessages.length; index += TOPIC_IMPORT_MESSAGE_BATCH_SIZE) {
-      const messageBatch = preparedMessages.slice(index, index + TOPIC_IMPORT_MESSAGE_BATCH_SIZE);
-      await transaction.insert(messages).values(messageBatch as any);
-
-      const messageIds = new Set(messageBatch.map((message) => message.id));
-      const pluginBatch = preparedPlugins.filter((plugin) => messageIds.has(plugin.id));
-      if (pluginBatch.length > 0)
-        await transaction.insert(messagePlugins).values(pluginBatch as any);
-    }
-
-    return {
-      messageCount: preparedMessages.length,
-      tailMessageId: preparedMessages.at(-1)?.id,
-    };
   };
 
   /**
@@ -184,10 +146,9 @@ export class TopicImporterRepo {
   private prepareMessages(
     importedMessages: ImportedMessage[],
     topicId: string,
-    agentId: string | null,
+    agentId: string,
   ): { messages: PreparedMessage[]; plugins: PreparedMessagePlugin[] } {
     const now = Date.now();
-    let previousCreatedAt = Number.NEGATIVE_INFINITY;
 
     // Check if original data has any parentId info (before mapping)
     // This determines whether we should build a linear chain for missing parentIds
@@ -207,18 +168,13 @@ export class TopicImporterRepo {
         idMapping.set(msg.id, newId);
       }
 
-      const createdAt = Math.max(
-        this.parseTimestamp(msg.createdAt, now + index),
-        previousCreatedAt + 1,
-      );
-      previousCreatedAt = createdAt;
-
       return {
         ...msg,
         newId,
         originalParentId: msg.parentId,
-        timestamp: createdAt,
-        updatedTimestamp: Math.max(this.parseTimestamp(msg.updatedAt, createdAt), createdAt),
+        // Preserve original timestamp or generate sequential one
+        timestamp: this.parseTimestamp(msg.createdAt, now + index),
+        updatedTimestamp: this.parseTimestamp(msg.updatedAt, now + index),
       };
     });
 

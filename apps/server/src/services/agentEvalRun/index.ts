@@ -1,6 +1,6 @@
 import { LOADING_FLAT } from '@lobechat/const';
-import { idGenerator, TopicImporterRepo } from '@lobechat/database';
-import { type LobeChatDatabase } from '@lobechat/database';
+import type { LobeChatDatabase } from '@lobechat/database';
+import { idGenerator } from '@lobechat/database';
 import { evaluate } from '@lobechat/eval-rubric';
 import type {
   EvalBenchmarkRubric,
@@ -14,6 +14,7 @@ import type {
   EvalThreadResult,
   ImportedMessage,
   RubricType,
+  ToolIntervention,
 } from '@lobechat/types';
 import { getActivePluginIds, RequestTrigger } from '@lobechat/types';
 import debug from 'debug';
@@ -30,7 +31,7 @@ import {
 import { MessageModel } from '@/database/models/message';
 import { ThreadModel } from '@/database/models/thread';
 import { TopicModel } from '@/database/models/topic';
-import { agentEvalRunTopics, topics } from '@/database/schemas';
+import { agentEvalRunTopics, messagePlugins, messages, topics } from '@/database/schemas';
 import { AgentService } from '@/server/services/agent';
 import { AgentRuntimeService } from '@/server/services/agentRuntime/AgentRuntimeService';
 import type { EvalRuntimeContext } from '@/server/services/agentRuntime/types';
@@ -45,6 +46,7 @@ import {
 const roundCost = (v: number): number => Math.round(v * 1e6) / 1e6;
 const EVAL_AGENT_RUNTIME_QSTASH_RETRIES = 5;
 const EVAL_AGENT_RUNTIME_QSTASH_RETRY_DELAY = '10000 * (1 + retried)';
+const EVAL_HISTORY_MESSAGE_BATCH_SIZE = 500;
 const EVAL_HISTORY_TAIL_METADATA_KEY = 'evalHistoryTailMessageId';
 const RESUMABLE_THREAD_STATUSES = new Set(['error', 'timeout']);
 
@@ -67,15 +69,6 @@ const getEvalContextParams = (
 };
 
 const getCaseId = (metadata?: EvalTestCaseMetadata | null) => metadata?.caseId;
-
-interface EvalRunTopicProvisionCase {
-  content: {
-    input: string;
-    messages?: ImportedMessage[];
-  };
-  id: string;
-  sortOrder: number | null;
-}
 
 /** Thrown when a caller-supplied run id exists with non-equivalent create params. */
 export const RUN_CREATE_ID_CONFLICT = 'Run id already exists with different create parameters';
@@ -294,19 +287,21 @@ export class AgentEvalRunService {
     const testCases = await this.testCaseModel.findByDatasetId(datasetId);
 
     if (testCases.length > 0) {
-      await this.provisionRunTopics(run.id, targetAgentId, testCases);
+      await this.createRunTopics(run.id, targetAgentId, testCases);
     }
 
     return run;
   }
 
-  private provisionRunTopics(
+  private createRunTopics(
     runId: string,
     targetAgentId: string | null | undefined,
-    testCases: EvalRunTopicProvisionCase[],
+    testCases: Array<{
+      content: { input: string; messages?: ImportedMessage[] };
+      id: string;
+      sortOrder: number | null;
+    }>,
   ) {
-    const topicImporter = new TopicImporterRepo(this.db, this.userId, this.workspaceId);
-
     return this.db.transaction(async (tx) => {
       const preparedCases = testCases.map((testCase) => ({
         testCase,
@@ -325,18 +320,115 @@ export class AgentEvalRunService {
       );
 
       for (const { testCase, topicId } of preparedCases) {
-        if (!testCase.content.messages?.length) continue;
+        const history = testCase.content.messages?.filter((message) => message.role !== 'system');
+        if (!history?.length) continue;
 
-        const restored = await topicImporter.restoreMessages({
-          importedMessages: testCase.content.messages,
-          topicId,
-          transaction: tx,
+        const idMapping = new Map<string, string>();
+        const hasParentInfo = history.some((message) => message.parentId != null);
+        const now = Date.now();
+        let previousCreatedAt = Number.NEGATIVE_INFINITY;
+        const preparedMessages = history.map((message, index) => {
+          const id = idGenerator('messages');
+          if (message.id) idMapping.set(message.id, id);
+
+          const timestamp =
+            message.createdAt === undefined
+              ? now + index
+              : typeof message.createdAt === 'number'
+                ? message.createdAt
+                : Date.parse(message.createdAt);
+          const createdAt = Math.max(
+            Number.isNaN(timestamp) ? now + index : timestamp,
+            previousCreatedAt + 1,
+          );
+          previousCreatedAt = createdAt;
+
+          const updatedTimestamp =
+            message.updatedAt === undefined
+              ? createdAt
+              : typeof message.updatedAt === 'number'
+                ? message.updatedAt
+                : Date.parse(message.updatedAt);
+
+          return {
+            createdAt,
+            id,
+            message,
+            updatedAt: Math.max(
+              Number.isNaN(updatedTimestamp) ? createdAt : updatedTimestamp,
+              createdAt,
+            ),
+          };
         });
-        if (!restored.tailMessageId) continue;
+
+        const messageRows = preparedMessages.map(
+          ({ createdAt, id, message, updatedAt }, index) => ({
+            agentId: null,
+            content: message.content,
+            createdAt: new Date(createdAt),
+            error: message.error ?? null,
+            id,
+            metadata: message.metadata ?? null,
+            model: message.model ?? null,
+            parentId: hasParentInfo
+              ? message.parentId
+                ? (idMapping.get(message.parentId) ?? null)
+                : null
+              : (preparedMessages[index - 1]?.id ?? null),
+            provider: message.provider ?? null,
+            reasoning: message.reasoning ?? null,
+            role: message.role,
+            search: message.search ?? null,
+            tools: message.tools ?? null,
+            topicId,
+            traceId: message.traceId ?? null,
+            updatedAt: new Date(updatedAt),
+            userId: this.userId,
+            workspaceId: this.workspaceId ?? null,
+          }),
+        );
+        const pluginRows = preparedMessages.flatMap(({ id, message }) => {
+          if (
+            !message.plugin &&
+            !message.pluginError &&
+            !message.pluginIntervention &&
+            !message.pluginState &&
+            !message.tool_call_id
+          ) {
+            return [];
+          }
+
+          return [
+            {
+              apiName: message.plugin?.apiName ?? null,
+              arguments: message.plugin?.arguments ?? null,
+              error: message.pluginError ?? null,
+              id,
+              identifier: message.plugin?.identifier ?? null,
+              intervention: message.pluginIntervention as ToolIntervention | undefined,
+              state: message.pluginState ?? null,
+              toolCallId: message.tool_call_id ?? null,
+              type: message.plugin?.type ?? null,
+              userId: this.userId,
+              workspaceId: this.workspaceId ?? null,
+            },
+          ];
+        });
+
+        for (let index = 0; index < messageRows.length; index += EVAL_HISTORY_MESSAGE_BATCH_SIZE) {
+          await tx
+            .insert(messages)
+            .values(messageRows.slice(index, index + EVAL_HISTORY_MESSAGE_BATCH_SIZE));
+        }
+        for (let index = 0; index < pluginRows.length; index += EVAL_HISTORY_MESSAGE_BATCH_SIZE) {
+          await tx
+            .insert(messagePlugins)
+            .values(pluginRows.slice(index, index + EVAL_HISTORY_MESSAGE_BATCH_SIZE));
+        }
 
         await tx
           .update(topics)
-          .set({ metadata: { [EVAL_HISTORY_TAIL_METADATA_KEY]: restored.tailMessageId } })
+          .set({ metadata: { [EVAL_HISTORY_TAIL_METADATA_KEY]: preparedMessages.at(-1)!.id } })
           .where(eq(topics.id, topicId));
       }
 
@@ -420,7 +512,7 @@ export class AgentEvalRunService {
     // 2. Preserve old Topics (old conversations are kept for audit/history);
     // only the RunTopic association is replaced.
     // 3. Create fresh Topics, histories, and pending RunTopics together.
-    await this.provisionRunTopics(runId, run.targetAgentId, errorTestCases);
+    await this.createRunTopics(runId, run.targetAgentId, errorTestCases);
 
     // 4. Set run status to pending
     await this.runModel.update(runId, { status: 'pending' });
@@ -445,7 +537,7 @@ export class AgentEvalRunService {
 
     // 2. Preserve the old Topic (conversation history); only re-link.
     // 3. Create a fresh Topic, its history, and its RunTopic together.
-    await this.provisionRunTopics(runId, run.targetAgentId, [
+    await this.createRunTopics(runId, run.targetAgentId, [
       {
         content: runTopic.testCase?.content ?? { input: '' },
         id: testCaseId,
@@ -1357,7 +1449,7 @@ export class AgentEvalRunService {
     }
 
     const topicId = (
-      await this.provisionRunTopics(runId, run.targetAgentId, [
+      await this.createRunTopics(runId, run.targetAgentId, [
         { content: testCase.content, id: testCaseId, sortOrder: testCase.sortOrder },
       ])
     )[0]!;

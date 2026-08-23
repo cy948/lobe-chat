@@ -271,17 +271,9 @@ export function defineConfig() {
     if (!isProtected) return response;
 
     // Get full session with user data (Next.js 15.2.0+ feature)
-    const session = await auth.api
-      .getSession({
-        headers: req.headers,
-      })
-      .catch((error) => {
-        logBetterAuth(
-          'BetterAuth session lookup failed, treating request as unauthenticated: %O',
-          error,
-        );
-        return null;
-      });
+    const session = await auth.api.getSession({
+      headers: req.headers,
+    });
 
     const isLoggedIn = !!session?.user;
 

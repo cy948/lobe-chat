@@ -590,7 +590,8 @@ export function registerEvalCommand(program: Command) {
             if (options.category) content.category = options.category;
             if (options.environment) content.environment = options.environment;
             if (options.messagesFile) {
-              content.messages = JSON.parse(await readFile(options.messagesFile, 'utf8'));
+              const messages = JSON.parse(await readFile(options.messagesFile, 'utf8'));
+              if (!Array.isArray(messages) || messages.length > 0) content.messages = messages;
             }
 
             const input: Record<string, any> = { content, datasetId: options.datasetId };

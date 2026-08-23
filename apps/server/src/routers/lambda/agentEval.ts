@@ -85,7 +85,7 @@ const evalTestCaseMessagesSchema = z
         pluginState: recordSchema.optional(),
         provider: z.string().optional(),
         reasoning: recordSchema.optional(),
-        role: z.enum(['user', 'assistant', 'tool']),
+        role: z.enum(['user', 'assistant', 'system', 'tool']),
         search: recordSchema.optional(),
         tool_call_id: z.string().optional(),
         tools: z.array(recordSchema).optional(),
@@ -94,7 +94,6 @@ const evalTestCaseMessagesSchema = z
       })
       .strict(),
   )
-  .min(1)
   .superRefine((messages, ctx) => {
     const ids = new Set<string>();
 

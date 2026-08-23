@@ -414,14 +414,14 @@ interface InternalExecAgentParams extends ExecAgentParams {
   ephemeralUserMessage?: string;
   /** Eval context for injecting environment prompts into system message */
   evalContext?: EvalContext;
+  /** Eval execution controls, such as fixture tool forwarding. */
+  evalRuntime?: EvalRuntimeContext;
   /**
    * Restrict this orchestration turn to exactly these plugins. Unlike
    * `additionalPluginIds`, this excludes the agent's pinned and default tools
    * as well as activator-discoverable manifests.
    */
   exclusivePluginIds?: string[];
-  /** Eval execution controls, such as fixture tool forwarding. */
-  evalRuntime?: EvalRuntimeContext;
   /** External files to upload to S3 and attach to the user message */
   files?: Array<{
     /** Pre-downloaded buffer (from adapter/platform layer) */

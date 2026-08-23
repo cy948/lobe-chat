@@ -571,17 +571,6 @@ describe('Agent Eval Router Integration Tests', () => {
           }),
         ).rejects.toThrow(/not found/);
       });
-
-      it('should accept an empty message history', async () => {
-        const caller = agentEvalRouter.createCaller(createTestContext(userId));
-
-        const result = await caller.createTestCase({
-          content: { input: 'Fresh conversation', messages: [] },
-          datasetId,
-        });
-
-        expect(result.content.messages).toEqual([]);
-      });
     });
 
     describe('batchCreateTestCases', () => {

@@ -57,6 +57,33 @@ describe('TopicImporterRepo.importTopic', () => {
       expect(insertedMessages[1].parentId).toBe(insertedMessages[0].id);
       expect(insertedMessages[2].parentId).toBe(insertedMessages[1].id);
     });
+
+    it('should preserve input order across batches with unordered timestamps', async () => {
+      const repo = new TopicImporterRepo(serverDB, userId);
+      const importData: ImportedMessage[] = Array.from({ length: 501 }, (_, index) => ({
+        content: `Message ${index}`,
+        createdAt: index % 3 === 0 ? 1 : 0,
+        role: index % 2 === 0 ? 'user' : 'assistant',
+      }));
+
+      const result = await repo.importTopic({ agentId, data: importData });
+      const insertedMessages = await serverDB
+        .select()
+        .from(messages)
+        .where(eq(messages.topicId, result.topicId))
+        .orderBy(messages.createdAt);
+
+      expect(insertedMessages.map((message) => message.content)).toEqual(
+        importData.map((message) => message.content),
+      );
+      expect(insertedMessages.at(-1)?.parentId).toBe(insertedMessages.at(-2)?.id);
+      expect(
+        insertedMessages.every(
+          (message, index) =>
+            index === 0 || message.createdAt > insertedMessages[index - 1].createdAt,
+        ),
+      ).toBe(true);
+    });
   });
 
   describe('full format (ExportedTopic with parentId)', () => {

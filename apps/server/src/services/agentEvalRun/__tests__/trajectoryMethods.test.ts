@@ -137,7 +137,6 @@ describe('AgentEvalRunService', () => {
 
     it('should load the complete environment from the test case', async () => {
       const environment = {
-        envPrompt: 'Use the case fixture.',
         toolForwarding: {
           memory: { endpoint: 'https://mock.test/tool-calls' },
         },

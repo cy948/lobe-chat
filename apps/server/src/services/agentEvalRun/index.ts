@@ -18,7 +18,7 @@ import type {
 } from '@lobechat/types';
 import { getActivePluginIds, RequestTrigger } from '@lobechat/types';
 import debug from 'debug';
-import { eq } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 
 import {
   AgentEvalBenchmarkModel,
@@ -370,11 +370,7 @@ export class AgentEvalRunService {
             id,
             metadata: message.metadata ?? null,
             model: message.model ?? null,
-            parentId: hasParentInfo
-              ? message.parentId
-                ? (idMapping.get(message.parentId) ?? null)
-                : null
-              : (preparedMessages[index - 1]?.id ?? null),
+            parentId: null,
             provider: message.provider ?? null,
             reasoning: message.reasoning ?? null,
             role: message.role,
@@ -419,6 +415,33 @@ export class AgentEvalRunService {
           await tx
             .insert(messages)
             .values(messageRows.slice(index, index + EVAL_HISTORY_MESSAGE_BATCH_SIZE));
+        }
+        const parentLinks = preparedMessages
+          .map(({ id, message }, index) => ({
+            id,
+            parentId: hasParentInfo
+              ? message.parentId
+                ? (idMapping.get(message.parentId) ?? null)
+                : null
+              : (preparedMessages[index - 1]?.id ?? null),
+          }))
+          .filter((link): link is { id: string; parentId: string } => link.parentId !== null);
+        for (let index = 0; index < parentLinks.length; index += EVAL_HISTORY_MESSAGE_BATCH_SIZE) {
+          const chunk = parentLinks.slice(index, index + EVAL_HISTORY_MESSAGE_BATCH_SIZE);
+          await tx
+            .update(messages)
+            .set({
+              parentId: sql`case ${messages.id} ${sql.join(
+                chunk.map(({ id, parentId }) => sql`when ${id} then ${parentId}`),
+                sql` `,
+              )} end`,
+            })
+            .where(
+              inArray(
+                messages.id,
+                chunk.map(({ id }) => id),
+              ),
+            );
         }
         for (let index = 0; index < pluginRows.length; index += EVAL_HISTORY_MESSAGE_BATCH_SIZE) {
           await tx

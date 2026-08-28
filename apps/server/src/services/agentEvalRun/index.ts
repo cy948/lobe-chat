@@ -309,10 +309,10 @@ export class AgentEvalRunService {
       }));
 
       await tx.insert(topics).values(
-        preparedCases.map(({ topicId }) => ({
+        preparedCases.map(({ testCase, topicId }) => ({
           agentId: targetAgentId ?? null,
           id: topicId,
-          title: 'New Topic',
+          title: `[${(testCase.sortOrder ?? 0) + 1}]`,
           trigger: 'eval' as const,
           userId: this.userId,
           workspaceId: this.workspaceId ?? null,

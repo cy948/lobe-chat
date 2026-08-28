@@ -222,7 +222,7 @@ describe('AgentEvalRunService', () => {
       const evalTopic = allTopics.find((t) => t.id === result.topicId);
       expect(evalTopic).toBeDefined();
       expect(evalTopic?.trigger).toBe('eval');
-      expect(evalTopic?.title).toContain('[Eval Case #');
+      expect(evalTopic?.title).toBe('New Topic');
 
       // Verify runTopic was created with 'running' status
       const runTopicModel = new AgentEvalRunTopicModel(serverDB, userId);
@@ -412,7 +412,7 @@ describe('AgentEvalRunService', () => {
       expect(result).toHaveProperty('error', 'Agent execution failed to start');
     });
 
-    it('should use correct topic title with sortOrder and input', async () => {
+    it('should use a generic topic title without evaluation metadata or case input', async () => {
       const { run, testCase } = await setupTrajectoryChain({
         input: 'A very long input that should be truncated at some point',
         sortOrder: 4,
@@ -433,8 +433,7 @@ describe('AgentEvalRunService', () => {
 
       const allTopics = await serverDB.select().from(topics);
       const evalTopic = allTopics.find((t) => t.id === result.topicId);
-      expect(evalTopic?.title).toContain('[Eval Case #5]');
-      expect(evalTopic?.title).toContain('A very long input that should be truncated at so');
+      expect(evalTopic?.title).toBe('New Topic');
     });
 
     it('should use empty prompt when testCase.content.input is undefined', async () => {

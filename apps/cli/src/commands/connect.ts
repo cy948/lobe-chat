@@ -871,7 +871,7 @@ function bindGatewayClientHandlers(
       log.toolCall(toolCall.apiName, requestId, toolCall.arguments, operationId);
     }
 
-    const execution = await toolCallExecutor.execute(requestId, toolCall, async () => {
+    const execution = await toolCallExecutor.execute(requestId, async () => {
       // Timed on the DEVICE's clock. The server can only see the whole dispatch
       // round trip, so reporting this back is what separates a slow tool from
       // slow transport.

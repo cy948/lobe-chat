@@ -805,7 +805,7 @@ export default class GatewayConnectionService extends ServiceModule {
       `Received tool call: apiName=${apiName}, requestId=${requestId}, type=${type ?? 'tool'}`,
     );
 
-    const execution = await this.getToolCallExecutor().execute(requestId, toolCall, async () => {
+    const execution = await this.getToolCallExecutor().execute(requestId, async () => {
       // Timed on THIS machine's clock, around both routes. The server can only
       // observe the whole dispatch round trip, so without this number a slow tool
       // and slow transport are indistinguishable.

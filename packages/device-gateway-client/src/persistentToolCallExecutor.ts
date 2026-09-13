@@ -11,7 +11,6 @@ const ACTIVE_OWNER_WAIT_MS = 45_000;
 const ACTIVE_OWNER_POLL_MS = 25;
 
 interface RequestRecord {
-  fingerprint: string;
   ownerPid: number;
   receivedAt: number;
   requestId: string;
@@ -19,12 +18,11 @@ interface RequestRecord {
 
 interface ResultRecord<TResult> {
   completedAt: number;
-  fingerprint: string;
   result: TResult;
 }
 
 export type PersistentToolCallExecution<TResult> =
-  { result: TResult; status: 'completed' } | { status: 'conflict' | 'outcome_unknown' };
+  { result: TResult; status: 'completed' } | { status: 'outcome_unknown' };
 
 export interface PersistentToolCallExecutorOptions {
   directory: string;
@@ -36,12 +34,9 @@ export const resolveToolCallExecutionResult = (
 ): ToolCallResponseMessage['result'] => {
   if (execution.status === 'completed') return execution.result;
 
-  const conflict = execution.status === 'conflict';
   return {
-    content: conflict
-      ? 'The request ID was reused with a different tool call.'
-      : 'The device restarted after accepting this tool call, so its outcome is unknown.',
-    error: conflict ? 'REQUEST_ID_CONFLICT' : 'OUTCOME_UNKNOWN',
+    content: 'The device restarted after accepting this tool call, so its outcome is unknown.',
+    error: 'OUTCOME_UNKNOWN',
     success: false,
   };
 };
@@ -60,10 +55,7 @@ const isProcessAlive = (pid: number) => {
 export class PersistentToolCallExecutor<TResult> {
   private readonly directory: string;
   private readonly retentionMs: number;
-  private readonly inFlight = new Map<
-    string,
-    { fingerprint: string; promise: Promise<PersistentToolCallExecution<TResult>> }
-  >();
+  private readonly inFlight = new Map<string, Promise<PersistentToolCallExecution<TResult>>>();
   private lastPrunedAt = 0;
 
   constructor(options: PersistentToolCallExecutorOptions) {
@@ -73,18 +65,14 @@ export class PersistentToolCallExecutor<TResult> {
 
   async execute(
     requestId: string,
-    request: unknown,
     run: () => Promise<TResult>,
   ): Promise<PersistentToolCallExecution<TResult>> {
     const key = createHash('sha256').update(requestId).digest('hex');
-    const fingerprint = createHash('sha256').update(JSON.stringify(request)).digest('hex');
     const active = this.inFlight.get(key);
-    if (active) {
-      return active.fingerprint === fingerprint ? active.promise : { status: 'conflict' };
-    }
+    if (active) return active;
 
-    const execution = this.executePersisted({ fingerprint, key, requestId, run });
-    this.inFlight.set(key, { fingerprint, promise: execution });
+    const execution = this.executePersisted({ key, requestId, run });
+    this.inFlight.set(key, execution);
     try {
       return await execution;
     } finally {
@@ -94,12 +82,11 @@ export class PersistentToolCallExecutor<TResult> {
   }
 
   private async executePersisted(params: {
-    fingerprint: string;
     key: string;
     requestId: string;
     run: () => Promise<TResult>;
   }): Promise<PersistentToolCallExecution<TResult>> {
-    const { fingerprint, key, requestId, run } = params;
+    const { key, requestId, run } = params;
     await mkdir(this.directory, { mode: 0o700, recursive: true });
     const recordDirectory = path.join(this.directory, key);
 
@@ -107,11 +94,10 @@ export class PersistentToolCallExecutor<TResult> {
       await mkdir(recordDirectory, { mode: 0o700 });
     } catch (error) {
       if (!isNodeError(error) || error.code !== 'EEXIST') throw error;
-      return this.readExisting(recordDirectory, fingerprint);
+      return this.readExisting(recordDirectory);
     }
 
     await this.writeDurableJson(path.join(recordDirectory, 'request.json'), {
-      fingerprint,
       ownerPid: process.pid,
       receivedAt: Date.now(),
       requestId,
@@ -129,7 +115,6 @@ export class PersistentToolCallExecutor<TResult> {
     const temporaryResult = path.join(recordDirectory, `result-${randomUUID()}.tmp`);
     await this.writeDurableJson(temporaryResult, {
       completedAt: Date.now(),
-      fingerprint,
       result,
     } satisfies ResultRecord<TResult>);
     await rename(temporaryResult, path.join(recordDirectory, 'result.json'));
@@ -138,7 +123,6 @@ export class PersistentToolCallExecutor<TResult> {
 
   private async readExisting(
     recordDirectory: string,
-    fingerprint: string,
   ): Promise<PersistentToolCallExecution<TResult>> {
     const waitUntil = Date.now() + ACTIVE_OWNER_WAIT_MS;
     while (true) {
@@ -146,17 +130,12 @@ export class PersistentToolCallExecutor<TResult> {
         path.join(recordDirectory, 'result.json'),
       );
       if (result) {
-        return result.fingerprint === fingerprint
-          ? { result: result.result, status: 'completed' }
-          : { status: 'conflict' };
+        return { result: result.result, status: 'completed' };
       }
 
       const request = await this.readJson<RequestRecord>(
         path.join(recordDirectory, 'request.json'),
       );
-      if (request?.fingerprint !== undefined && request.fingerprint !== fingerprint) {
-        return { status: 'conflict' };
-      }
       const abandoned = await this.readJson(path.join(recordDirectory, 'abandoned.json'));
       if (abandoned || (request && !isProcessAlive(request.ownerPid))) {
         return { status: 'outcome_unknown' };

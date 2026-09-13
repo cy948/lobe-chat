@@ -15,7 +15,6 @@ interface RequestRecord {
   ownerPid: number;
   receivedAt: number;
   requestId: string;
-  scope: string;
 }
 
 interface ResultRecord<TResult> {
@@ -73,19 +72,18 @@ export class PersistentToolCallExecutor<TResult> {
   }
 
   async execute(
-    scope: string,
     requestId: string,
     request: unknown,
     run: () => Promise<TResult>,
   ): Promise<PersistentToolCallExecution<TResult>> {
-    const key = createHash('sha256').update(scope).update('\0').update(requestId).digest('hex');
+    const key = createHash('sha256').update(requestId).digest('hex');
     const fingerprint = createHash('sha256').update(JSON.stringify(request)).digest('hex');
     const active = this.inFlight.get(key);
     if (active) {
       return active.fingerprint === fingerprint ? active.promise : { status: 'conflict' };
     }
 
-    const execution = this.executePersisted({ fingerprint, key, requestId, run, scope });
+    const execution = this.executePersisted({ fingerprint, key, requestId, run });
     this.inFlight.set(key, { fingerprint, promise: execution });
     try {
       return await execution;
@@ -100,9 +98,8 @@ export class PersistentToolCallExecutor<TResult> {
     key: string;
     requestId: string;
     run: () => Promise<TResult>;
-    scope: string;
   }): Promise<PersistentToolCallExecution<TResult>> {
-    const { fingerprint, key, requestId, run, scope } = params;
+    const { fingerprint, key, requestId, run } = params;
     await mkdir(this.directory, { mode: 0o700, recursive: true });
     const recordDirectory = path.join(this.directory, key);
 
@@ -118,7 +115,6 @@ export class PersistentToolCallExecutor<TResult> {
       ownerPid: process.pid,
       receivedAt: Date.now(),
       requestId,
-      scope,
     } satisfies RequestRecord);
 
     let result: TResult;

@@ -415,7 +415,7 @@ export default class GatewayConnectionService extends ServiceModule {
       userId: userId || undefined,
     });
 
-    this.setupClientEvents(client, undefined, userId ? `user:${userId}` : 'personal');
+    this.setupClientEvents(client);
     this.client = client;
 
     await client.connect();
@@ -437,11 +437,7 @@ export default class GatewayConnectionService extends ServiceModule {
    * scope skips global status broadcasting and refreshes its token by
    * re-minting a workspace connect token instead of refreshing the user token.
    */
-  private setupClientEvents(
-    client: GatewayClient,
-    scope?: { workspaceId: string },
-    toolCallScope = 'personal',
-  ) {
+  private setupClientEvents(client: GatewayClient, scope?: { workspaceId: string }) {
     if (scope) {
       client.on('status_changed', (status) => {
         logger.info(`Workspace ${scope.workspaceId} connection status: ${status}`);
@@ -453,7 +449,7 @@ export default class GatewayConnectionService extends ServiceModule {
     }
 
     client.on('tool_call_request', (request) => {
-      this.handleToolCallRequest(request, client, toolCallScope);
+      this.handleToolCallRequest(request, client);
     });
 
     client.on('message_api_request', (request) => {
@@ -574,7 +570,7 @@ export default class GatewayConnectionService extends ServiceModule {
       workspaceId,
     });
 
-    this.setupClientEvents(client, { workspaceId }, `workspace:${workspaceId}`);
+    this.setupClientEvents(client, { workspaceId });
     this.workspaceClients.set(workspaceId, client);
 
     await client.connect();
@@ -801,7 +797,6 @@ export default class GatewayConnectionService extends ServiceModule {
   private handleToolCallRequest = async (
     request: ToolCallRequestMessage,
     client: GatewayClient,
-    toolCallScope: string,
   ) => {
     const { requestId, toolCall } = request;
     const { apiName, arguments: argsStr, identifier, params, type } = toolCall;
@@ -810,48 +805,43 @@ export default class GatewayConnectionService extends ServiceModule {
       `Received tool call: apiName=${apiName}, requestId=${requestId}, type=${type ?? 'tool'}`,
     );
 
-    const execution = await this.getToolCallExecutor().execute(
-      toolCallScope,
-      requestId,
-      { timeout: request.timeout, toolCall },
-      async () => {
-        // Timed on THIS machine's clock, around both routes. The server can only
-        // observe the whole dispatch round trip, so without this number a slow tool
-        // and slow transport are indistinguishable.
-        const startedAt = performance.now();
-        try {
-          let result: ToolCallResult;
+    const execution = await this.getToolCallExecutor().execute(requestId, toolCall, async () => {
+      // Timed on THIS machine's clock, around both routes. The server can only
+      // observe the whole dispatch round trip, so without this number a slow tool
+      // and slow transport are indistinguishable.
+      const startedAt = performance.now();
+      try {
+        let result: ToolCallResult;
 
-          if (type === 'mcp') {
-            if (!this.mcpCallHandler) throw new Error('No MCP call handler configured');
-            if (!params) throw new Error('MCP tool call missing connection params');
-            result = await this.mcpCallHandler({ apiName, arguments: argsStr, identifier, params });
-          } else {
-            if (!this.toolCallHandler) throw new Error('No tool call handler configured');
-            result = await this.toolCallHandler(identifier, apiName, JSON.parse(argsStr));
-          }
-
-          const wireResult: ToolCallResponseMessage['result'] = {
-            content: result.content,
-            executionTimeMs: Math.round(performance.now() - startedAt),
-            success: result.success,
-          };
-          const wireError = serializeWireError(result.error);
-          if (wireError !== undefined) wireResult.error = wireError;
-          if (result.state !== undefined) wireResult.state = result.state;
-          return wireResult;
-        } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          logger.error(`Tool call failed: apiName=${apiName}, error=${errorMsg}`);
-          return {
-            content: errorMsg,
-            error: errorMsg,
-            executionTimeMs: Math.round(performance.now() - startedAt),
-            success: false,
-          };
+        if (type === 'mcp') {
+          if (!this.mcpCallHandler) throw new Error('No MCP call handler configured');
+          if (!params) throw new Error('MCP tool call missing connection params');
+          result = await this.mcpCallHandler({ apiName, arguments: argsStr, identifier, params });
+        } else {
+          if (!this.toolCallHandler) throw new Error('No tool call handler configured');
+          result = await this.toolCallHandler(identifier, apiName, JSON.parse(argsStr));
         }
-      },
-    );
+
+        const wireResult: ToolCallResponseMessage['result'] = {
+          content: result.content,
+          executionTimeMs: Math.round(performance.now() - startedAt),
+          success: result.success,
+        };
+        const wireError = serializeWireError(result.error);
+        if (wireError !== undefined) wireResult.error = wireError;
+        if (result.state !== undefined) wireResult.state = result.state;
+        return wireResult;
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        logger.error(`Tool call failed: apiName=${apiName}, error=${errorMsg}`);
+        return {
+          content: errorMsg,
+          error: errorMsg,
+          executionTimeMs: Math.round(performance.now() - startedAt),
+          success: false,
+        };
+      }
+    });
 
     const result = resolveToolCallExecutionResult(execution);
     client.sendToolCallResponse({ requestId, result });

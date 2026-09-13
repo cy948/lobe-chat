@@ -80,6 +80,9 @@ import { log, setVerbose } from '../utils/logger';
 import { sweepLocalTraces } from '../utils/traceMaintenance';
 
 const CONNECT_SERVICE_NAME = CLI_CONNECT_SERVICE_NAME;
+const toolCallExecutor = new PersistentToolCallExecutor<ToolCallResponseMessage['result']>({
+  directory: path.join(os.homedir(), resolveCliDirName(), 'device-tool-calls'),
+});
 
 interface ConnectOptions {
   daemon?: boolean;
@@ -465,10 +468,6 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     getServerUrl: () => auth.serverUrl,
     info,
     isDaemonChild,
-    personalScope: `user:${auth.userId}`,
-    toolCallExecutor: new PersistentToolCallExecutor<ToolCallResponseMessage['result']>({
-      directory: path.join(os.homedir(), resolveCliDirName(), 'device-tool-calls'),
-    }),
   };
 
   // Request handlers (system info / tool calls / device RPCs / agent runs) —
@@ -836,8 +835,6 @@ interface GatewayHandlerContext {
   getServerUrl: () => string;
   info: (msg: string) => void;
   isDaemonChild: boolean;
-  personalScope: string;
-  toolCallExecutor: PersistentToolCallExecutor<ToolCallResponseMessage['result']>;
 }
 
 /**
@@ -851,7 +848,7 @@ function bindGatewayClientHandlers(
   ctx: GatewayHandlerContext,
   connectionWorkspaceId?: string,
 ) {
-  const { deps, error, getServerUrl, info, isDaemonChild, personalScope, toolCallExecutor } = ctx;
+  const { deps, error, getServerUrl, info, isDaemonChild } = ctx;
 
   // Handle system info requests
   client.on('system_info_request', (request: SystemInfoRequestMessage) => {
@@ -874,35 +871,30 @@ function bindGatewayClientHandlers(
       log.toolCall(toolCall.apiName, requestId, toolCall.arguments, operationId);
     }
 
-    const execution = await toolCallExecutor.execute(
-      connectionWorkspaceId ? `workspace:${connectionWorkspaceId}` : personalScope,
-      requestId,
-      { timeout, toolCall },
-      async () => {
-        // Timed on the DEVICE's clock. The server can only see the whole dispatch
-        // round trip, so reporting this back is what separates a slow tool from
-        // slow transport.
-        const startedAt = performance.now();
-        try {
-          const result = await executeToolCall(toolCall.apiName, toolCall.arguments, timeout);
-          return {
-            content: result.content,
-            error: result.error,
-            executionTimeMs: Math.round(performance.now() - startedAt),
-            state: result.state,
-            success: result.success,
-          };
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          return {
-            content: message,
-            error: message,
-            executionTimeMs: Math.round(performance.now() - startedAt),
-            success: false,
-          };
-        }
-      },
-    );
+    const execution = await toolCallExecutor.execute(requestId, toolCall, async () => {
+      // Timed on the DEVICE's clock. The server can only see the whole dispatch
+      // round trip, so reporting this back is what separates a slow tool from
+      // slow transport.
+      const startedAt = performance.now();
+      try {
+        const result = await executeToolCall(toolCall.apiName, toolCall.arguments, timeout);
+        return {
+          content: result.content,
+          error: result.error,
+          executionTimeMs: Math.round(performance.now() - startedAt),
+          state: result.state,
+          success: result.success,
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          content: message,
+          error: message,
+          executionTimeMs: Math.round(performance.now() - startedAt),
+          success: false,
+        };
+      }
+    });
     const result = resolveToolCallExecutionResult(execution);
     const executionTimeMs = result.executionTimeMs ?? 0;
 

@@ -3,6 +3,8 @@ import { mkdir, open, readdir, readFile, rename, rm, stat } from 'node:fs/promis
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
+import type { ToolCallResponseMessage } from './types';
+
 const DEFAULT_RETENTION_MS = 24 * 60 * 60 * 1000;
 const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const ACTIVE_OWNER_WAIT_MS = 45_000;
@@ -29,6 +31,21 @@ export interface PersistentToolCallExecutorOptions {
   directory: string;
   retentionMs?: number;
 }
+
+export const resolveToolCallExecutionResult = (
+  execution: PersistentToolCallExecution<ToolCallResponseMessage['result']>,
+): ToolCallResponseMessage['result'] => {
+  if (execution.status === 'completed') return execution.result;
+
+  const conflict = execution.status === 'conflict';
+  return {
+    content: conflict
+      ? 'The request ID was reused with a different tool call.'
+      : 'The device restarted after accepting this tool call, so its outcome is unknown.',
+    error: conflict ? 'REQUEST_ID_CONFLICT' : 'OUTCOME_UNKNOWN',
+    success: false,
+  };
+};
 
 const isNodeError = (error: unknown): error is NodeJS.ErrnoException => error instanceof Error;
 
@@ -74,9 +91,7 @@ export class PersistentToolCallExecutor<TResult> {
       return await execution;
     } finally {
       this.inFlight.delete(key);
-      this.pruneExpired().catch((error) => {
-        console.warn('Failed to prune persisted tool calls', error);
-      });
+      void this.pruneExpired().catch(() => {});
     }
   }
 

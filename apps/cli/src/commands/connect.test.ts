@@ -3,7 +3,7 @@ import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resolveToken } from '../auth/resolveToken';
-import { appendLog, removeStatus, spawnDaemon, stopDaemon, writeStatus } from '../daemon/manager';
+import { removeStatus, spawnDaemon, stopDaemon, writeStatus } from '../daemon/manager';
 import type * as DeviceRegister from '../device/register';
 import { loadSettings, saveSettings } from '../settings';
 import { executeToolCall } from '../tools';
@@ -94,7 +94,6 @@ vi.mock('@lobechat/device-gateway-client', () => ({
       connect: vi.fn().mockImplementation(async () => {
         connectCalled = true;
       }),
-      connectionStatus: 'disconnected',
       currentDeviceId: 'mock-device-id',
       disconnect: vi.fn(),
       on: vi.fn().mockImplementation((event: string, handler: (...args: any[]) => any) => {
@@ -123,6 +122,7 @@ vi.mock('@lobechat/device-gateway-client', () => ({
       }),
     ),
   })),
+  resolveToolCallExecutionResult: (execution: { result: unknown }) => execution.result,
 }));
 
 describe('connect command', () => {
@@ -175,12 +175,6 @@ describe('connect command', () => {
     expect(writeStatus).toHaveBeenLastCalledWith(
       expect.objectContaining({ connectionStatus: 'connected', deviceId: 'mock-device-id' }),
     );
-    expect(appendLog).toHaveBeenCalledWith(
-      expect.stringContaining('"event":"daemon_startup_ready","scope":"preflight"'),
-    );
-
-    clientOptions.logger.error('WebSocket error:', 'ECONNRESET');
-    expect(appendLog).toHaveBeenCalledWith('[ERROR] WebSocket error: ECONNRESET');
   });
 
   it('should connect to gateway', async () => {
@@ -279,9 +273,6 @@ describe('connect command', () => {
     await clientEventHandlers['auth_failed']?.('invalid token');
 
     expect(log.error).toHaveBeenCalledWith(expect.stringContaining('Authentication failed'));
-    expect(log.info).toHaveBeenCalledWith(
-      expect.stringContaining('"event":"auth_refresh_unchanged"'),
-    );
     expect(cleanupAllProcesses).toHaveBeenCalled();
     expect(exitSpy).toHaveBeenCalledWith(1);
   });

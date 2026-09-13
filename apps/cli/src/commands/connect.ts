@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { format } from 'node:util';
 
 import {
   defaultGetLocalFilePreview,
@@ -18,7 +17,11 @@ import type {
   ToolCallRequestMessage,
   ToolCallResponseMessage,
 } from '@lobechat/device-gateway-client';
-import { GatewayClient, PersistentToolCallExecutor } from '@lobechat/device-gateway-client';
+import {
+  GatewayClient,
+  PersistentToolCallExecutor,
+  resolveToolCallExecutionResult,
+} from '@lobechat/device-gateway-client';
 import { listHeterogeneousAgentModels } from '@lobechat/heterogeneous-agents/models';
 import { getShellInfo } from '@lobechat/local-file-shell';
 import type { Command } from 'commander';
@@ -711,14 +714,6 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
           await client.reconnect();
           return;
         }
-        if (newToken === prev) {
-          info(
-            `[gateway-ws] ${JSON.stringify({
-              event: 'auth_refresh_unchanged',
-              tokenType: connectTokenType,
-            })}`,
-          );
-        }
       } catch {
         // fall through
       }
@@ -823,15 +818,6 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     }
   }
 
-  if (isDaemonChild) {
-    info(
-      `[gateway-ws] ${JSON.stringify({
-        event: 'daemon_startup_ready',
-        scope: 'preflight',
-        status: client.connectionStatus,
-      })}`,
-    );
-  }
   await reportDaemonStartupReady();
 
   // Connect
@@ -917,17 +903,7 @@ function bindGatewayClientHandlers(
         }
       },
     );
-    const result: ToolCallResponseMessage['result'] =
-      execution.status === 'completed'
-        ? execution.result
-        : {
-            content:
-              execution.status === 'conflict'
-                ? 'The request ID was reused with a different tool call.'
-                : 'The device restarted after accepting this tool call, so its outcome is unknown.',
-            error: execution.status === 'conflict' ? 'REQUEST_ID_CONFLICT' : 'OUTCOME_UNKNOWN',
-            success: false,
-          };
+    const result = resolveToolCallExecutionResult(execution);
     const executionTimeMs = result.executionTimeMs ?? 0;
 
     if (isDaemonChild) {
@@ -999,18 +975,11 @@ function bindGatewayClientHandlers(
 }
 
 function createDaemonLogger() {
-  const write = (level: string, msg: string, args: unknown[]) => {
-    const line = format(msg, ...args)
-      .replaceAll(/[\r\n]+/g, ' ')
-      .slice(0, 2000);
-    appendLog(`[${level}] ${line}`);
-  };
-
   return {
-    debug: (msg: string, ...args: unknown[]) => write('DEBUG', msg, args),
-    error: (msg: string, ...args: unknown[]) => write('ERROR', msg, args),
-    info: (msg: string, ...args: unknown[]) => write('INFO', msg, args),
-    warn: (msg: string, ...args: unknown[]) => write('WARN', msg, args),
+    debug: (msg: string) => appendLog(`[DEBUG] ${msg}`),
+    error: (msg: string) => appendLog(`[ERROR] ${msg}`),
+    info: (msg: string) => appendLog(`[INFO] ${msg}`),
+    warn: (msg: string) => appendLog(`[WARN] ${msg}`),
   };
 }
 

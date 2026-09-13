@@ -22,5 +22,8 @@ export type {
   PersistentToolCallExecution,
   PersistentToolCallExecutorOptions,
 } from './persistentToolCallExecutor';
-export { PersistentToolCallExecutor } from './persistentToolCallExecutor';
+export {
+  PersistentToolCallExecutor,
+  resolveToolCallExecutionResult,
+} from './persistentToolCallExecutor';
 export * from './types';

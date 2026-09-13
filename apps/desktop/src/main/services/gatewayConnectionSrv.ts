@@ -18,7 +18,10 @@ import type {
   ToolCallRequestMessage,
   ToolCallResponseMessage,
 } from '@lobechat/device-gateway-client';
-import { PersistentToolCallExecutor } from '@lobechat/device-gateway-client';
+import {
+  PersistentToolCallExecutor,
+  resolveToolCallExecutionResult,
+} from '@lobechat/device-gateway-client';
 import type { IdentitySource } from '@lobechat/device-identity';
 import type { GatewayConnectionStatus } from '@lobechat/electron-client-ipc';
 import { app, powerSaveBlocker } from 'electron';
@@ -850,17 +853,7 @@ export default class GatewayConnectionService extends ServiceModule {
       },
     );
 
-    const result: ToolCallResponseMessage['result'] =
-      execution.status === 'completed'
-        ? execution.result
-        : {
-            content:
-              execution.status === 'conflict'
-                ? 'The request ID was reused with a different tool call.'
-                : 'The device restarted after accepting this tool call, so its outcome is unknown.',
-            error: execution.status === 'conflict' ? 'REQUEST_ID_CONFLICT' : 'OUTCOME_UNKNOWN',
-            success: false,
-          };
+    const result = resolveToolCallExecutionResult(execution);
     client.sendToolCallResponse({ requestId, result });
   };
 

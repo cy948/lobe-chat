@@ -229,6 +229,7 @@ vi.mock('@lobechat/device-gateway-client', () => ({
       }),
     );
   },
+  resolveToolCallExecutionResult: (execution: { result: unknown }) => execution.result,
 }));
 
 vi.mock('@/services/imessageBridgeSrv', () => ({

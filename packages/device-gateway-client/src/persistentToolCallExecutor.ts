@@ -5,29 +5,22 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 import type { ToolCallResponseMessage } from './types';
 
-const DEFAULT_RETENTION_MS = 24 * 60 * 60 * 1000;
+const RETENTION_MS = 24 * 60 * 60 * 1000;
 const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const ACTIVE_OWNER_WAIT_MS = 45_000;
 const ACTIVE_OWNER_POLL_MS = 25;
 
 interface RequestRecord {
   ownerPid: number;
-  receivedAt: number;
   requestId: string;
 }
 
 interface ResultRecord<TResult> {
-  completedAt: number;
   result: TResult;
 }
 
-export type PersistentToolCallExecution<TResult> =
+type PersistentToolCallExecution<TResult> =
   { result: TResult; status: 'completed' } | { status: 'outcome_unknown' };
-
-export interface PersistentToolCallExecutorOptions {
-  directory: string;
-  retentionMs?: number;
-}
 
 export const resolveToolCallExecutionResult = (
   execution: PersistentToolCallExecution<ToolCallResponseMessage['result']>,
@@ -53,15 +46,10 @@ const isProcessAlive = (pid: number) => {
 };
 
 export class PersistentToolCallExecutor<TResult> {
-  private readonly directory: string;
-  private readonly retentionMs: number;
   private readonly inFlight = new Map<string, Promise<PersistentToolCallExecution<TResult>>>();
   private lastPrunedAt = 0;
 
-  constructor(options: PersistentToolCallExecutorOptions) {
-    this.directory = options.directory;
-    this.retentionMs = options.retentionMs ?? DEFAULT_RETENTION_MS;
-  }
+  constructor(private readonly directory: string) {}
 
   async execute(
     requestId: string,
@@ -71,7 +59,7 @@ export class PersistentToolCallExecutor<TResult> {
     const active = this.inFlight.get(key);
     if (active) return active;
 
-    const execution = this.executePersisted({ key, requestId, run });
+    const execution = this.executePersisted(key, requestId, run);
     this.inFlight.set(key, execution);
     try {
       return await execution;
@@ -81,12 +69,11 @@ export class PersistentToolCallExecutor<TResult> {
     }
   }
 
-  private async executePersisted(params: {
-    key: string;
-    requestId: string;
-    run: () => Promise<TResult>;
-  }): Promise<PersistentToolCallExecution<TResult>> {
-    const { key, requestId, run } = params;
+  private async executePersisted(
+    key: string,
+    requestId: string,
+    run: () => Promise<TResult>,
+  ): Promise<PersistentToolCallExecution<TResult>> {
     await mkdir(this.directory, { mode: 0o700, recursive: true });
     const recordDirectory = path.join(this.directory, key);
 
@@ -99,7 +86,6 @@ export class PersistentToolCallExecutor<TResult> {
 
     await this.writeDurableJson(path.join(recordDirectory, 'request.json'), {
       ownerPid: process.pid,
-      receivedAt: Date.now(),
       requestId,
     } satisfies RequestRecord);
 
@@ -114,7 +100,6 @@ export class PersistentToolCallExecutor<TResult> {
     }
     const temporaryResult = path.join(recordDirectory, `result-${randomUUID()}.tmp`);
     await this.writeDurableJson(temporaryResult, {
-      completedAt: Date.now(),
       result,
     } satisfies ResultRecord<TResult>);
     await rename(temporaryResult, path.join(recordDirectory, 'result.json'));
@@ -178,7 +163,7 @@ export class PersistentToolCallExecutor<TResult> {
         .map(async (entry) => {
           const recordDirectory = path.join(this.directory, entry.name);
           const metadata = await stat(recordDirectory);
-          if (now - metadata.mtimeMs >= this.retentionMs) {
+          if (now - metadata.mtimeMs >= RETENTION_MS) {
             await rm(recordDirectory, { force: true, recursive: true });
           }
         }),

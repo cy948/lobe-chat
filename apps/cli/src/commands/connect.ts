@@ -80,9 +80,9 @@ import { log, setVerbose } from '../utils/logger';
 import { sweepLocalTraces } from '../utils/traceMaintenance';
 
 const CONNECT_SERVICE_NAME = CLI_CONNECT_SERVICE_NAME;
-const toolCallExecutor = new PersistentToolCallExecutor<ToolCallResponseMessage['result']>({
-  directory: path.join(os.homedir(), resolveCliDirName(), 'device-tool-calls'),
-});
+const toolCallExecutor = new PersistentToolCallExecutor<ToolCallResponseMessage['result']>(
+  path.join(os.homedir(), resolveCliDirName(), 'device-tool-calls'),
+);
 
 interface ConnectOptions {
   daemon?: boolean;

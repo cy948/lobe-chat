@@ -168,9 +168,9 @@ export default class GatewayConnectionService extends ServiceModule {
   private workspaceRestoreInFlight = false;
 
   private getToolCallExecutor() {
-    return (this.toolCallExecutor ??= new PersistentToolCallExecutor({
-      directory: path.join(app.getPath('userData'), 'device-tool-calls'),
-    }));
+    return (this.toolCallExecutor ??= new PersistentToolCallExecutor(
+      path.join(app.getPath('userData'), 'device-tool-calls'),
+    ));
   }
 
   // ─── Configuration ───

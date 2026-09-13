@@ -18,7 +18,7 @@ describe('PersistentToolCallExecutor', () => {
   });
 
   it('persists the request before executing and joins concurrent duplicates', async () => {
-    const executor = new PersistentToolCallExecutor<{ content: string }>({ directory });
+    const executor = new PersistentToolCallExecutor<{ content: string }>(directory);
     let release: (() => void) | undefined;
     const run = vi.fn(async () => {
       const entries = await readdir(directory);
@@ -45,11 +45,11 @@ describe('PersistentToolCallExecutor', () => {
   });
 
   it('replays a result from disk in a new executor instance', async () => {
-    const first = new PersistentToolCallExecutor<{ content: string }>({ directory });
+    const first = new PersistentToolCallExecutor<{ content: string }>(directory);
     await first.execute('request-1', async () => ({ content: 'persisted' }));
 
     const run = vi.fn(async () => ({ content: 'duplicate' }));
-    const restarted = new PersistentToolCallExecutor<{ content: string }>({ directory });
+    const restarted = new PersistentToolCallExecutor<{ content: string }>(directory);
     await expect(restarted.execute('request-1', run)).resolves.toEqual({
       result: { content: 'persisted' },
       status: 'completed',
@@ -58,8 +58,8 @@ describe('PersistentToolCallExecutor', () => {
   });
 
   it('waits for an active owner in another executor instance', async () => {
-    const first = new PersistentToolCallExecutor<{ content: string }>({ directory });
-    const second = new PersistentToolCallExecutor<{ content: string }>({ directory });
+    const first = new PersistentToolCallExecutor<{ content: string }>(directory);
+    const second = new PersistentToolCallExecutor<{ content: string }>(directory);
     let release: (() => void) | undefined;
     const firstExecution = first.execute('request-1', async () => {
       await new Promise<void>((resolve) => {
@@ -87,7 +87,7 @@ describe('PersistentToolCallExecutor', () => {
   });
 
   it('returns outcome_unknown after a crash leaves a request without a result', async () => {
-    const first = new PersistentToolCallExecutor<{ content: string }>({ directory });
+    const first = new PersistentToolCallExecutor<{ content: string }>(directory);
     await expect(
       first.execute('request-1', async () => {
         throw new Error('process crashed');
@@ -95,7 +95,7 @@ describe('PersistentToolCallExecutor', () => {
     ).rejects.toThrow('process crashed');
 
     const run = vi.fn(async () => ({ content: 'duplicate' }));
-    const restarted = new PersistentToolCallExecutor<{ content: string }>({ directory });
+    const restarted = new PersistentToolCallExecutor<{ content: string }>(directory);
     await expect(restarted.execute('request-1', run)).resolves.toEqual({
       status: 'outcome_unknown',
     });

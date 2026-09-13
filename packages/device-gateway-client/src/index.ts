@@ -18,4 +18,9 @@ export type {
   GatewayHttpClientOptions,
 } from './http';
 export { GatewayHttpClient } from './http';
+export type {
+  PersistentToolCallExecution,
+  PersistentToolCallExecutorOptions,
+} from './persistentToolCallExecutor';
+export { PersistentToolCallExecutor } from './persistentToolCallExecutor';
 export * from './types';

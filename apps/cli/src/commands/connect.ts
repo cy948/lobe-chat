@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { format } from 'node:util';
 
 import {
   defaultGetLocalFilePreview,
@@ -15,8 +16,9 @@ import type {
   RpcRequestMessage,
   SystemInfoRequestMessage,
   ToolCallRequestMessage,
+  ToolCallResponseMessage,
 } from '@lobechat/device-gateway-client';
-import { GatewayClient } from '@lobechat/device-gateway-client';
+import { GatewayClient, PersistentToolCallExecutor } from '@lobechat/device-gateway-client';
 import { listHeterogeneousAgentModels } from '@lobechat/heterogeneous-agents/models';
 import { getShellInfo } from '@lobechat/local-file-shell';
 import type { Command } from 'commander';
@@ -29,6 +31,7 @@ import {
   CLI_CONNECT_SERVICE_NAME,
   CLI_DISPLAY_NAME,
   CLI_PRIMARY_BIN,
+  resolveCliDirName,
 } from '../constants/identity';
 import { OFFICIAL_GATEWAY_URL } from '../constants/urls';
 import {
@@ -459,6 +462,10 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     getServerUrl: () => auth.serverUrl,
     info,
     isDaemonChild,
+    personalScope: `user:${auth.userId}`,
+    toolCallExecutor: new PersistentToolCallExecutor<ToolCallResponseMessage['result']>({
+      directory: path.join(os.homedir(), resolveCliDirName(), 'device-tool-calls'),
+    }),
   };
 
   // Request handlers (system info / tool calls / device RPCs / agent runs) —
@@ -704,6 +711,14 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
           await client.reconnect();
           return;
         }
+        if (newToken === prev) {
+          info(
+            `[gateway-ws] ${JSON.stringify({
+              event: 'auth_refresh_unchanged',
+              tokenType: connectTokenType,
+            })}`,
+          );
+        }
       } catch {
         // fall through
       }
@@ -808,6 +823,15 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     }
   }
 
+  if (isDaemonChild) {
+    info(
+      `[gateway-ws] ${JSON.stringify({
+        event: 'daemon_startup_ready',
+        scope: 'preflight',
+        status: client.connectionStatus,
+      })}`,
+    );
+  }
   await reportDaemonStartupReady();
 
   // Connect
@@ -826,6 +850,8 @@ interface GatewayHandlerContext {
   getServerUrl: () => string;
   info: (msg: string) => void;
   isDaemonChild: boolean;
+  personalScope: string;
+  toolCallExecutor: PersistentToolCallExecutor<ToolCallResponseMessage['result']>;
 }
 
 /**
@@ -839,7 +865,7 @@ function bindGatewayClientHandlers(
   ctx: GatewayHandlerContext,
   connectionWorkspaceId?: string,
 ) {
-  const { deps, error, getServerUrl, info, isDaemonChild } = ctx;
+  const { deps, error, getServerUrl, info, isDaemonChild, personalScope, toolCallExecutor } = ctx;
 
   // Handle system info requests
   client.on('system_info_request', (request: SystemInfoRequestMessage) => {
@@ -862,12 +888,47 @@ function bindGatewayClientHandlers(
       log.toolCall(toolCall.apiName, requestId, toolCall.arguments, operationId);
     }
 
-    // Timed on the DEVICE's clock. The server can only see the whole dispatch
-    // round trip, so reporting this back is what separates a slow tool from
-    // slow transport.
-    const startedAt = performance.now();
-    const result = await executeToolCall(toolCall.apiName, toolCall.arguments, timeout);
-    const executionTimeMs = Math.round(performance.now() - startedAt);
+    const execution = await toolCallExecutor.execute(
+      connectionWorkspaceId ? `workspace:${connectionWorkspaceId}` : personalScope,
+      requestId,
+      { timeout, toolCall },
+      async () => {
+        // Timed on the DEVICE's clock. The server can only see the whole dispatch
+        // round trip, so reporting this back is what separates a slow tool from
+        // slow transport.
+        const startedAt = performance.now();
+        try {
+          const result = await executeToolCall(toolCall.apiName, toolCall.arguments, timeout);
+          return {
+            content: result.content,
+            error: result.error,
+            executionTimeMs: Math.round(performance.now() - startedAt),
+            state: result.state,
+            success: result.success,
+          };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          return {
+            content: message,
+            error: message,
+            executionTimeMs: Math.round(performance.now() - startedAt),
+            success: false,
+          };
+        }
+      },
+    );
+    const result: ToolCallResponseMessage['result'] =
+      execution.status === 'completed'
+        ? execution.result
+        : {
+            content:
+              execution.status === 'conflict'
+                ? 'The request ID was reused with a different tool call.'
+                : 'The device restarted after accepting this tool call, so its outcome is unknown.',
+            error: execution.status === 'conflict' ? 'REQUEST_ID_CONFLICT' : 'OUTCOME_UNKNOWN',
+            success: false,
+          };
+    const executionTimeMs = result.executionTimeMs ?? 0;
 
     if (isDaemonChild) {
       appendLog(
@@ -877,16 +938,7 @@ function bindGatewayClientHandlers(
       log.toolResult(requestId, result.success, result.content, operationId);
     }
 
-    client.sendToolCallResponse({
-      requestId,
-      result: {
-        content: result.content,
-        error: result.error,
-        executionTimeMs,
-        state: result.state,
-        success: result.success,
-      },
-    });
+    client.sendToolCallResponse({ requestId, result });
   });
 
   // Handle generic server-internal device RPCs (git / workspace / file ops).
@@ -947,11 +999,18 @@ function bindGatewayClientHandlers(
 }
 
 function createDaemonLogger() {
+  const write = (level: string, msg: string, args: unknown[]) => {
+    const line = format(msg, ...args)
+      .replaceAll(/[\r\n]+/g, ' ')
+      .slice(0, 2000);
+    appendLog(`[${level}] ${line}`);
+  };
+
   return {
-    debug: (msg: string) => appendLog(`[DEBUG] ${msg}`),
-    error: (msg: string) => appendLog(`[ERROR] ${msg}`),
-    info: (msg: string) => appendLog(`[INFO] ${msg}`),
-    warn: (msg: string) => appendLog(`[WARN] ${msg}`),
+    debug: (msg: string, ...args: unknown[]) => write('DEBUG', msg, args),
+    error: (msg: string, ...args: unknown[]) => write('ERROR', msg, args),
+    info: (msg: string, ...args: unknown[]) => write('INFO', msg, args),
+    warn: (msg: string, ...args: unknown[]) => write('WARN', msg, args),
   };
 }
 

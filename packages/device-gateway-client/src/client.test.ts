@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { GatewayClientLogger } from './client';
 import { GatewayClient } from './client';
 
 // Flag to control mock WS behavior
@@ -7,7 +8,11 @@ let mockWsShouldThrow = false;
 // When set, the socket never opens — the real-world black-holed TLS handshake,
 // which raises no event at all rather than an error.
 let mockWsShouldHang = false;
-const mockWsInstances: { options?: unknown; url: string }[] = [];
+const mockWsInstances: {
+  emit: (event: string, ...args: unknown[]) => boolean;
+  options?: unknown;
+  url: string;
+}[] = [];
 
 // Mock ws module — must use dynamic import for EventEmitter to avoid hoisting issues
 vi.mock('ws', async () => {
@@ -273,6 +278,111 @@ describe('GatewayClient', () => {
       expect(mockWsInstances).toHaveLength(attemptsBefore);
 
       connected.disconnect();
+    });
+  });
+
+  describe('diagnostic logging', () => {
+    const createLogger = () =>
+      ({
+        debug: vi.fn(),
+        error: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+      }) satisfies GatewayClientLogger;
+
+    const parseEvent = (message: unknown) => {
+      expect(message).toEqual(expect.stringContaining('[gateway-ws] '));
+      return JSON.parse(String(message).replace('[gateway-ws] ', '')) as Record<string, unknown>;
+    };
+
+    it('identifies a close from a stale socket attempt', async () => {
+      const logger = createLogger();
+      const observed = new GatewayClient({
+        autoReconnect: false,
+        connectionId: 'connection-1',
+        gatewayUrl: 'https://gateway.test.com',
+        logger,
+        token: 'token',
+        userId: 'user-1',
+      });
+
+      observed.connect();
+      await vi.advanceTimersByTimeAsync(1);
+      const firstSocket = mockWsInstances[0];
+
+      // `connect()` currently permits a second attempt while authenticating.
+      // The log must preserve which socket delivered a late close so H3-H5 can
+      // be confirmed or rejected from a real daemon trace.
+      observed.connect();
+      expect(mockWsInstances).toHaveLength(2);
+      firstSocket.emit('close', 1000, Buffer.from('Replaced connection drained'));
+
+      const closeMessage = logger.info.mock.calls
+        .map(([message]) => message)
+        .find((message) => String(message).includes('"event":"close"'));
+      expect(parseEvent(closeMessage)).toMatchObject({
+        attemptId: 1,
+        code: 1000,
+        current: false,
+        event: 'close',
+        reason: 'Replaced connection drained',
+      });
+
+      observed.disconnect();
+    });
+
+    it('records heartbeat context when the current socket closes', async () => {
+      const logger = createLogger();
+      const observed = new GatewayClient({
+        autoReconnect: false,
+        gatewayUrl: 'https://gateway.test.com',
+        logger,
+        token: 'token',
+        userId: 'user-1',
+      });
+
+      observed.connect();
+      await vi.advanceTimersByTimeAsync(1);
+      const socket = mockWsInstances[0];
+      socket.emit('message', JSON.stringify({ type: 'auth_success' }));
+      await vi.advanceTimersByTimeAsync(10);
+      socket.emit('message', JSON.stringify({ type: 'heartbeat_ack' }));
+      await vi.advanceTimersByTimeAsync(5);
+      socket.emit('close', 1006, Buffer.from(''));
+
+      const closeMessage = logger.info.mock.calls
+        .map(([message]) => message)
+        .find((message) => String(message).includes('"event":"close"'));
+      expect(parseEvent(closeMessage)).toMatchObject({
+        attemptId: 1,
+        code: 1006,
+        current: true,
+        event: 'close',
+        lastHeartbeatAckAgeMs: 5,
+        missedHeartbeats: 0,
+      });
+
+      observed.disconnect();
+    });
+
+    it('records the request id when a response cannot be sent', () => {
+      const logger = createLogger();
+      const observed = new GatewayClient({ logger, token: 'token' });
+
+      observed.sendRpcResponse({
+        requestId: 'request-9',
+        result: { data: null, success: true },
+      });
+
+      expect(parseEvent(logger.warn.mock.calls[0][0])).toMatchObject({
+        current: false,
+        event: 'send_skipped',
+        messageType: 'rpc_response',
+        referenceId: 'request-9',
+        socketReadyState: null,
+      });
+
+      observed.disconnect();
     });
   });
 

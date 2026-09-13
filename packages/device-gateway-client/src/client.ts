@@ -28,6 +28,7 @@ const HEARTBEAT_INTERVAL = 30_000; // 30s
 const INITIAL_RECONNECT_DELAY = 1000; // 1s
 const MAX_RECONNECT_DELAY = 30_000; // 30s
 const MAX_MISSED_HEARTBEATS = 3; // Force reconnect after 3 missed acks
+const MAX_LOG_TEXT_LENGTH = 500;
 /**
  * Budget for the whole pre-connected window: TCP + TLS + HTTP upgrade AND the
  * `auth_success` reply. Neither phase raises an event of its own when it simply
@@ -35,6 +36,29 @@ const MAX_MISSED_HEARTBEATS = 3; // Force reconnect after 3 missed acks
  * stalling a reconnect for 15+ minutes while the device sat offline.
  */
 const CONNECT_TIMEOUT = 15_000; // 15s
+
+interface SocketAttempt {
+  authenticatedAt?: number;
+  id: number;
+  lastHeartbeatAckAt?: number;
+  lastMessageAt?: number;
+  openedAt?: number;
+  socket: WebSocket;
+  startedAt: number;
+}
+
+interface SocketListeners {
+  close: (code: number, reason: Buffer) => void;
+  error: (error: Error) => void;
+  message: (data: WebSocket.Data) => void;
+  open: () => void;
+}
+
+type SocketLogDetails = Record<string, boolean | number | string | null | undefined>;
+type SocketLogLevel = 'debug' | 'error' | 'info' | 'warn';
+
+const sanitizeLogText = (value: string) =>
+  value.replaceAll(/[\r\n\t]+/g, ' ').slice(0, MAX_LOG_TEXT_LENGTH);
 
 // ─── Logger Interface ───
 
@@ -93,6 +117,9 @@ export interface GatewayClientOptions {
 
 export class GatewayClient extends EventEmitter {
   private ws: WebSocket | null = null;
+  private socketAttempts = new WeakMap<WebSocket, SocketAttempt>();
+  private socketListeners = new WeakMap<WebSocket, SocketListeners>();
+  private nextSocketAttemptId = 0;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private connectWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
@@ -240,7 +267,6 @@ export class GatewayClient extends EventEmitter {
 
     try {
       const wsUrl = this.buildWsUrl();
-      this.logger.debug(`Connecting to: ${wsUrl}`);
 
       // `handshakeTimeout` bounds TCP+TLS+upgrade inside `ws` itself, which turns
       // a black-holed handshake into a normal error/close pair. The watchdog
@@ -251,13 +277,29 @@ export class GatewayClient extends EventEmitter {
         ...(this.userAgent ? { headers: { 'User-Agent': this.userAgent } } : {}),
       };
       const ws = new WebSocket(wsUrl, wsOptions);
+      const attempt: SocketAttempt = {
+        id: ++this.nextSocketAttemptId,
+        socket: ws,
+        startedAt: Date.now(),
+      };
+      const listeners: SocketListeners = {
+        close: (code, reason) => this.handleClose(code, reason, attempt),
+        error: (error) => this.handleError(error, attempt),
+        message: (data) => this.handleMessage(data, attempt),
+        open: () => this.handleOpen(attempt),
+      };
 
-      ws.on('open', this.handleOpen);
-      ws.on('message', this.handleMessage);
-      ws.on('close', this.handleClose);
-      ws.on('error', this.handleError);
-
+      this.socketAttempts.set(ws, attempt);
+      this.socketListeners.set(ws, listeners);
       this.ws = ws;
+      ws.on('open', listeners.open);
+      ws.on('message', listeners.message);
+      ws.on('close', listeners.close);
+      ws.on('error', listeners.error);
+      this.logSocket('debug', 'connect_start', attempt, {
+        gateway: new URL(wsUrl).origin,
+        principal: this.workspaceId ? 'workspace' : this.userId ? 'personal' : 'unspecified',
+      });
       this.startConnectWatchdog();
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -316,10 +358,15 @@ export class GatewayClient extends EventEmitter {
 
   // ─── WebSocket Event Handlers ───
 
-  private handleOpen = () => {
-    this.logger.info(`WebSocket connected, sending auth... (${this.describeTokenExpiry()})`);
+  private handleOpen = (attempt = this.getCurrentSocketAttempt()) => {
+    if (attempt) attempt.openedAt = Date.now();
     this.reconnectDelay = INITIAL_RECONNECT_DELAY;
     this.setStatus('authenticating');
+    this.logSocket('info', 'open', attempt, {
+      openAfterMs:
+        attempt?.openedAt !== undefined ? attempt.openedAt - attempt.startedAt : undefined,
+      tokenExpiry: this.describeTokenExpiry(),
+    });
 
     // Send token as first message instead of in URL
     this.sendMessage({
@@ -330,29 +377,38 @@ export class GatewayClient extends EventEmitter {
     });
   };
 
-  private handleMessage = (data: WebSocket.Data) => {
+  private handleMessage = (data: WebSocket.Data, attempt = this.getCurrentSocketAttempt()) => {
     try {
       const message = JSON.parse(String(data)) as ServerMessage;
+      const now = Date.now();
+      if (attempt) attempt.lastMessageAt = now;
 
       switch (message.type) {
         case 'auth_success': {
-          this.logger.info('Authentication successful');
+          if (attempt) attempt.authenticatedAt = now;
           this.clearConnectWatchdog();
           this.setStatus('connected');
           this.startHeartbeat();
+          this.logSocket('info', 'auth_success', attempt, {
+            authAfterMs: attempt ? now - attempt.startedAt : undefined,
+          });
           this.emit('connected');
           break;
         }
 
         case 'auth_failed': {
-          const reason = (message as any).reason || 'Unknown reason';
-          this.logger.error(`Authentication failed: ${reason}`);
+          const reason =
+            typeof (message as { reason?: unknown }).reason === 'string'
+              ? (message as { reason: string }).reason
+              : 'Unknown reason';
+          this.logSocket('error', 'auth_failed', attempt, { reason: sanitizeLogText(reason) });
           this.emit('auth_failed', reason);
           this.disconnect();
           break;
         }
 
         case 'heartbeat_ack': {
+          if (attempt) attempt.lastHeartbeatAckAt = now;
           this.missedHeartbeats = 0;
           this.emit('heartbeat_ack');
           break;
@@ -384,22 +440,42 @@ export class GatewayClient extends EventEmitter {
         }
 
         case 'auth_expired': {
-          this.logger.warn('Received auth_expired from gateway');
+          this.logSocket('warn', 'auth_expired', attempt);
           this.emit('auth_expired');
           break;
         }
 
         default: {
-          this.logger.warn('Unknown message type:', (message as any).type);
+          this.logSocket('warn', 'unknown_message', attempt, {
+            messageType: (message as { type?: string }).type,
+          });
         }
       }
     } catch (error) {
-      this.logger.error('Failed to parse WebSocket message:', error as string);
+      this.logSocket('error', 'message_parse_failed', attempt, {
+        error: sanitizeLogText(error instanceof Error ? error.message : String(error)),
+      });
     }
   };
 
-  private handleClose = (code: number, reason: Buffer) => {
-    this.logger.info(`WebSocket closed: code=${code} reason=${reason.toString()}`);
+  private handleClose = (
+    code: number,
+    reason: Buffer,
+    attempt = this.getCurrentSocketAttempt(),
+  ) => {
+    const now = Date.now();
+    this.logSocket('info', 'close', attempt, {
+      code,
+      connectedForMs:
+        attempt?.authenticatedAt !== undefined ? now - attempt.authenticatedAt : undefined,
+      intentional: this.intentionalDisconnect,
+      lastHeartbeatAckAgeMs:
+        attempt?.lastHeartbeatAckAt !== undefined ? now - attempt.lastHeartbeatAckAt : undefined,
+      lastMessageAgeMs:
+        attempt?.lastMessageAt !== undefined ? now - attempt.lastMessageAt : undefined,
+      missedHeartbeats: this.missedHeartbeats,
+      reason: sanitizeLogText(reason.toString()),
+    });
     this.stopHeartbeat();
     // `handshakeTimeout` closes the socket on its own, so the watchdog must be
     // disarmed here or it would fire later and force a SECOND reconnect on top
@@ -416,8 +492,12 @@ export class GatewayClient extends EventEmitter {
     }
   };
 
-  private handleError = (error: Error) => {
-    this.logger.error('WebSocket error:', error.message);
+  private handleError = (error: Error, attempt = this.getCurrentSocketAttempt()) => {
+    this.logSocket('error', 'error', attempt, {
+      error: sanitizeLogText(error.message),
+      errorCode: 'code' in error ? String(error.code) : undefined,
+      errorName: error.name,
+    });
     this.emit('error', error);
   };
 
@@ -468,7 +548,11 @@ export class GatewayClient extends EventEmitter {
    * has to schedule the next attempt itself or the client goes quiet for good.
    */
   private forceReconnect(reason: string) {
-    this.logger.warn(reason);
+    const attempt = this.getCurrentSocketAttempt();
+    this.logSocket('warn', 'force_reconnect', attempt, {
+      missedHeartbeats: this.missedHeartbeats,
+      reason: sanitizeLogText(reason),
+    });
     this.closeWebSocket();
     this.stopHeartbeat();
     this.clearConnectWatchdog();
@@ -522,7 +606,38 @@ export class GatewayClient extends EventEmitter {
   private sendMessage(data: ClientMessage) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(data));
+      return;
     }
+
+    this.logSocket('warn', 'send_skipped', this.getCurrentSocketAttempt(), {
+      messageType: data.type,
+      referenceId:
+        'requestId' in data ? data.requestId : 'operationId' in data ? data.operationId : undefined,
+      socketReadyState: this.ws?.readyState ?? null,
+    });
+  }
+
+  private getCurrentSocketAttempt(): SocketAttempt | undefined {
+    return this.ws ? this.socketAttempts.get(this.ws) : undefined;
+  }
+
+  private logSocket(
+    level: SocketLogLevel,
+    event: string,
+    attempt?: SocketAttempt,
+    details: SocketLogDetails = {},
+  ) {
+    this.logger[level](
+      `[gateway-ws] ${JSON.stringify({
+        attemptId: attempt?.id,
+        channel: this.channel,
+        connectionId: this.connectionId,
+        current: attempt ? attempt.socket === this.ws : false,
+        event,
+        status: this.status,
+        ...details,
+      })}`,
+    );
   }
 
   private closeWebSocket() {
@@ -530,6 +645,7 @@ export class GatewayClient extends EventEmitter {
       return;
     }
     const ws = this.ws;
+    const listeners = this.socketListeners.get(ws);
     const suppressCloseError = (error: Error) => {
       this.logger.debug(`Ignoring WebSocket error during close: ${error.message}`);
     };
@@ -541,10 +657,13 @@ export class GatewayClient extends EventEmitter {
     // Remove only listeners registered by this client.
     // Keep a temporary error handler while closing to avoid unhandled
     // "WebSocket was closed before the connection was established" errors.
-    ws.off('open', this.handleOpen);
-    ws.off('message', this.handleMessage);
-    ws.off('close', this.handleClose);
-    ws.off('error', this.handleError);
+    if (listeners) {
+      ws.off('open', listeners.open);
+      ws.off('message', listeners.message);
+      ws.off('close', listeners.close);
+      ws.off('error', listeners.error);
+      this.socketListeners.delete(ws);
+    }
     ws.on('error', suppressCloseError);
     ws.once('close', cleanupCloseErrorSuppression);
 

@@ -146,8 +146,9 @@ export default class GatewayConnectionService extends ServiceModule {
   private status: GatewayConnectionStatus = 'disconnected';
   private deviceId: string | null = null;
   private powerSaveBlockerId: number | null = null;
-  private toolCallExecutor: PersistentToolCallExecutor<ToolCallResponseMessage['result']> | null =
-    null;
+  private readonly toolCallExecutor = new PersistentToolCallExecutor<
+    ToolCallResponseMessage['result']
+  >(path.join(app.getPath('userData'), 'device-tool-calls'));
 
   private identitySource: IdentitySource | null = null;
 
@@ -166,12 +167,6 @@ export default class GatewayConnectionService extends ServiceModule {
   private workspaceClients = new Map<string, GatewayClient>();
   /** Serializes enrollment restores so reconnect churn can't double-open sockets. */
   private workspaceRestoreInFlight = false;
-
-  private getToolCallExecutor() {
-    return (this.toolCallExecutor ??= new PersistentToolCallExecutor(
-      path.join(app.getPath('userData'), 'device-tool-calls'),
-    ));
-  }
 
   // ─── Configuration ───
 
@@ -805,7 +800,7 @@ export default class GatewayConnectionService extends ServiceModule {
       `Received tool call: apiName=${apiName}, requestId=${requestId}, type=${type ?? 'tool'}`,
     );
 
-    const execution = await this.getToolCallExecutor().execute(requestId, async () => {
+    const execution = await this.toolCallExecutor.execute(requestId, async () => {
       // Timed on THIS machine's clock, around both routes. The server can only
       // observe the whole dispatch round trip, so without this number a slow tool
       // and slow transport are indistinguishable.

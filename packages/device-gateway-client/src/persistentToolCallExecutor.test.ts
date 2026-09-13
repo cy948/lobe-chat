@@ -34,7 +34,7 @@ describe('PersistentToolCallExecutor', () => {
 
     const first = executor.execute('request-1', run);
     const second = executor.execute('request-1', run);
-    await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(release).toBeDefined());
     release?.();
 
     await expect(Promise.all([first, second])).resolves.toEqual([
@@ -70,13 +70,10 @@ describe('PersistentToolCallExecutor', () => {
     await vi.waitFor(() => expect(release).toBeDefined());
 
     const duplicateRun = vi.fn(async () => ({ content: 'duplicate' }));
+    const processKillSpy = vi.spyOn(process, 'kill');
     const duplicateExecution = second.execute('request-1', duplicateRun);
-    let duplicateSettled = false;
-    void duplicateExecution.then(() => {
-      duplicateSettled = true;
-    });
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(duplicateSettled).toBe(false);
+    await vi.waitFor(() => expect(processKillSpy).toHaveBeenCalledWith(process.pid, 0));
+    processKillSpy.mockRestore();
     release?.();
 
     await expect(Promise.all([firstExecution, duplicateExecution])).resolves.toEqual([
@@ -86,13 +83,13 @@ describe('PersistentToolCallExecutor', () => {
     expect(duplicateRun).not.toHaveBeenCalled();
   });
 
-  it('returns outcome_unknown after a crash leaves a request without a result', async () => {
+  it('marks a thrown execution as outcome_unknown for later attempts', async () => {
     const first = new PersistentToolCallExecutor<{ content: string }>(directory);
     await expect(
       first.execute('request-1', async () => {
-        throw new Error('process crashed');
+        throw new Error('execution failed');
       }),
-    ).rejects.toThrow('process crashed');
+    ).rejects.toThrow('execution failed');
 
     const run = vi.fn(async () => ({ content: 'duplicate' }));
     const restarted = new PersistentToolCallExecutor<{ content: string }>(directory);

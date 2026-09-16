@@ -44,7 +44,7 @@ done
 {% if use_system_cli %}
 npm install -g "$CLI_PACKAGE"
 command -v lh >/dev/null
-lh --help >/dev/null
+lh --version
 {% else %}
 test -f /opt/lh-dev/package.json
 test -f /opt/lh-dev/dist/index.js
@@ -54,5 +54,5 @@ set -euo pipefail
 exec node /opt/lh-dev/dist/index.js "$@"
 LH_RUNNER
 chmod +x /opt/lh-dev/run-lh.sh
-/opt/lh-dev/run-lh.sh --help >/dev/null
+/opt/lh-dev/run-lh.sh --version
 {% endif %}

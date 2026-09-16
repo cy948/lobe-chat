@@ -1,87 +1,74 @@
 ---
 name: run-eval-harbor
-description: 'Run and diagnose existing Harbor evaluations against this repository local production LobeHub harness. Use for eval infrastructure, preflight, lh CLI injection, Harbor smoke or job runs, resume, and failure triage. Excludes authoring Harbor tasks and product acceptance.'
+description: 'Run and diagnose existing Harbor evaluations against local production LobeHub or LobeHub Cloud. Use for eval infrastructure, target preflight, lh CLI injection, Harbor smoke or job runs, resume, and failure triage. Excludes authoring Harbor tasks and product acceptance.'
 ---
 
 # Run Eval Harbor
 
-Run existing Harbor evaluations against the isolated infrastructure in
-`docker-compose/eval/` and a production LobeHub server from this checkout. Use
-`create-task` to author or grade tasks and `acceptance` for product acceptance.
+Run existing Harbor evaluations against either this checkout's isolated local
+production harness or a remote LobeHub target. Use `create-task` to author or
+grade tasks and `acceptance` for product acceptance.
+
+## Ask First
+
+Before preparing or running anything, obtain these independent choices:
+
+1. Target: `local` production server from this checkout, or `cloud`/remote.
+2. CLI: `checkout` build from `apps/cli`, or published `npm` release.
+3. Exact `LH_AGENT_ID`; the selected agent already owns its model.
+4. Eval repository path and whether the user wants a new job or a resume.
+5. Credentials: for cloud, require its CLI API key in the eval repository's
+   ignored `.env`. For local, ask whether the selected agent's provider
+   credential is already stored in LobeHub; if not, ask for the provider's real
+   environment variable name and secret before starting the server.
+
+Do not infer these choices. DeepSeek is only one provider example, not a
+required credential or model.
 
 ## Guardrails
 
-- Run LobeHub on port `3210` with `bun run start`; never target a dev server or
-  port `3010`.
-- Compose owns infrastructure and initialization tasks. LobeHub stays on the
+- In local mode, run LobeHub on port `3210` with `bun run start`; never target a
+  dev server or port `3010`. Compose owns infrastructure; LobeHub stays on the
   host.
-- Create `docker-compose/eval/.env` from `.env.example` only when absent. Before
-  starting LobeHub, ask for a nonempty `DEEPSEEK_API_KEY`; never invent, print,
-  overwrite, or commit secrets.
+- In cloud mode, never start local infrastructure or rewrite server/gateway
+  addresses. Official Cloud should use the CLI's default addresses.
+- Create `docker-compose/eval/.env` from `.env.example` only when absent; never
+  overwrite an existing file.
+- Never infer `inbox`, choose a separate model, or override the agent with
+  `DEFAULT_AGENT_CONFIG`. Never invent, print, or commit secrets.
 - LobeHub uses localhost service URLs. Harbor containers use Docker-reachable
   host URLs. Never interchange them.
-- Preflight is read-only. Stop on a nonzero exit instead of mutating data,
-  credentials, or server state to force a pass.
+- Preflight is target-specific and read-only: local checks the local production
+  stack; cloud checks the remote server/gateways. It does not validate API keys,
+  agents, provider credentials, or model access.
 - Do not run a model-backed Harbor job without an explicit user request.
-- `scripts/run-smoke.sh` is the harness acceptance check. Health endpoints alone
-  do not prove CLI login, gateways, QStash, or a real LLM response.
+- Before every requested real job or resume, run the shared model-backed smoke
+  for the chosen target and CLI mode. Stop if either preflight or smoke fails.
 
 ## Run
 
-For a cold start, external eval repository, resume, or failure investigation,
-read [references/runbook.md](references/runbook.md).
+Read exactly one route after the answers above:
 
-1. Bootstrap infrastructure, migrations, the fixed eval user, and its CLI key:
+- Local target: [references/local.md](references/local.md)
+- Cloud/remote target: [references/cloud.md](references/cloud.md)
 
-   ```bash
-   bash .agents/skills/run-eval-harbor/scripts/bootstrap.sh
-   ```
-
-2. Build stale or missing LobeHub and CLI outputs:
-
-   ```bash
-   bun --env-file=docker-compose/eval/.env run build
-   pnpm --dir apps/cli build
-   ```
-
-3. Start LobeHub in a persistent terminal and wait for
-   `http://localhost:3210/api/version`:
-
-   ```bash
-   bash .agents/skills/run-eval-harbor/scripts/server.sh
-   ```
-
-4. Run preflight, optionally with the external eval repository, and stop on any
-   failure:
-
-   ```bash
-   bash .agents/skills/run-eval-harbor/scripts/preflight.sh
-   bash .agents/skills/run-eval-harbor/scripts/preflight.sh /absolute/eval/repo
-   ```
-
-5. When validating this harness, run its complete smoke and inspect the job and
-   trial artifacts before reporting success:
-
-   ```bash
-   bash .agents/skills/run-eval-harbor/scripts/run-smoke.sh
-   ```
-
-Use an external eval repository's own command for its tasks and resumes.
+The CLI selection is orthogonal to the target. `checkout` injects the built
+`apps/cli`; `npm` installs the release package. Both routes run their preflight
+and then `scripts/run-smoke.sh <local|cloud> <checkout|npm> ...` before the
+external eval repository's own job command.
 
 ## Diagnose
 
-- PostgreSQL, Redis, RustFS, QStash, or Compose state: eval infrastructure.
+- PostgreSQL, Redis, RustFS, QStash, or Compose state: local eval infrastructure.
 - Port `3210`, migrations, API-key auth, or `/api/version`: LobeHub.
 - Ports `8787`/`8788`, gateway health, or service tokens: gateway.
 - Docker-only connectivity: bridge address, published port, or host firewall.
 - CLI upload/install: `LH_CLI_SOURCE` or `apps/cli/dist`.
 - Reward/verifier behavior: the Harbor task; use `create-task` before changing it.
 
-## Stop
+## Harbor Reference
 
-```bash
-docker compose --env-file docker-compose/eval/.env \
-  -f docker-compose/eval/docker-compose.yml down
-```
-
-Do not add `-v` unless the user explicitly asks to discard eval data.
+For Harbor commands beyond these scripts, consult the official
+[Harbor Skills](https://github.com/harbor-framework/skills), especially its
+`harbor-cli` skill. This harness pins `harbor==0.23.0`; when guidance differs,
+the pinned CLI's `--help` is authoritative.

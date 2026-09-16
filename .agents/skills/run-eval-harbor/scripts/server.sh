@@ -18,7 +18,5 @@ export JWKS_KEY
 JWKS_KEY="$(tr -d '\n' < "$JWKS_FILE")"
 export NODE_ENV=production
 
-[[ -n "${DEEPSEEK_API_KEY:-}" ]] || { printf 'DEEPSEEK_API_KEY is required before starting LobeHub.\n' >&2; exit 1; }
-
 cd "$REPO_ROOT"
 exec bun run start

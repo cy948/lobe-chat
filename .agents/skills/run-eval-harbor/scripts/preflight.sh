@@ -5,15 +5,19 @@ set -u -o pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${LOBEHUB_REPO:-$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null)}"
 ENV_FILE="${LOBEHUB_EVAL_ENV:-${REPO_ROOT}/docker-compose/eval/.env}"
-HARBOR_REPO="${1:-}"
+TARGET="${1:-}"
+HARBOR_REPO="${2:-}"
 COMPOSE_FILE="${REPO_ROOT}/docker-compose/eval/docker-compose.yml"
 CURL_IMAGE="curlimages/curl:8.17.0"
-CLI_ENV_FILE="$REPO_ROOT/.records/env/eval-harbor-cli.env"
 JWKS_FILE="$REPO_ROOT/.records/env/agent-testing-jwks.json"
 
-if [[ "$HARBOR_REPO" == '-h' || "$HARBOR_REPO" == '--help' ]]; then
-  printf 'Usage: %s [absolute-eval-repository]\n' "$0"
+if [[ "$TARGET" == '-h' || "$TARGET" == '--help' ]]; then
+  printf 'Usage: %s <local|cloud> [absolute-eval-repository]\n' "$0"
   exit 0
+fi
+if [[ "$TARGET" != 'local' && "$TARGET" != 'cloud' ]]; then
+  printf 'Usage: %s <local|cloud> [absolute-eval-repository]\n' "$0" >&2
+  exit 2
 fi
 if [[ -n "$HARBOR_REPO" && ! -d "$HARBOR_REPO" ]]; then
   printf 'FAIL target eval repository does not exist: %s\n' "$HARBOR_REPO" >&2
@@ -24,6 +28,10 @@ if [[ -n "$HARBOR_REPO" ]]; then
   HARBOR_ENV="$HARBOR_REPO/.env"
 else
   HARBOR_ENV=""
+fi
+if [[ "$TARGET" == 'cloud' && -z "$HARBOR_ENV" ]]; then
+  printf 'FAIL cloud preflight requires an eval repository with a .env file\n' >&2
+  exit 2
 fi
 
 passes=0
@@ -128,6 +136,50 @@ compose_id() {
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps -a -q "$service" 2>/dev/null | head -n 1
 }
 
+if [[ "$TARGET" == 'cloud' ]]; then
+  section 'Cloud target configuration'
+  [[ -f "$HARBOR_ENV" ]] && pass "eval env: $HARBOR_ENV" || fail "missing eval env: $HARBOR_ENV"
+  for command in docker curl python3; do
+    need_cmd "$command"
+  done
+  docker info >/dev/null 2>&1 && pass 'Docker daemon is available' || fail 'Docker daemon is unavailable'
+  cloud_lh_server="$(read_dotenv LH_SERVER_URL "$HARBOR_ENV")"
+  cloud_cli_server="$(read_dotenv LOBEHUB_SERVER "$HARBOR_ENV")"
+  if [[ -n "$cloud_lh_server" && -n "$cloud_cli_server" && "$cloud_lh_server" != "$cloud_cli_server" ]]; then
+    fail 'LH_SERVER_URL and LOBEHUB_SERVER must match when both are set'
+  fi
+  cloud_server="${cloud_lh_server:-${cloud_cli_server:-https://app.lobehub.com}}"
+  cloud_device_gateway="$(read_dotenv LH_GATEWAY_URL "$HARBOR_ENV")"
+  cloud_agent_gateway="$(read_dotenv AGENT_GATEWAY_URL "$HARBOR_ENV")"
+
+  if [[ "$cloud_server" == 'https://app.lobehub.com' ]]; then
+    cloud_device_gateway="${cloud_device_gateway:-https://device-gateway.lobehub.com}"
+    cloud_agent_gateway="${cloud_agent_gateway:-https://agent-gateway.lobehub.com}"
+  else
+    [[ -n "$cloud_device_gateway" ]] || fail 'custom remote server requires LH_GATEWAY_URL'
+    [[ -n "$cloud_agent_gateway" ]] || fail 'custom remote server requires AGENT_GATEWAY_URL'
+  fi
+
+  section 'Cloud service health'
+  http_probe 'LobeHub cloud server' "${cloud_server%/}/api/version"
+  container_probe 'LobeHub cloud server' "${cloud_server%/}/api/version"
+  if [[ -n "$cloud_device_gateway" ]]; then
+    http_probe 'Device Gateway' "${cloud_device_gateway%/}/health"
+    container_probe 'Device Gateway' "${cloud_device_gateway%/}/health"
+  fi
+  if [[ -n "$cloud_agent_gateway" ]]; then
+    http_probe 'Agent Gateway' "${cloud_agent_gateway%/}/health"
+    container_probe 'Agent Gateway' "${cloud_agent_gateway%/}/health"
+  fi
+
+  section 'Summary'
+  printf 'Passes: %d\nFailures: %d\n' "$passes" "$failures"
+  if ((failures > 0)); then
+    exit 1
+  fi
+  exit 0
+fi
+
 section 'Files and commands'
 [[ -n "$REPO_ROOT" && -f "$REPO_ROOT/package.json" ]] && pass "LobeHub repo: $REPO_ROOT" || fail 'cannot resolve the LobeHub repository root'
 [[ -f "$ENV_FILE" ]] && pass "eval env: $ENV_FILE" || fail "missing $ENV_FILE; copy .env.example first"
@@ -160,20 +212,17 @@ expect_env NEXT_PUBLIC_SERVICE_MODE server
 expect_env TB_GRAPH_AGENT 1
 expect_env ENABLE_AGENT_FILE_TRACING 1
 expect_env ENABLE_AGENT_GATEWAY 1
-expect_env DEFAULT_AGENT_CONFIG 'model=deepseek-v4-flash;provider=deepseek'
-expect_env DEEPSEEK_PROXY_URL 'https://api.deepseek.com/v1'
 
 for key in \
   DATABASE_URL REDIS_URL S3_ENDPOINT S3_BUCKET QSTASH_URL QSTASH_TOKEN \
   QSTASH_CURRENT_SIGNING_KEY QSTASH_NEXT_SIGNING_KEY DEVICE_GATEWAY_URL \
   DEVICE_GATEWAY_SERVICE_TOKEN AGENT_GATEWAY_URL AGENT_GATEWAY_SERVICE_TOKEN \
   AGENT_RUNTIME_BASE_URL KEY_VAULTS_SECRET AUTH_SECRET LH_SERVER_URL \
-  LH_GATEWAY_URL HARBOR_AGENT_GATEWAY_URL DEEPSEEK_API_KEY LH_AGENT_SLUG; do
+  LH_GATEWAY_URL HARBOR_AGENT_GATEWAY_URL; do
   require_env "$key"
 done
 
 [[ -s "$JWKS_FILE" ]] && pass 'eval JWKS private key exists' || fail "missing $JWKS_FILE; run the eval bootstrap script"
-[[ -f "$CLI_ENV_FILE" ]] && pass 'seeded eval CLI credentials exist' || fail "missing $CLI_ENV_FILE; run the eval bootstrap script"
 
 gateway_token="$(read_dotenv EVAL_GATEWAY_SERVICE_TOKEN)"
 device_token="$(read_dotenv DEVICE_GATEWAY_SERVICE_TOKEN)"
@@ -280,11 +329,6 @@ if [[ -n "$server_pid" ]]; then
   else
     fail 'production server is missing JWKS_KEY'
   fi
-  if tr '\0' '\n' <"/proc/$server_pid/environ" 2>/dev/null | grep -q '^DEEPSEEK_API_KEY=.'; then
-    pass 'production server has DEEPSEEK_API_KEY'
-  else
-    fail 'production server is missing DEEPSEEK_API_KEY'
-  fi
 else
   fail 'cannot identify the process listening on port 3210'
 fi
@@ -297,67 +341,23 @@ section 'Harbor configuration'
 if [[ -n "$HARBOR_ENV" ]]; then
   pass "external eval repo: $HARBOR_REPO"
   [[ -f "$HARBOR_ENV" ]] && pass "eval repo env: $HARBOR_ENV" || fail 'target eval repository is missing .env'
-  for key in LH_SERVER_URL LH_GATEWAY_URL AGENT_GATEWAY_URL LH_CLI_SOURCE LOBEHUB_CLI_API_KEY; do
+  for key in LH_SERVER_URL LH_GATEWAY_URL AGENT_GATEWAY_URL; do
     require_env "$key" "$HARBOR_ENV"
   done
   harbor_server="$(read_dotenv LH_SERVER_URL "$HARBOR_ENV")"
   harbor_device_gateway="$(read_dotenv LH_GATEWAY_URL "$HARBOR_ENV")"
   harbor_agent_gateway="$(read_dotenv AGENT_GATEWAY_URL "$HARBOR_ENV")"
-  harbor_cli_source="$(read_dotenv LH_CLI_SOURCE "$HARBOR_ENV")"
-  api_key="$(read_dotenv LOBEHUB_CLI_API_KEY "$HARBOR_ENV")"
-  agent_slug="$(read_dotenv LH_AGENT_SLUG "$HARBOR_ENV")"
-  agent_id="$(read_dotenv LH_AGENT_ID "$HARBOR_ENV")"
   [[ -z "$(read_dotenv LH_AGENT_RUN_SSE "$HARBOR_ENV")" ]] && pass 'eval repo uses gateway mode' || fail 'unset LH_AGENT_RUN_SSE when AGENT_GATEWAY_URL is configured'
 else
   pass 'using repository-level Harbor smoke configuration'
   harbor_server="$lh_server_url"
   harbor_device_gateway="$lh_gateway_url"
   harbor_agent_gateway="$harbor_agent_gateway_url"
-  harbor_cli_source="host-dir:$REPO_ROOT/apps/cli"
-  api_key="$(read_dotenv LOBE_API_KEY "$CLI_ENV_FILE")"
-  agent_slug="$(read_dotenv LH_AGENT_SLUG)"
-  agent_id="$(read_dotenv LH_AGENT_ID)"
 fi
 
 [[ "$harbor_server" == "$lh_server_url" ]] && pass 'eval repo LH_SERVER_URL matches harness' || fail 'eval repo LH_SERVER_URL differs from harness'
 [[ "$harbor_device_gateway" == "$lh_gateway_url" ]] && pass 'eval repo LH_GATEWAY_URL matches harness' || fail 'eval repo LH_GATEWAY_URL differs from harness'
 [[ "$harbor_agent_gateway" == "$harbor_agent_gateway_url" ]] && pass 'eval repo AGENT_GATEWAY_URL matches harness' || fail 'eval repo AGENT_GATEWAY_URL differs from harness'
-[[ "$harbor_cli_source" == "host-dir:$REPO_ROOT/apps/cli" ]] && pass 'eval repo uses this checkout CLI build' || fail "LH_CLI_SOURCE must be host-dir:$REPO_ROOT/apps/cli"
-[[ -n "$agent_slug" || -n "$agent_id" ]] && pass 'eval repo has an agent selector' || fail 'eval repo needs LH_AGENT_SLUG or LH_AGENT_ID'
-command -v uv >/dev/null 2>&1 && pass 'uv is available for the pinned Harbor runtime' || fail 'uv is required to run Harbor 0.18.0'
-
-section 'LH CLI authentication'
-cli_entry="$REPO_ROOT/apps/cli/dist/index.js"
-if [[ -f "$cli_entry" ]]; then
-  pass "local CLI build exists: $cli_entry"
-else
-  fail 'missing apps/cli/dist/index.js; run pnpm --dir apps/cli build'
-fi
-
-if [[ -f "$cli_entry" && -n "$api_key" ]] && \
-  LOBEHUB_SERVER=http://localhost:3210 LOBEHUB_CLI_API_KEY="$api_key" \
-    node "$cli_entry" whoami --json >/dev/null 2>&1; then
-  pass 'API key authenticates through the local LH CLI'
-else
-  fail 'API key authentication failed against LobeHub on port 3210'
-fi
-
-if [[ -n "$agent_slug" ]]; then
-  agent_args=(--slug "$agent_slug")
-elif [[ -n "$agent_id" ]]; then
-  agent_args=("$agent_id")
-else
-  agent_args=()
-  fail 'configure LH_AGENT_SLUG or LH_AGENT_ID'
-fi
-
-if [[ -f "$cli_entry" && ${#agent_args[@]} -gt 0 ]] && \
-  LOBEHUB_SERVER=http://localhost:3210 LOBEHUB_CLI_API_KEY="$api_key" \
-    node "$cli_entry" agent view "${agent_args[@]}" --json >/dev/null 2>&1; then
-  pass 'configured Harbor agent resolves through the LH CLI'
-else
-  fail 'configured Harbor agent does not resolve'
-fi
 
 section 'Harbor container reachability'
 [[ "$lh_server_url" == *:3210 ]] && pass 'LH_SERVER_URL targets port 3210' || fail 'LH_SERVER_URL must target production port 3210'

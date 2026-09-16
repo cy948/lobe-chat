@@ -33,7 +33,6 @@ class LhInstalledAgent(BaseInstalledAgent):
         prompt_template_path: Path | str | None = None,
         version: str | None = None,
         extra_env: dict[str, str] | None = None,
-        slug: str | None = None,
         agent_id: str | None = None,
         server_url: str | None = None,
         gateway_url: str | None = None,
@@ -41,7 +40,6 @@ class LhInstalledAgent(BaseInstalledAgent):
         *args,
         **kwargs,
     ):
-        self._slug = slug
         self._agent_id = agent_id
         self._server_url = server_url
         self._gateway_url = gateway_url
@@ -88,13 +86,10 @@ class LhInstalledAgent(BaseInstalledAgent):
         return f"bash {_DEV_CLI_RUNNER}"
 
     def _agent_target(self) -> tuple[str, str]:
-        slug = self._value(self._slug, "LH_AGENT_SLUG")
-        if slug:
-            return "--slug", slug
         agent_id = self._value(self._agent_id, "LH_AGENT_ID")
         if agent_id:
             return "--agent-id", agent_id
-        raise ValueError("LH_AGENT_SLUG or LH_AGENT_ID is required")
+        raise ValueError("LH_AGENT_ID is required")
 
     async def install(self, environment: BaseEnvironment) -> None:
         self.logs_dir.mkdir(parents=True, exist_ok=True)

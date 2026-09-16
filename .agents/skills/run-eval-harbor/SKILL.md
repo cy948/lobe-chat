@@ -21,6 +21,9 @@ Before preparing or running anything, obtain these independent choices:
    ignored `.env`. For local, ask whether the selected agent's provider
    credential is already stored in LobeHub; if not, ask for the provider's real
    environment variable name and secret before starting the server.
+6. For local, obtain explicit confirmation that port `3210` and every configured
+   eval infrastructure port are unreachable from the public internet and other
+   untrusted networks. Do not bootstrap the local stack without confirmation.
 
 Do not infer these choices. DeepSeek is only one provider example, not a
 required credential or model.
@@ -34,6 +37,9 @@ required credential or model.
   addresses. Official Cloud should use the CLI's default addresses.
 - Create `docker-compose/eval/.env` from `.env.example` only when absent; never
   overwrite an existing file.
+- The local Compose stack publishes host ports and uses fixed development
+  credentials, including the seeded CLI key and gateway service token. Never
+  run it on a host where those ports are reachable by an untrusted network.
 - Never infer `inbox`, choose a separate model, or override the agent with
   `DEFAULT_AGENT_CONFIG`. Never invent, print, or commit secrets.
 - LobeHub uses localhost service URLs. Harbor containers use Docker-reachable

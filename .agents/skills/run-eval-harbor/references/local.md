@@ -3,6 +3,22 @@
 Use this route for a production LobeHub build from this checkout. Port `3010`
 is development-only; Harbor always targets the production server on `3210`.
 
+## Confirm Network Safety
+
+Before starting anything, ask the user to confirm that this machine is trusted
+and that LobeHub port `3210` plus all configured eval ports are unreachable from
+the public internet and other untrusted networks. The defaults are PostgreSQL
+`15433`, Redis `6380`, RustFS `9100`/`9101`, QStash `8080`/`8081`, and the
+gateways `8787`/`8788`. Stop if the user cannot confirm this.
+
+Compose port publishing is separate from container routing through the Docker
+bridge: an unqualified mapping such as `15433:5432` normally listens on every
+host interface. Compose services use their private bridge internally, the host
+LobeHub process uses published data-service ports, and Harbor containers use the
+host bridge address only for LobeHub and the gateways. The stack uses fixed
+development credentials, including its seeded CLI key and gateway service
+token, so it is not suitable for an internet-facing host.
+
 ## Prepare
 
 Create `docker-compose/eval/.env` from `.env.example` only when it is absent.

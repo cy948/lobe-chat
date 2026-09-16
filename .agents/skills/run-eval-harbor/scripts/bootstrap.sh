@@ -30,7 +30,7 @@ set +a
 # Reuse the repository acceptance bootstrap as the single source of truth for
 # the local signing key and seeded user contract.
 AGENT_TESTING_CLI_ENV_FILE="$CLI_ENV_FILE" \
-  bash "$INIT_DEV_ENV" env >/dev/null
+  bash "$INIT_DEV_ENV" --env-file "$ENV_FILE" env >/dev/null
 
 if [[ ! -s "$JWKS_FILE" ]]; then
   printf 'init-dev-env.sh did not create %s\n' "$JWKS_FILE" >&2
@@ -61,6 +61,6 @@ fi
 cd "$REPO_ROOT"
 bun --env-file="$ENV_FILE" run db:migrate
 AGENT_TESTING_CLI_ENV_FILE="$CLI_ENV_FILE" \
-  bash "$INIT_DEV_ENV" seed-user >/dev/null
+  bash "$INIT_DEV_ENV" --env-file "$ENV_FILE" seed-user >/dev/null
 
 printf 'Eval infrastructure, migrations, and baseline user are ready.\n'

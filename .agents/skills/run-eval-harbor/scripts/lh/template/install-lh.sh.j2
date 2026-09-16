@@ -43,8 +43,9 @@ done
 
 {% if use_system_cli %}
 npm install -g "$CLI_PACKAGE"
-command -v lh >/dev/null
-lh --version
+lh_path="$(command -v lh)"
+[[ "$lh_path" == "/usr/local/bin/lh" ]] || ln -sf "$lh_path" /usr/local/bin/lh
+/usr/local/bin/lh --version
 {% else %}
 test -f /opt/lh-dev/package.json
 test -f /opt/lh-dev/dist/index.js

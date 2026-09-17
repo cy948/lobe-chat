@@ -359,6 +359,7 @@ export function registerAgentCommand(program: Command) {
       "Disable headless mode and wait for human approval on tool calls (default: headless — tools auto-run, matching the CLI's non-interactive nature)",
     )
     .option('--json', 'Output full JSON event stream')
+    .option('--detach', 'Start the operation and return its IDs without waiting for events')
     .option('-v, --verbose', 'Show detailed tool call info')
     .option('--replay <file>', 'Replay events from a saved JSON file (offline)')
     .option('--sse', 'Force SSE stream instead of WebSocket gateway')
@@ -367,6 +368,7 @@ export function registerAgentCommand(program: Command) {
         agentId?: string;
         autoStart?: boolean;
         device?: string;
+        detach?: boolean;
         headless?: boolean;
         json?: boolean;
         prompt?: string;
@@ -380,7 +382,7 @@ export function registerAgentCommand(program: Command) {
 
         // Replay mode: render from saved JSON file, no network needed
         if (options.replay) {
-          const data = readFileSync(options.replay, 'utf8');
+          const data = await readFile(options.replay, 'utf8');
           const events = JSON.parse(data);
           replayAgentEvents(events, { json: options.json, verbose: options.verbose });
           return;
@@ -456,6 +458,17 @@ export function registerAgentCommand(program: Command) {
         }
 
         const operationId = r.operationId;
+        if (options.detach) {
+          const started = {
+            autoStarted: r.autoStarted,
+            operationId,
+            status: r.status,
+            topicId: r.topicId,
+          };
+          if (options.json) outputJson(started);
+          else log.info(`Operation: ${pc.dim(operationId)} · Topic: ${pc.dim(r.topicId || 'n/a')}`);
+          return;
+        }
         if (!options.json) {
           log.info(`Operation: ${pc.dim(operationId)} · Topic: ${pc.dim(r.topicId || 'n/a')}`);
         }

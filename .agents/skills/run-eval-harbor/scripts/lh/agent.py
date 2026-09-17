@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shlex
 from pathlib import Path
 
@@ -174,3 +175,33 @@ class LhInstalledAgent(BaseInstalledAgent):
         del context
         for command in self.create_run_agent_commands(self.render_instruction(instruction)):
             await self.exec_as_agent(environment, command=command)
+
+    def populate_context_post_run(self, context: AgentContext) -> None:
+        snapshots = self.logs_dir / "operation-status.jsonl"
+        try:
+            lines = snapshots.read_text().splitlines()
+        except OSError:
+            return
+
+        for line in reversed(lines):
+            try:
+                state = json.loads(line)["currentState"]
+                tokens = state.get("usage", {}).get("llm", {}).get("tokens", {})
+                cost = state.get("cost") or {}
+                if isinstance(tokens.get("input"), int):
+                    context.n_input_tokens = tokens["input"]
+                if isinstance(tokens.get("output"), int):
+                    context.n_output_tokens = tokens["output"]
+                if cost.get("currency") == "USD" and isinstance(cost.get("total"), (int, float)):
+                    context.cost_usd = cost["total"]
+                model_costs = cost.get("llm", {}).get("byModel", [])
+                cached = [
+                    model.get("usage", {}).get("inputCachedTokens")
+                    for model in model_costs
+                    if isinstance(model, dict)
+                ]
+                if cached and all(isinstance(value, int) for value in cached):
+                    context.n_cache_tokens = sum(cached)
+                return
+            except (KeyError, TypeError, ValueError, AttributeError):
+                continue

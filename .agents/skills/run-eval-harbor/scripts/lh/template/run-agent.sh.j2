@@ -7,18 +7,115 @@ test -f {{ device_ready }} || {
 }
 
 agent_log=/logs/agent/agent-run.log
-rm -f "$agent_log"
+status_log=/logs/agent/operation-status.jsonl
+status_path="$HOME/.lobehub/daemon.status.json"
+start_file=/logs/agent/agent-start.json
+rm -f "$agent_log" "$status_log"
+
+device_id=$(node -e '
+try {
+  const status = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+  if (status.deviceId && status.connectionStatus === "connected") process.stdout.write(status.deviceId);
+} catch { /* cleanup stays best-effort if the daemon stopped */ }
+' "$status_path")
+
+operation_id=""
+completed=0
+
+snapshot_operation() {
+  [[ -n "$operation_id" ]] || return 0
+  {{ cli_command }} agent status "$operation_id" --json 2>>/logs/agent/operation-status-errors.log \
+    | node -e '
+let input = "";
+process.stdin.on("data", chunk => input += chunk);
+process.stdin.on("end", () => {
+  try {
+    const status = JSON.parse(input);
+    if (!status || typeof status !== "object" || !status.currentState) process.exit(1);
+    process.stdout.write(JSON.stringify({ capturedAt: new Date().toISOString(), ...status }) + "\n");
+  } catch { process.exit(1); }
+});
+' >> "$status_log"
+}
 
 cleanup() {
+  local rc=$?
+  trap - EXIT
+  snapshot_operation || true
+  if [[ "$completed" != 1 && -n "$operation_id" ]]; then
+    {{ cli_command }} agent interrupt --operation-id "$operation_id" >/dev/null 2>&1 || true
+  fi
   supervisorctl -c {{ supervisor_config }} shutdown >/dev/null 2>&1 || true
+  if [[ -n "$device_id" ]]; then
+    {{ cli_command }} device delete --yes "$device_id" >>/logs/agent/device-cleanup.log 2>&1 || true
+  fi
+  exit "$rc"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-set +e
 {{ cli_command }} agent run {{ selector_flag }} {{ selector_value }} \
-  --prompt {{ instruction }} \
-  --device local \
-  2>&1 | tee -a "$agent_log"
-rc="${PIPESTATUS[0]}"
-set -e
-exit "$rc"
+  --prompt {{ instruction }} --device local --detach --json > "$start_file"
+
+read -r operation_id topic_id < <(node -e '
+const result = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+if (typeof result.operationId !== "string" || !result.operationId.startsWith("op_") ||
+    typeof result.topicId !== "string" || !result.topicId.startsWith("tpc_")) process.exit(1);
+process.stdout.write(result.operationId + " " + result.topicId + "\n");
+' "$start_file")
+[[ -n "$operation_id" && -n "$topic_id" ]] || { echo "lh agent run returned no IDs" >&2; exit 1; }
+echo "Operation: $operation_id Topic: $topic_id" | tee -a "$agent_log"
+
+started_at=$(date +%s)
+next_snapshot=$started_at
+while true; do
+  now=$(date +%s)
+  if (( now >= next_snapshot )); then
+    snapshot_operation || true
+    next_snapshot=$((now + 300))
+  fi
+
+  state=$({{ cli_command }} agent status "$operation_id" --json 2>>/logs/agent/operation-status-errors.log \
+    | node -e '
+let input = "";
+process.stdin.on("data", chunk => input += chunk);
+process.stdin.on("end", () => {
+  try {
+    const status = JSON.parse(input);
+    process.stdout.write(String(status?.currentState?.status || "unknown"));
+  } catch { process.stdout.write("unknown"); }
+});
+' ) || state=unknown
+  case "$state" in
+    done) completed=1; break ;;
+    error) echo "Agent failed" | tee -a "$agent_log"; exit 1 ;;
+    cancelled|canceled|aborted) echo "Agent interrupted" | tee -a "$agent_log"; exit 130 ;;
+  esac
+
+  last_request=$(node -e '
+try {
+  const status = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+  const time = Date.parse(status.lastRequestAt);
+  if (Number.isFinite(time)) process.stdout.write(String(Math.floor(time / 1000)));
+} catch { /* launch time is the fallback */ }
+' "$status_path")
+  if (( now - ${last_request:-$started_at} >= 300 && now - started_at >= 300 )); then
+    echo "No device request for 5 minutes; interrupting $operation_id" | tee -a "$agent_log" >&2
+    exit 124
+  fi
+  sleep 10
+done
+
+{{ cli_command }} message list --topic-id "$topic_id" --role assistant --json \
+  | node -e '
+let input = "";
+process.stdin.on("data", chunk => input += chunk);
+process.stdin.on("end", () => {
+  try {
+    const messages = JSON.parse(input);
+    for (const message of messages) if (message.content) process.stdout.write(message.content + "\n");
+  } catch { process.exit(1); }
+});
+' | tee -a "$agent_log"
+echo "Agent finished" | tee -a "$agent_log"

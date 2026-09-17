@@ -103,6 +103,8 @@ describe('agent command', () => {
       headers: { 'Oidc-Auth': 'test-token' },
       serverUrl: 'https://example.com',
     });
+    mockGetAgentStreamAuthInfo.mockClear();
+    mockStreamAgentEvents.mockClear();
     mockStreamAgentEvents.mockResolvedValue(undefined);
     mockReplayAgentEvents.mockReset();
     mockStreamAgentEventsViaWebSocket.mockReset();
@@ -638,6 +640,41 @@ describe('agent command', () => {
   });
 
   describe('run', () => {
+    it('returns only operation identifiers when detached, without opening a stream', async () => {
+      mockTrpcClient.aiAgent.execAgent.mutate.mockResolvedValue({
+        autoStarted: true,
+        operationId: 'op-123',
+        status: 'created',
+        success: true,
+        token: 'private-gateway-token',
+        topicId: 'tpc-123',
+      });
+
+      await createProgram().parseAsync([
+        'node',
+        'test',
+        'agent',
+        'run',
+        '--agent-id',
+        'a1',
+        '--prompt',
+        'Hello',
+        '--detach',
+        '--json',
+      ]);
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        JSON.stringify(
+          { autoStarted: true, operationId: 'op-123', status: 'created', topicId: 'tpc-123' },
+          null,
+          2,
+        ),
+      );
+      expect(mockGetAgentStreamAuthInfo).not.toHaveBeenCalled();
+      expect(mockStreamAgentEventsViaWebSocket).not.toHaveBeenCalled();
+      expect(mockStreamAgentEvents).not.toHaveBeenCalled();
+    });
+
     it('should exec agent and connect to the gateway WebSocket stream by default', async () => {
       mockTrpcClient.aiAgent.execAgent.mutate.mockResolvedValue({
         operationId: 'op-123',

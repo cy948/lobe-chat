@@ -84,7 +84,7 @@ let connectCalled = false;
 let lastSentToolResponse: any = null;
 let lastSentSystemInfoResponse: any = null;
 vi.mock('@lobechat/device-gateway-client', () => ({
-  GatewayClient: vi.fn().mockImplementation(function (opts: any) {
+  GatewayClient: vi.fn().mockImplementation((opts: any) => {
     clientOptions = opts;
     clientEventHandlers = {};
     connectCalled = false;

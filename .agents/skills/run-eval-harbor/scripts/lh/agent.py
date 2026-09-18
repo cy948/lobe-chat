@@ -13,6 +13,7 @@ _HOST_DIR_PREFIX = "host-dir:"
 _DEV_CLI_DIR = "/opt/lh-dev"
 _DEV_CLI_RUNNER = f"{_DEV_CLI_DIR}/run-lh.sh"
 _CHECK_LH_PATH = "/installed-agent/check-lh.sh"
+_RUN_AGENT_PATH = "/installed-agent/run-agent.js"
 _CONNECT_SCRIPT = "/tmp/lh-connect-supervised.sh"
 _LOGIN_READY = "/tmp/lh-login-ready"
 _DEVICE_READY = "/tmp/lh-device-ready"
@@ -86,6 +87,12 @@ class LhInstalledAgent(BaseInstalledAgent):
         self._host_cli_dir()
         return f"bash {_DEV_CLI_RUNNER}"
 
+    def _cli_path(self) -> str:
+        if self._cli_source == "system":
+            return "/usr/local/bin/lh"
+        self._host_cli_dir()
+        return _DEV_CLI_RUNNER
+
     def _agent_target(self) -> tuple[str, str]:
         agent_id = self._value(self._agent_id, "LH_AGENT_ID")
         if agent_id:
@@ -127,6 +134,10 @@ class LhInstalledAgent(BaseInstalledAgent):
             command=f"chmod +x {shlex.quote(_CHECK_LH_PATH)}",
         )
 
+        run_script = self.logs_dir / "run-agent.js"
+        run_script.write_text(self._render_template("run-agent.js"))
+        await environment.upload_file(run_script, _RUN_AGENT_PATH)
+
     def create_run_agent_commands(self, instruction: str) -> list[str]:
         selector_flag, selector_value = self._agent_target()
         server_url = self._value(self._server_url, "LH_SERVER_URL")
@@ -155,14 +166,15 @@ class LhInstalledAgent(BaseInstalledAgent):
             f"test -f {_LOGIN_READY} || exit 1; "
             f"{_CHECK_LH_PATH} -- {cli} && touch {_DEVICE_READY}"
         )
-        run = self._render_template(
-            "run-agent.sh.j2",
-            cli_command=cli,
-            device_ready=_DEVICE_READY,
-            instruction=shlex.quote(instruction),
-            selector_flag=selector_flag,
-            selector_value=shlex.quote(selector_value),
-            supervisor_config=_SUPERVISOR_CONFIG,
+        run = (
+            f"test -f {_LOGIN_READY} || exit 1; "
+            f"node {shlex.quote(_RUN_AGENT_PATH)}"
+            f" --cli {shlex.quote(self._cli_path())}"
+            f" {selector_flag} {shlex.quote(selector_value)}"
+            f" --prompt {shlex.quote(instruction)}"
+            f" --device-ready {shlex.quote(_DEVICE_READY)}"
+            f" --status-path \"$HOME/.lobehub/daemon.status.json\""
+            f" --supervisor-config {shlex.quote(_SUPERVISOR_CONFIG)}"
         )
         return [login, connect, ready, run]
 

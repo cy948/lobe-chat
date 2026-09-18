@@ -17,7 +17,7 @@ const TERMINAL_STATUSES = new Set([
 const DEFAULTS = {
   idleMs: 5 * 60 * 1000,
   interruptGraceMs: 30 * 1000,
-  pollMs: 30 * 1000,
+  pollMs: 60 * 1000,
   snapshotMs: 5 * 60 * 1000,
 };
 

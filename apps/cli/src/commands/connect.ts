@@ -853,7 +853,6 @@ function bindGatewayClientHandlers(
 
   // Handle system info requests
   client.on('system_info_request', (request: SystemInfoRequestMessage) => {
-    recordRequest();
     info(`Received system_info_request: requestId=${request.requestId}`);
     const systemInfo = collectSystemInfo();
     client.sendSystemInfoResponse({
@@ -905,7 +904,6 @@ function bindGatewayClientHandlers(
   // Shares the `@lobechat/device-control` dispatcher with the desktop app so the
   // CLI exposes the same remote-device control surface.
   client.on('rpc_request', async (request: RpcRequestMessage) => {
-    recordRequest();
     const { method, params, requestId } = request;
     if (isDaemonChild) appendLog(`[RPC] ${method} (${requestId})`);
     else info(`Received rpc_request: method=${method} (${requestId})`);

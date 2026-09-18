@@ -422,7 +422,7 @@ Exit codes:
 
         // Replay mode: render from saved JSON file, no network needed
         if (options.replay) {
-          const data = await readFile(options.replay, 'utf8');
+          const data = readFileSync(options.replay, 'utf8');
           const events = JSON.parse(data);
           const replayed = replayAgentEvents(events, {
             json: options.json,

@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 
 import { AgentGraphSchema } from '@lobechat/types/agent/graph';
 import { type Command, InvalidArgumentError } from 'commander';
@@ -382,7 +382,7 @@ export function registerAgentCommand(program: Command) {
 
         // Replay mode: render from saved JSON file, no network needed
         if (options.replay) {
-          const data = await readFile(options.replay, 'utf8');
+          const data = readFileSync(options.replay, 'utf8');
           const events = JSON.parse(data);
           replayAgentEvents(events, { json: options.json, verbose: options.verbose });
           return;

@@ -1,31 +1,11 @@
 from __future__ import annotations
 
-import json
-import shlex
 from pathlib import Path
 
 from harbor.agents.installed.base import BaseInstalledAgent
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
-
-_HOST_DIR_PREFIX = "host-dir:"
-_DEV_CLI_DIR = "/opt/lh-dev"
-_DEV_CLI_RUNNER = f"{_DEV_CLI_DIR}/run-lh.sh"
-_CHECK_LH_PATH = "/installed-agent/check-lh.sh"
-_RUN_AGENT_PATH = "/installed-agent/run-agent.js"
-_CONNECT_SCRIPT = "/tmp/lh-connect-supervised.sh"
-_LOGIN_READY = "/tmp/lh-login-ready"
-_DEVICE_READY = "/tmp/lh-device-ready"
-_SUPERVISOR_CONFIG = "/tmp/lh-supervisord.conf"
-_SUPERVISOR_SOCKET = "/tmp/lh-supervisor.sock"
-_TEMPLATE_DIR = Path(__file__).with_name("template")
-_TEMPLATES = Environment(
-    autoescape=False,
-    keep_trailing_newline=True,
-    loader=FileSystemLoader(_TEMPLATE_DIR),
-    undefined=StrictUndefined,
-)
+from lh.adapter import CHECK_LH_PATH, DEV_CLI_DIR, RUN_AGENT_PATH, LhAdapter
 
 
 class LhInstalledAgent(BaseInstalledAgent):
@@ -43,11 +23,6 @@ class LhInstalledAgent(BaseInstalledAgent):
         *args,
         **kwargs,
     ):
-        self._agent_id = agent_id
-        self._workspace_id = workspace_id
-        self._server_url = server_url
-        self._gateway_url = gateway_url
-        self._cli_source_arg = cli_source
         super().__init__(
             *args,
             logs_dir=logs_dir,
@@ -56,140 +31,48 @@ class LhInstalledAgent(BaseInstalledAgent):
             extra_env=extra_env,
             **kwargs,
         )
+        self._lh = LhAdapter(
+            self._get_env,
+            agent_id=agent_id,
+            workspace_id=workspace_id,
+            server_url=server_url,
+            gateway_url=gateway_url,
+            cli_source=cli_source,
+        )
 
     @staticmethod
     def name() -> str:
         return "lh"
 
-    def _value(self, direct: str | None, env_name: str, default: str = "") -> str:
-        return (direct or self._get_env(env_name) or default).strip()
-
-    @property
-    def _cli_source(self) -> str:
-        return self._value(self._cli_source_arg, "LH_CLI_SOURCE", "system")
-
-    def _render_template(self, name: str, **values: object) -> str:
-        return _TEMPLATES.get_template(name).render(**values)
-
-    def _host_cli_dir(self) -> Path:
-        if not self._cli_source.startswith(_HOST_DIR_PREFIX):
-            raise ValueError(f"Unsupported LH_CLI_SOURCE: {self._cli_source}")
-
-        path = Path(self._cli_source.removeprefix(_HOST_DIR_PREFIX)).expanduser()
-        if not path.is_absolute():
-            raise ValueError("LH_CLI_SOURCE host-dir path must be absolute")
-        for required in (path / "package.json", path / "dist" / "index.js"):
-            if not required.is_file():
-                raise FileNotFoundError(f"Missing local LH CLI build input: {required}")
-        return path
-
-    def _cli_command(self) -> str:
-        if self._cli_source == "system":
-            return "lh"
-        self._host_cli_dir()
-        return f"bash {_DEV_CLI_RUNNER}"
-
-    def _cli_path(self) -> str:
-        if self._cli_source == "system":
-            return "/usr/local/bin/lh"
-        self._host_cli_dir()
-        return _DEV_CLI_RUNNER
-
-    def _agent_target(self) -> tuple[str, str]:
-        agent_id = self._value(self._agent_id, "LH_AGENT_ID")
-        if agent_id:
-            return "--agent-id", agent_id
-        raise ValueError("LH_AGENT_ID is required")
-
     async def install(self, environment: BaseEnvironment) -> None:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         await self.exec_as_root(
-            environment,
-            command=f"mkdir -p /installed-agent {shlex.quote(_DEV_CLI_DIR)}",
+            environment, command=f"mkdir -p /installed-agent {DEV_CLI_DIR}"
         )
 
-        if self._cli_source != "system":
-            host_dir = self._host_cli_dir()
-            await environment.upload_file(host_dir / "package.json", f"{_DEV_CLI_DIR}/package.json")
-            await environment.upload_dir(host_dir / "dist", f"{_DEV_CLI_DIR}/dist")
-
-        install_script = self.logs_dir / "install-lh.sh"
-        install_script.write_text(
-            self._render_template(
-                "install-lh.sh.j2",
-                cli_package=shlex.quote("@lobehub/cli"),
-                node_version=shlex.quote(self._value(None, "LH_NODE_VERSION", "24")),
-                install_cli=True,
-                use_system_cli=self._cli_source == "system",
+        host_dir = self._lh.host_cli_dir()
+        if host_dir is not None:
+            await environment.upload_file(
+                host_dir / "package.json", f"{DEV_CLI_DIR}/package.json"
             )
-        )
-        await environment.upload_file(install_script, "/installed-agent/install-lh.sh")
+            await environment.upload_dir(host_dir / "dist", f"{DEV_CLI_DIR}/dist")
+
+        scripts = {
+            "/installed-agent/install-lh.sh": self._lh.install_script(install_cli=True),
+            CHECK_LH_PATH: self._lh.render("check-lh.sh.j2"),
+            RUN_AGENT_PATH: self._lh.render("run-agent.js"),
+        }
+        for remote_path, contents in scripts.items():
+            local_path = self.logs_dir / Path(remote_path).name
+            local_path.write_text(contents)
+            await environment.upload_file(local_path, remote_path)
         await self.exec_as_root(
             environment,
-            command="chmod +x /installed-agent/install-lh.sh && /installed-agent/install-lh.sh",
+            command=(
+                f"chmod +x /installed-agent/install-lh.sh {CHECK_LH_PATH} && "
+                "/installed-agent/install-lh.sh"
+            ),
         )
-
-        check_script = self.logs_dir / "check-lh.sh"
-        check_script.write_text(self._render_template("check-lh.sh.j2"))
-        await environment.upload_file(check_script, _CHECK_LH_PATH)
-        await self.exec_as_root(
-            environment,
-            command=f"chmod +x {shlex.quote(_CHECK_LH_PATH)}",
-        )
-
-        run_script = self.logs_dir / "run-agent.js"
-        run_script.write_text(self._render_template("run-agent.js"))
-        await environment.upload_file(run_script, _RUN_AGENT_PATH)
-
-    def create_run_agent_commands(self, instruction: str) -> list[str]:
-        selector_flag, selector_value = self._agent_target()
-        server_url = self._value(self._server_url, "LH_SERVER_URL")
-        gateway_url = self._value(self._gateway_url, "LH_GATEWAY_URL")
-        workspace_id = self._value(self._workspace_id, "LOBEHUB_WORKSPACE_ID")
-        cli = self._cli_command()
-        workspace_env = (
-            f"export LOBEHUB_WORKSPACE_ID={shlex.quote(workspace_id)}; "
-            if workspace_id
-            else ""
-        )
-
-        login = (
-            workspace_env
-            + f"rm -f {_LOGIN_READY} {_DEVICE_READY}; "
-            f"({cli} whoami >/dev/null 2>&1 || {cli} login"
-        )
-        if server_url:
-            login += f" --server {shlex.quote(server_url)}"
-        login += f") && touch {_LOGIN_READY}"
-
-        connect = self._render_template(
-            "connect-lh.sh.j2",
-            cli_command=cli,
-            connect_script=_CONNECT_SCRIPT,
-            device_ready=_DEVICE_READY,
-            gateway_url=shlex.quote(gateway_url) if gateway_url else "",
-            login_ready=_LOGIN_READY,
-            workspace_id=shlex.quote(workspace_id) if workspace_id else "",
-            supervisor_config=_SUPERVISOR_CONFIG,
-            supervisor_socket=_SUPERVISOR_SOCKET,
-        )
-        ready = (
-            workspace_env
-            + f"test -f {_LOGIN_READY} || exit 1; "
-            f"{_CHECK_LH_PATH} -- {cli} && touch {_DEVICE_READY}"
-        )
-        run = (
-            workspace_env
-            + f"test -f {_LOGIN_READY} || exit 1; "
-            f"node {shlex.quote(_RUN_AGENT_PATH)}"
-            f" --cli {shlex.quote(self._cli_path())}"
-            f" {selector_flag} {shlex.quote(selector_value)}"
-            f" --prompt {shlex.quote(instruction)}"
-            f" --device-ready {shlex.quote(_DEVICE_READY)}"
-            f" --status-path \"$HOME/.lobehub/daemon.status.json\""
-            f" --supervisor-config {shlex.quote(_SUPERVISOR_CONFIG)}"
-        )
-        return [login, connect, ready, run]
 
     async def run(
         self,
@@ -198,35 +81,8 @@ class LhInstalledAgent(BaseInstalledAgent):
         context: AgentContext,
     ) -> None:
         del context
-        for command in self.create_run_agent_commands(self.render_instruction(instruction)):
+        for command in self._lh.run_commands(self.render_instruction(instruction)):
             await self.exec_as_agent(environment, command=command)
 
     def populate_context_post_run(self, context: AgentContext) -> None:
-        snapshots = self.logs_dir / "operation-status.jsonl"
-        try:
-            lines = snapshots.read_text().splitlines()
-        except OSError:
-            return
-
-        for line in reversed(lines):
-            try:
-                state = json.loads(line)["currentState"]
-                tokens = state.get("usage", {}).get("llm", {}).get("tokens", {})
-                cost = state.get("cost") or {}
-                if isinstance(tokens.get("input"), int):
-                    context.n_input_tokens = tokens["input"]
-                if isinstance(tokens.get("output"), int):
-                    context.n_output_tokens = tokens["output"]
-                if cost.get("currency") == "USD" and isinstance(cost.get("total"), (int, float)):
-                    context.cost_usd = cost["total"]
-                model_costs = cost.get("llm", {}).get("byModel", [])
-                cached = [
-                    model.get("usage", {}).get("inputCachedTokens")
-                    for model in model_costs
-                    if isinstance(model, dict)
-                ]
-                if cached and all(isinstance(value, int) for value in cached):
-                    context.n_cache_tokens = sum(cached)
-                return
-            except (KeyError, TypeError, ValueError, AttributeError):
-                continue
+        self._lh.populate_context(self.logs_dir, context)

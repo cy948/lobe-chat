@@ -157,17 +157,25 @@ def ensure_runtime(name: str, checkpoint: str, idle_timeout: int) -> None:
     raise RuntimeError(f"runtime {name} did not become ready")
 
 
-def discover_tasks(root: Path) -> dict[str, list[dict[str, str]]]:
+def discover_tasks(
+    root: Path, selected: list[str] | None = None
+) -> dict[str, list[dict[str, str]]]:
     tasks: dict[str, list[dict[str, str]]] = {suite: [] for suite in SUITES}
+    wanted = set(selected or [])
     for path in sorted(root.glob("*/task.toml")):
         name = tomllib.loads(path.read_text()).get("task", {}).get("name", "")
         suite, separator, _ = name.partition("/")
-        if separator and suite in tasks:
+        if separator and suite in tasks and (not wanted or name in wanted):
             tasks[suite].append({"id": name, "dir": path.parent.name})
-    missing = [suite for suite, rows in tasks.items() if not rows]
+    found = {row["id"] for rows in tasks.values() for row in rows}
+    missing = wanted - found
     if missing:
-        raise RuntimeError(f"no tasks found for: {', '.join(missing)}")
-    return tasks
+        raise RuntimeError(f"tasks not found: {', '.join(sorted(missing))}")
+    if not wanted:
+        missing_suites = [suite for suite, rows in tasks.items() if not rows]
+        if missing_suites:
+            raise RuntimeError(f"no tasks found for: {', '.join(missing_suites)}")
+    return {suite: rows for suite, rows in tasks.items() if rows}
 
 
 def suite_config(
@@ -337,10 +345,9 @@ def start(args: argparse.Namespace) -> None:
     run_file = run_dir / "run.json"
     if run_file.exists():
         raise RuntimeError(f"run already exists; use status or collect: {run_file}")
-    tasks = discover_tasks(tasks_root)
+    tasks = discover_tasks(tasks_root, args.task)
     runtimes = {
-        "terminal-bench": runtime_name(args.run_id, "harbor"),
-        "datacurve": runtime_name(args.run_id, "pier"),
+        suite: runtime_name(args.run_id, SUITES[suite]["runner"]) for suite in tasks
     }
     artifact, artifact_hash = pack_lh_artifacts(run_dir, args.cli_dir.resolve())
     record = {
@@ -367,7 +374,7 @@ def start(args: argparse.Namespace) -> None:
     write_json(run_file, record)
     write_json(run_dir / "task-index.json", tasks)
     (run_dir / "runta-ca-overlay.yaml").write_text(CA_OVERLAY)
-    for suite in SUITES:
+    for suite in tasks:
         config = suite_config(
             args.run_id,
             suite,
@@ -608,6 +615,11 @@ def parser() -> argparse.ArgumentParser:
     start_parser.add_argument("--env-file", type=Path, required=True)
     start_parser.add_argument(
         "--model", required=True, help="reporting label; the Lh agent owns its model"
+    )
+    start_parser.add_argument(
+        "--task",
+        action="append",
+        help="run only this suite/task id; repeat to select multiple tasks",
     )
     start_parser.add_argument("--out", type=Path, default=Path("runs"))
     start_parser.add_argument(

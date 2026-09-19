@@ -82,7 +82,6 @@ class LhPierInstalledAgent(BaseInstalledAgent):
         environment: BaseEnvironment,
         context: AgentContext,
     ) -> None:
-        del context
         host_dir = self._lh.host_cli_dir()
         if host_dir is not None:
             await environment.upload_file(
@@ -91,6 +90,15 @@ class LhPierInstalledAgent(BaseInstalledAgent):
             await environment.upload_dir(host_dir / "dist", f"{DEV_CLI_DIR}/dist")
         for command in self._lh.run_commands(self.render_instruction(instruction)):
             await self.exec_as_agent(environment, command=command)
+
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
+        status_log = self.logs_dir / "operation-status.jsonl"
+        downloaded = status_log.with_suffix(".jsonl.download")
+        await environment.download_file(
+            "/logs/agent/operation-status.jsonl", downloaded
+        )
+        downloaded.replace(status_log)
+        self._lh.populate_context(self.logs_dir, context)
 
     def populate_context_post_run(self, context: AgentContext) -> None:
         self._lh.populate_context(self.logs_dir, context)

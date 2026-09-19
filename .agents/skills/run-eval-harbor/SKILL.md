@@ -1,6 +1,6 @@
 ---
 name: run-eval-harbor
-description: 'Run and diagnose existing Harbor evaluations against local production LobeHub or LobeHub Cloud. Use for eval infrastructure, target preflight, lh CLI injection, Harbor smoke or job runs, resume, and failure triage. Excludes authoring Harbor tasks and product acceptance.'
+description: 'Run and diagnose existing Harbor or FrontierHarness evaluations against local production LobeHub, LobeHub Cloud, or Runta. Use for eval infrastructure, target preflight, lh CLI injection, Harbor smoke or job runs, resume, and failure triage. Excludes authoring Harbor tasks and product acceptance.'
 ---
 
 # Run Eval Harbor
@@ -13,7 +13,8 @@ grade tasks and `acceptance` for product acceptance.
 
 Before preparing or running anything, obtain these independent choices:
 
-1. Target: `local` production server from this checkout, or `cloud`/remote.
+1. Target: `local` production server from this checkout, `cloud`/remote, or
+   `runta` FrontierHarness evaluation.
 2. CLI: `checkout` build from `apps/cli`, or published `npm` release.
 3. Exact `LH_AGENT_ID`; the selected agent already owns its model.
 4. Eval repository path and whether the user wants a new job or a resume.
@@ -24,6 +25,12 @@ Before preparing or running anything, obtain these independent choices:
 6. For local, obtain explicit confirmation that port `3210` and every configured
    eval infrastructure port are unreachable from the public internet and other
    untrusted networks. Do not bootstrap the local stack without confirmation.
+
+For the `runta` route, also collect the harness repository and pinned commit,
+provider/key choice required by FrontierHarness, and the Terminal-Bench versus
+DeepSWE task subset. The Lh Cloud agent's model remains selected by `LH_AGENT_ID`;
+do not replace it with FrontierHarness's `--model` unless the run is explicitly
+non-comparable.
 
 Do not infer these choices. DeepSeek is only one provider example, not a
 required credential or model.
@@ -57,11 +64,15 @@ Read exactly one route after the answers above:
 
 - Local target: [references/local.md](references/local.md)
 - Cloud/remote target: [references/cloud.md](references/cloud.md)
+- Runta/FrontierHarness evaluation: [references/runta.md](references/runta.md)
 
-The CLI selection is orthogonal to the target. `checkout` injects the built
-`apps/cli`; `npm` installs the release package. Both routes run their preflight
-and then `scripts/run-smoke.sh <local|cloud> <checkout|npm> ...` before the
-external eval repository's own job command.
+For `local` and `cloud`, CLI selection is orthogonal to the target:
+`checkout` injects the built `apps/cli`; `npm` installs the release package.
+Both routes run their preflight and then
+`scripts/run-smoke.sh <local|cloud> <checkout|npm> ...` before the external eval
+repository's own job command. The `runta` route uses two restored suite runtimes
+and a detached start/status/collect workflow; do not substitute a normal Harbor
+job for it.
 
 ## Diagnose
 

@@ -13,10 +13,7 @@
     "test:update": "vitest -u"
   },
   "dependencies": {
-    "@lobechat/const": "workspace:*",
-    "unist-builder": "^4.0.0",
-    "xast-util-to-xml": "^4.0.0",
-    "xastscript": "^4.0.0"
+    "@lobechat/const": "workspace:*"
   },
   "devDependencies": {
     "@lobechat/types": "workspace:*",

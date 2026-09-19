@@ -22,7 +22,8 @@ token, so it is not suitable for an internet-facing host.
 ## Prepare
 
 Create `docker-compose/eval/.env` from `.env.example` only when it is absent.
-Set the user-selected `LH_AGENT_ID`. The agent already owns its model. Ask
+Set the user-selected `LH_AGENT_ID`. The agent already owns its model. For a
+workspace agent, also set `LOBEHUB_WORKSPACE_ID` to its workspace id. Ask
 whether its provider credential is stored in LobeHub; when it is not, add the
 provider's actual environment variable to this ignored env before server
 startup. `DEEPSEEK_API_KEY` is one example, not a required or generic key.

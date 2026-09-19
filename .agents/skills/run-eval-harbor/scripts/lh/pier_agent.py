@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import base64
 import json
 import shlex
 from pathlib import Path
 
-from harbor.agents.installed.base import BaseInstalledAgent
-from harbor.environments.base import BaseEnvironment
-from harbor.models.agent.context import AgentContext
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
+from pier.agents.installed.base import BaseInstalledAgent
+from pier.environments.base import BaseEnvironment
+from pier.models.agent.context import AgentContext
+from pier.models.agent.install import AgentInstallSpec, InstallStep
 
 _HOST_DIR_PREFIX = "host-dir:"
 _DEV_CLI_DIR = "/opt/lh-dev"
@@ -28,7 +30,13 @@ _TEMPLATES = Environment(
 )
 
 
-class LhInstalledAgent(BaseInstalledAgent):
+class LhPierInstalledAgent(BaseInstalledAgent):
+    """Pier adapter for the Lh CLI-backed agent.
+
+    Pier has its own installed-agent base class and declarative install contract;
+    this class intentionally mirrors the Harbor adapter without inheriting from it.
+    """
+
     def __init__(
         self,
         logs_dir: Path,
@@ -71,75 +79,65 @@ class LhInstalledAgent(BaseInstalledAgent):
     def _render_template(self, name: str, **values: object) -> str:
         return _TEMPLATES.get_template(name).render(**values)
 
-    def _host_cli_dir(self) -> Path:
+    def _source_dir(self) -> str | None:
+        if self._cli_source == "system":
+            return None
         if not self._cli_source.startswith(_HOST_DIR_PREFIX):
             raise ValueError(f"Unsupported LH_CLI_SOURCE: {self._cli_source}")
-
-        path = Path(self._cli_source.removeprefix(_HOST_DIR_PREFIX)).expanduser()
-        if not path.is_absolute():
+        path = self._cli_source.removeprefix(_HOST_DIR_PREFIX).strip()
+        if not path.startswith("/"):
             raise ValueError("LH_CLI_SOURCE host-dir path must be absolute")
-        for required in (path / "package.json", path / "dist" / "index.js"):
-            if not required.is_file():
-                raise FileNotFoundError(f"Missing local LH CLI build input: {required}")
         return path
 
     def _cli_command(self) -> str:
+        self._source_dir()
         if self._cli_source == "system":
             return "lh"
-        self._host_cli_dir()
         return f"bash {_DEV_CLI_RUNNER}"
 
     def _cli_path(self) -> str:
+        self._source_dir()
         if self._cli_source == "system":
             return "/usr/local/bin/lh"
-        self._host_cli_dir()
         return _DEV_CLI_RUNNER
 
     def _agent_target(self) -> tuple[str, str]:
         agent_id = self._value(self._agent_id, "LH_AGENT_ID")
-        if agent_id:
-            return "--agent-id", agent_id
-        raise ValueError("LH_AGENT_ID is required")
+        if not agent_id:
+            raise ValueError("LH_AGENT_ID is required")
+        return "--agent-id", agent_id
 
-    async def install(self, environment: BaseEnvironment) -> None:
-        self.logs_dir.mkdir(parents=True, exist_ok=True)
-        await self.exec_as_root(
-            environment,
-            command=f"mkdir -p /installed-agent {shlex.quote(_DEV_CLI_DIR)}",
+    @staticmethod
+    def _write_file_command(path: str, contents: str) -> str:
+        encoded = base64.b64encode(contents.encode()).decode()
+        return f"printf %s {shlex.quote(encoded)} | base64 -d > {shlex.quote(path)}"
+
+    def install_spec(self) -> AgentInstallSpec:
+        source_dir = self._source_dir()
+        install_script = self._render_template(
+            "install-lh.sh.j2",
+            cli_package=shlex.quote("@lobehub/cli"),
+            node_version=shlex.quote(self._value(None, "LH_NODE_VERSION", "24")),
+            install_cli=source_dir is None,
+            use_system_cli=source_dir is None,
+        )
+        check_script = self._render_template("check-lh.sh.j2")
+        run_script = self._render_template("run-agent.js")
+
+        setup = "set -euo pipefail; mkdir -p /installed-agent /opt/lh-dev; "
+        setup += self._write_file_command("/installed-agent/install-lh.sh", install_script)
+        setup += "; " + self._write_file_command(_CHECK_LH_PATH, check_script)
+        setup += "; " + self._write_file_command(_RUN_AGENT_PATH, run_script)
+        setup += (
+            f"; chmod +x /installed-agent/install-lh.sh {_CHECK_LH_PATH}; "
+            "/installed-agent/install-lh.sh"
         )
 
-        if self._cli_source != "system":
-            host_dir = self._host_cli_dir()
-            await environment.upload_file(host_dir / "package.json", f"{_DEV_CLI_DIR}/package.json")
-            await environment.upload_dir(host_dir / "dist", f"{_DEV_CLI_DIR}/dist")
-
-        install_script = self.logs_dir / "install-lh.sh"
-        install_script.write_text(
-            self._render_template(
-                "install-lh.sh.j2",
-                cli_package=shlex.quote("@lobehub/cli"),
-                node_version=shlex.quote(self._value(None, "LH_NODE_VERSION", "24")),
-                install_cli=True,
-                use_system_cli=self._cli_source == "system",
-            )
+        return AgentInstallSpec(
+            agent_name=self.name(),
+            version=self._version,
+            steps=[InstallStep(user="root", run=setup)],
         )
-        await environment.upload_file(install_script, "/installed-agent/install-lh.sh")
-        await self.exec_as_root(
-            environment,
-            command="chmod +x /installed-agent/install-lh.sh && /installed-agent/install-lh.sh",
-        )
-
-        check_script = self.logs_dir / "check-lh.sh"
-        check_script.write_text(self._render_template("check-lh.sh.j2"))
-        await environment.upload_file(check_script, _CHECK_LH_PATH)
-        await self.exec_as_root(
-            environment,
-            command=f"chmod +x {shlex.quote(_CHECK_LH_PATH)}",
-        )
-
-        run_script = self.logs_dir / "run-agent.js"
-        run_script.write_text(self._render_template("run-agent.js"))
-        await environment.upload_file(run_script, _RUN_AGENT_PATH)
 
     def create_run_agent_commands(self, instruction: str) -> list[str]:
         selector_flag, selector_value = self._agent_target()
@@ -198,6 +196,12 @@ class LhInstalledAgent(BaseInstalledAgent):
         context: AgentContext,
     ) -> None:
         del context
+        source_dir = self._source_dir()
+        if source_dir is not None:
+            await environment.upload_file(
+                Path(source_dir) / "package.json", f"{_DEV_CLI_DIR}/package.json"
+            )
+            await environment.upload_dir(Path(source_dir) / "dist", f"{_DEV_CLI_DIR}/dist")
         for command in self.create_run_agent_commands(self.render_instruction(instruction)):
             await self.exec_as_agent(environment, command=command)
 

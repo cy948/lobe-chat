@@ -91,7 +91,7 @@ harbor_args=(
   --agent-env 'LOBEHUB_CLI_API_KEY=${LOBEHUB_CLI_API_KEY}'
   --agent-env 'LH_CLI_SOURCE=${LH_CLI_SOURCE}'
 )
-for key in LH_SERVER_URL LH_GATEWAY_URL AGENT_GATEWAY_URL LOBEHUB_SERVER; do
+for key in LH_SERVER_URL LH_GATEWAY_URL AGENT_GATEWAY_URL LOBEHUB_SERVER LOBEHUB_WORKSPACE_ID; do
   [[ -n "${!key:-}" ]] && harbor_args+=(--agent-env "$key=\${$key}")
 done
 uv run --with 'harbor==0.23.0' harbor "${harbor_args[@]}"

@@ -49,7 +49,7 @@ inside the runtimes or task containers.
 
 ## Execution Topology
 
-One run restores two machines from the same golden checkpoint:
+A full run restores two machines from the same golden checkpoint:
 
 ```text
 controller
@@ -107,6 +107,20 @@ python3 "$RUNTA" start \
 
 Use a new run ID when the agent, model, checkpoint, task set, network policy, or
 runner topology changes. `start` refuses to reuse an existing run record.
+
+For a smoke test, pass one or more full task IDs with `--task`. Only the runtimes
+needed by those tasks are restored:
+
+```bash
+python3 "$RUNTA" start \
+  --checkpoint fh-lh-public-golden \
+  --run-id lh-smoke-YYYYMMDD \
+  --tasks /absolute/path/to/frontierharness-eval/tasks \
+  --task terminal-bench/openssl-selfsigned-cert \
+  --env-file /absolute/path/to/frontierharness-eval/.env \
+  --model kimi-k3 \
+  --out /absolute/path/to/frontierharness-eval/runs
+```
 
 ## Inspect
 

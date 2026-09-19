@@ -1,8 +1,10 @@
-# Runta / FrontierHarness
+# Runta Execution Environment / FrontierHarness
 
-Use this route to run the FrontierHarness task set with an Lh Cloud workspace
-agent. Build and smoke-test the adapter first; a full run spends real credits and
-starts two Runta runtimes.
+Use this execution-environment overlay to run the FrontierHarness task set with
+an Lh Cloud workspace agent. Runta is the sandbox host, not the LobeHub server
+target; the current playbook overlays the cloud server route and does not expose
+a local LobeHub server to Runta. Build and smoke-test the adapter first; a full
+run spends real credits and starts two Runta runtimes.
 
 ## Required Inputs
 

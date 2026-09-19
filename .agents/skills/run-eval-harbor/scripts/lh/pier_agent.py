@@ -22,6 +22,7 @@ class LhPierInstalledAgent(BaseInstalledAgent):
         server_url: str | None = None,
         gateway_url: str | None = None,
         cli_source: str | None = None,
+        run_mode: str | None = None,
         workspace_id: str | None = None,
         *args,
         **kwargs,
@@ -41,6 +42,7 @@ class LhPierInstalledAgent(BaseInstalledAgent):
             server_url=server_url,
             gateway_url=gateway_url,
             cli_source=cli_source,
+            run_mode=run_mode,
         )
 
     @staticmethod

@@ -37,6 +37,7 @@ class LhAdapter:
         server_url: str | None,
         gateway_url: str | None,
         cli_source: str | None,
+        run_mode: str | None,
     ) -> None:
         self.get_env = get_env
         self.agent_id = agent_id
@@ -44,6 +45,7 @@ class LhAdapter:
         self.server_url = server_url
         self.gateway_url = gateway_url
         self.cli_source_arg = cli_source
+        self.run_mode_arg = run_mode
 
     def value(self, direct: str | None, env_name: str, default: str = "") -> str:
         return (direct or self.get_env(env_name) or default).strip()
@@ -83,13 +85,22 @@ class LhAdapter:
 
     def run_commands(self, instruction: str) -> list[str]:
         agent_id = self.value(self.agent_id, "LH_AGENT_ID")
-        if not agent_id:
-            raise ValueError("LH_AGENT_ID is required")
+        agent_slug = self.value(None, "LH_AGENT_SLUG")
+        if not agent_id and not agent_slug:
+            raise ValueError("LH_AGENT_ID or LH_AGENT_SLUG is required")
         server_url = self.value(self.server_url, "LH_SERVER_URL")
         gateway_url = self.value(self.gateway_url, "LH_GATEWAY_URL")
         workspace_id = self.value(self.workspace_id, "LOBEHUB_WORKSPACE_ID")
+        run_mode = self.value(self.run_mode_arg, "LH_RUN_MODE", "agent")
+        if run_mode not in {"agent", "task"}:
+            raise ValueError("LH_RUN_MODE must be 'agent' or 'task'")
         cli = "lh" if self.uses_system_cli else f"bash {DEV_CLI_RUNNER}"
         cli_path = "/usr/local/bin/lh" if self.uses_system_cli else DEV_CLI_RUNNER
+        agent_option = (
+            f" --agent-id {shlex.quote(agent_id)}"
+            if agent_id
+            else f" --agent-slug {shlex.quote(agent_slug)}"
+        )
         self.host_cli_dir()
         workspace_env = (
             f"export LOBEHUB_WORKSPACE_ID={shlex.quote(workspace_id)}; "
@@ -124,7 +135,8 @@ class LhAdapter:
             workspace_env + f"test -f {_LOGIN_READY} || exit 1; "
             f"node {shlex.quote(RUN_AGENT_PATH)}"
             f" --cli {shlex.quote(cli_path)}"
-            f" --agent-id {shlex.quote(agent_id)}"
+            f"{agent_option}"
+            f" --run-mode {shlex.quote(run_mode)}"
             f" --prompt {shlex.quote(instruction)}"
             f" --device-ready {shlex.quote(_DEVICE_READY)}"
             ' --status-path "$HOME/.lobehub/daemon.status.json"'

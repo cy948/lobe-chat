@@ -306,7 +306,10 @@ def pack_lh_artifacts(run_dir: Path, cli_dir: Path) -> tuple[Path, str]:
         bundle.add(cli_dir / "dist", arcname="lh-cli/dist")
         for path in lh_dir.rglob("*"):
             if path.is_file() and "__pycache__" not in path.parts:
-                bundle.add(path, arcname=Path("lh-harness") / path.relative_to(lh_dir))
+                bundle.add(
+                    path,
+                    arcname=Path("lh-harness/lh") / path.relative_to(lh_dir),
+                )
     return archive, hashlib.sha256(archive.read_bytes()).hexdigest()
 
 

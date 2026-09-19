@@ -38,6 +38,8 @@ function parseArgs(argv) {
   const options = {
     cli: undefined,
     agentId: undefined,
+    agentSlug: undefined,
+    runMode: 'agent',
     prompt: undefined,
     deviceReady: '/tmp/lh-device-ready',
     logDir: '/logs/agent',
@@ -51,10 +53,12 @@ function parseArgs(argv) {
 
   const values = new Set([
     '--agent-id',
+    '--agent-slug',
     '--cli',
     '--device-ready',
     '--log-dir',
     '--prompt',
+    '--run-mode',
     '--status-path',
     '--supervisor-config',
   ]);
@@ -66,6 +70,10 @@ function parseArgs(argv) {
     switch (flag) {
       case '--agent-id': {
         options.agentId = value;
+        break;
+      }
+      case '--agent-slug': {
+        options.agentSlug = value;
         break;
       }
       case '--cli': {
@@ -84,6 +92,10 @@ function parseArgs(argv) {
         options.prompt = value;
         break;
       }
+      case '--run-mode': {
+        options.runMode = value;
+        break;
+      }
       case '--status-path': {
         options.statusPath = value;
         break;
@@ -97,10 +109,15 @@ function parseArgs(argv) {
 
   for (const [name, value] of [
     ['--cli', options.cli],
-    ['--agent-id', options.agentId],
     ['--prompt', options.prompt],
   ]) {
     if (!value) throw new RunnerError(`Missing required option: ${name}`);
+  }
+  if (!options.agentId && !options.agentSlug) {
+    throw new RunnerError('Missing required option: --agent-id or --agent-slug');
+  }
+  if (!['agent', 'task'].includes(options.runMode)) {
+    throw new RunnerError('--run-mode must be agent or task');
   }
   return options;
 }
@@ -159,6 +176,7 @@ class AgentRunner {
     this.cleanupLog = path.join(options.logDir, 'device-cleanup.log');
     this.operationId = undefined;
     this.topicId = undefined;
+    this.taskId = undefined;
     this.deviceId = undefined;
     this.latestStatus = undefined;
     this.operationTerminal = false;
@@ -255,16 +273,9 @@ class AgentRunner {
     }
   }
 
-  async run() {
-    this.installSignalHandlers();
-    try {
-      if (!fs.existsSync(this.options.deviceReady)) {
-        throw new RunnerError(`lh local device is not ready: ${this.options.deviceReady}`);
-      }
-      const deviceStatus = readJson(this.options.statusPath);
-      this.deviceId =
-        deviceStatus?.connectionStatus === 'connected' ? deviceStatus.deviceId : undefined;
-      const started = await this.runCli([
+  async startRun() {
+    if (this.options.runMode === 'agent') {
+      return this.runCli([
         'agent',
         'run',
         '--agent-id',
@@ -276,8 +287,53 @@ class AgentRunner {
         '--detach',
         '--json',
       ]);
+    }
+
+    const task = await this.runCli([
+      'task',
+      'create',
+      '--instruction',
+      this.options.prompt,
+      '--agent',
+      this.options.agentId,
+      '--json',
+    ]);
+    if (typeof task?.id !== 'string') throw new RunnerError('lh task create returned no task ID');
+    this.taskId = task.id;
+    this.log(`Task: ${task.identifier || task.id}`);
+    return this.runCli(['task', 'run', task.id, '--device', 'local', '--json']);
+  }
+
+  async resolveAgentId() {
+    if (this.options.agentId) return;
+    const agent = await this.runCli([
+      'agent',
+      'view',
+      '--slug',
+      this.options.agentSlug,
+      '--json',
+      'id',
+    ]);
+    if (typeof agent?.id !== 'string') {
+      throw new RunnerError(`lh agent view returned no ID for slug: ${this.options.agentSlug}`);
+    }
+    this.options.agentId = agent.id;
+    this.log(`Agent: ${agent.id} (${this.options.agentSlug})`);
+  }
+
+  async run() {
+    this.installSignalHandlers();
+    try {
+      if (!fs.existsSync(this.options.deviceReady)) {
+        throw new RunnerError(`lh local device is not ready: ${this.options.deviceReady}`);
+      }
+      const deviceStatus = readJson(this.options.statusPath);
+      this.deviceId =
+        deviceStatus?.connectionStatus === 'connected' ? deviceStatus.deviceId : undefined;
+      await this.resolveAgentId();
+      const started = await this.startRun();
       if (typeof started?.operationId !== 'string' || typeof started?.topicId !== 'string') {
-        throw new RunnerError('lh agent run returned no operation/topic IDs');
+        throw new RunnerError(`lh ${this.options.runMode} run returned no operation/topic IDs`);
       }
       this.operationId = started.operationId;
       this.topicId = started.topicId;

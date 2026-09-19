@@ -16,12 +16,15 @@ Before preparing or running anything, obtain these independent choices:
 1. Target: `local` production server from this checkout, `cloud`/remote, or
    `runta` FrontierHarness evaluation.
 2. CLI: `checkout` build from `apps/cli`, or published `npm` release.
-3. Exact `LH_AGENT_ID`; the selected agent already owns its model.
+3. Agent selection: cloud and Runta require an exact `LH_AGENT_ID`; local uses
+   the seeded user's builtin `inbox` agent unless the user explicitly selects a
+   different agent.
 4. Eval repository path and whether the user wants a new job or a resume.
 5. Credentials: for cloud, require its CLI API key in the eval repository's
-   ignored `.env`. For local, ask whether the selected agent's provider
-   credential is already stored in LobeHub; if not, ask for the provider's real
-   environment variable name and secret before starting the server.
+   ignored `.env`. Local bootstrap seeds its CLI key. Reuse a provider
+   credential already configured in LobeHub or the ignored local env; if the
+   smoke reports `InvalidProviderAPIKey`, report the resolved agent's
+   provider/model and ask only for that provider's real credential.
 6. For local, obtain explicit confirmation that port `3210` and every configured
    eval infrastructure port are unreachable from the public internet and other
    untrusted networks. Do not bootstrap the local stack without confirmation.
@@ -47,8 +50,10 @@ required credential or model.
 - The local Compose stack publishes host ports and uses fixed development
   credentials, including the seeded CLI key and gateway service token. Never
   run it on a host where those ports are reachable by an untrusted network.
-- Never infer `inbox`, choose a separate model, or override the agent with
-  `DEFAULT_AGENT_CONFIG`. Never invent, print, or commit secrets.
+- Never infer `inbox` for cloud or Runta, choose a separate model, or override
+  the agent with `DEFAULT_AGENT_CONFIG`. Local may resolve the isolated seeded
+  user's builtin `inbox` through the authenticated CLI. Never invent, print, or
+  commit secrets.
 - LobeHub uses localhost service URLs. Harbor containers use Docker-reachable
   host URLs. Never interchange them.
 - Preflight is target-specific and read-only: local checks the local production
@@ -73,6 +78,11 @@ Both routes run their preflight and then
 repository's own job command. The `runta` route uses two restored suite runtimes
 and a detached start/status/collect workflow; do not substitute a normal Harbor
 job for it.
+
+Harbor and Pier default to `LH_RUN_MODE=agent`. Set `LH_RUN_MODE=task` to create
+one persistent LobeHub Task per trial and run it on the connected eval device;
+operation polling, output collection, usage evidence, and device cleanup remain
+the same.
 
 ## Diagnose
 

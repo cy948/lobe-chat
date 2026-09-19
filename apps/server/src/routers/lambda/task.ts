@@ -1039,6 +1039,7 @@ export const taskRouter = router({
       idInput.merge(
         z.object({
           continueTopicId: z.string().optional(),
+          deviceId: z.string().optional(),
           prompt: z.string().optional(),
         }),
       ),
@@ -1054,6 +1055,7 @@ export const taskRouter = router({
         );
         return await runner.runTask({
           continueTopicId: input.continueTopicId,
+          deviceId: input.deviceId,
           extraPrompt: input.prompt,
           taskId: task.id,
         });

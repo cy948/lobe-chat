@@ -1,6 +1,6 @@
 ---
 name: run-eval-harbor
-description: 'Run and diagnose existing Harbor or FrontierHarness evaluations against local production LobeHub or LobeHub Cloud, either locally or on Runta. Use for eval infrastructure, target preflight, lh CLI injection, Harbor smoke or job runs, resume, and failure triage. Excludes authoring Harbor tasks and product acceptance.'
+description: 'Run and diagnose existing Harbor or FrontierHarness evaluations against local production LobeHub or LobeHub Cloud, on a local Docker host, SSH worker, or Runta. Use for eval infrastructure, target preflight, lh CLI injection, Harbor smoke or job runs, resume, and failure triage. Excludes authoring Harbor tasks and product acceptance.'
 ---
 
 # Run Eval Harbor
@@ -16,7 +16,7 @@ use `runta` as a LobeHub server target or `checkout` as an execution environment
 
 1. LobeHub server: `local` production server from this checkout, or
    `cloud`/remote.
-2. Execution environment: this local host, or Runta runtimes. The maintained
+2. Execution environment: this local host, an SSH Docker worker, or Runta runtimes. The maintained
    Runta workflow currently targets a cloud/remote LobeHub server.
 3. CLI source: `checkout` build from `apps/cli`, or published `npm` release.
 4. Agent selection: cloud requires an exact `LH_AGENT_ID`; local uses the seeded
@@ -79,6 +79,9 @@ When the execution environment is Runta, additionally read the
 [Runta/FrontierHarness playbook](references/runta.md). It overlays the cloud
 server route; it is not a third server target.
 
+For a local Docker host or SSH worker running FrontierHarness against Cloud,
+read [the Docker host playbook](references/worker.md) after the cloud reference.
+
 CLI source is orthogonal to the server target and execution environment:
 `checkout` injects the built `apps/cli`; `npm` installs the release package. For
 local execution, run the selected server preflight and then
@@ -89,8 +92,9 @@ workflow; do not substitute a normal Harbor job for it.
 
 Harbor and Pier default to `LH_RUN_MODE=agent`. Set `LH_RUN_MODE=task` to create
 one persistent LobeHub Task per trial and run it on the connected eval device;
-operation polling, output collection, usage evidence, and device cleanup remain
-the same.
+operation polling, output collection, and device cleanup remain the same. Task
+mode records usage with `lh task usage`; agent mode keeps the existing usage
+evidence flow scoped to the operation.
 
 ## Diagnose
 

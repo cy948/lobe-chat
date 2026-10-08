@@ -105,7 +105,7 @@ vi.mock('@lobechat/device-control', async (importOriginal) => ({
 }));
 
 vi.mock('@lobechat/device-gateway-client', () => ({
-  GatewayClient: vi.fn().mockImplementation((opts: any) => {
+  GatewayClient: vi.fn().mockImplementation(function (opts: any) {
     clientOptions = opts;
     clientEventHandlers = {};
     connectCalled = false;

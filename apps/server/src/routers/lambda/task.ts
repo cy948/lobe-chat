@@ -1702,6 +1702,26 @@ export const taskRouter = router({
       }
     }),
 
+  usage: taskProcedure.input(idInput).query(async ({ input, ctx }) => {
+    try {
+      const task = await resolveOrThrow(ctx.taskModel, input.id);
+      const usage = await ctx.taskTopicModel.sumRunCostByTaskIds([task.id]);
+
+      return {
+        data: { ...usage, taskId: task.id, taskIdentifier: task.identifier },
+        success: true,
+      };
+    } catch (error) {
+      if (error instanceof TRPCError) throw error;
+      console.error('[task:usage]', error);
+      throw new TRPCError({
+        cause: error,
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Failed to get task usage',
+      });
+    }
+  }),
+
   // Cross-workspace task *transfer* is intentionally not supported anymore:
   // moving a task drags its whole subtree plus history (dependencies,
   // documents, comments) out of the workspace. Use `copyTaskToWorkspace`,

@@ -100,6 +100,13 @@ class LhPierInstalledAgent(BaseInstalledAgent):
             "/logs/agent/operation-status.jsonl", downloaded
         )
         downloaded.replace(status_log)
+        if self._lh.run_mode == "task":
+            usage_log = self.logs_dir / "task-usage.jsonl"
+            downloaded_usage = usage_log.with_suffix(".jsonl.download")
+            await environment.download_file(
+                "/logs/agent/task-usage.jsonl", downloaded_usage
+            )
+            downloaded_usage.replace(usage_log)
         self._lh.populate_context(self.logs_dir, context)
 
     def populate_context_post_run(self, context: AgentContext) -> None:

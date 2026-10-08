@@ -87,6 +87,9 @@ on the connected Harbor device with `lh task run --device local`:
 LH_RUN_MODE=task bash .agents/skills/run-eval-harbor/scripts/run-smoke.sh local checkout
 ```
 
+Task mode snapshots `lh task usage` into the trial logs every five minutes and
+at termination; it does not derive the Task bill from the root operation.
+
 The local smoke requires `LOBEHUB_CLI_API_KEY`. Unless `LH_AGENT_ID` overrides
 it, the installed CLI resolves `LH_AGENT_SLUG=inbox` to a concrete id before the
 run. The smoke calls that agent, requires `hello world`, and exits. Preflight

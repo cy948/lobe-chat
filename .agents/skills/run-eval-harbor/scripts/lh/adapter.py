@@ -58,6 +58,13 @@ class LhAdapter:
     def uses_system_cli(self) -> bool:
         return self.cli_source == "system"
 
+    @property
+    def run_mode(self) -> str:
+        value = self.value(self.run_mode_arg, "LH_RUN_MODE", "agent")
+        if value not in {"agent", "task"}:
+            raise ValueError("LH_RUN_MODE must be 'agent' or 'task'")
+        return value
+
     def host_cli_dir(self) -> Path | None:
         if self.uses_system_cli:
             return None
@@ -91,9 +98,7 @@ class LhAdapter:
         server_url = self.value(self.server_url, "LH_SERVER_URL")
         gateway_url = self.value(self.gateway_url, "LH_GATEWAY_URL")
         workspace_id = self.value(self.workspace_id, "LOBEHUB_WORKSPACE_ID")
-        run_mode = self.value(self.run_mode_arg, "LH_RUN_MODE", "agent")
-        if run_mode not in {"agent", "task"}:
-            raise ValueError("LH_RUN_MODE must be 'agent' or 'task'")
+        run_mode = self.run_mode
         cli = "lh" if self.uses_system_cli else f"bash {DEV_CLI_RUNNER}"
         cli_path = "/usr/local/bin/lh" if self.uses_system_cli else DEV_CLI_RUNNER
         agent_option = (
@@ -146,6 +151,29 @@ class LhAdapter:
 
     @staticmethod
     def populate_context(logs_dir: Path, context: Any) -> None:
+        try:
+            lines = (logs_dir / "task-usage.jsonl").read_text().splitlines()
+        except OSError:
+            lines = []
+
+        for line in reversed(lines):
+            try:
+                usage = json.loads(line)
+                found = False
+                if isinstance(usage.get("totalInputTokens"), int):
+                    context.n_input_tokens = usage["totalInputTokens"]
+                    found = True
+                if isinstance(usage.get("totalOutputTokens"), int):
+                    context.n_output_tokens = usage["totalOutputTokens"]
+                    found = True
+                if isinstance(usage.get("totalCost"), (int, float)):
+                    context.cost_usd = usage["totalCost"]
+                    found = True
+                if found:
+                    return
+            except (TypeError, ValueError, AttributeError):
+                continue
+
         try:
             lines = (logs_dir / "operation-status.jsonl").read_text().splitlines()
         except OSError:

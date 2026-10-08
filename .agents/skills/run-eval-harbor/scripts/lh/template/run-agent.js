@@ -172,6 +172,7 @@ class AgentRunner {
     this.options = options;
     this.agentLog = path.join(options.logDir, 'agent-run.log');
     this.statusLog = path.join(options.logDir, 'operation-status.jsonl');
+    this.taskUsageLog = path.join(options.logDir, 'task-usage.jsonl');
     this.statusErrorsLog = path.join(options.logDir, 'operation-status-errors.log');
     this.cleanupLog = path.join(options.logDir, 'device-cleanup.log');
     this.operationId = undefined;
@@ -300,6 +301,8 @@ class AgentRunner {
     ]);
     if (typeof task?.id !== 'string') throw new RunnerError('lh task create returned no task ID');
     this.taskId = task.id;
+    fs.mkdirSync(path.dirname(this.taskUsageLog), { recursive: true });
+    fs.closeSync(fs.openSync(this.taskUsageLog, 'a'));
     this.log(`Task: ${task.identifier || task.id}`);
     return this.runCli(['task', 'run', task.id, '--device', 'local', '--json']);
   }
@@ -351,12 +354,12 @@ class AgentRunner {
         if (polled.kind === 'state') {
           this.latestStatus = { currentState: polled.currentState };
           if (now >= nextSnapshotAt) {
-            this.writeSnapshot();
+            await this.captureSnapshot();
             nextSnapshotAt = now + this.options.snapshotMs;
           }
           if (TERMINAL_STATUSES.has(polled.status)) {
             this.operationTerminal = true;
-            this.writeSnapshot();
+            await this.captureSnapshot();
             if (polled.status === 'done') {
               await this.collectTopicOutput();
               this.log('Agent finished');
@@ -412,6 +415,21 @@ class AgentRunner {
     if (record) appendLine(this.statusLog, JSON.stringify(record));
   }
 
+  async captureSnapshot() {
+    this.writeSnapshot();
+    if (this.options.runMode !== 'task' || !this.taskId) return;
+
+    try {
+      const usage = await this.runCli(['task', 'usage', this.taskId, '--json']);
+      appendLine(
+        this.taskUsageLog,
+        JSON.stringify({ capturedAt: new Date().toISOString(), ...usage }),
+      );
+    } catch (error) {
+      appendLine(this.statusErrorsLog, `task usage: ${error.message}`);
+    }
+  }
+
   async interruptAndWait() {
     if (this.interruptAttempted) return this.interruptConfirmed;
     this.interruptAttempted = true;
@@ -429,7 +447,7 @@ class AgentRunner {
           this.latestStatus = { currentState: polled.currentState };
           this.operationTerminal = true;
           this.interruptConfirmed = true;
-          this.writeSnapshot();
+          await this.captureSnapshot();
           return true;
         }
         this.log('Agent interrupt was not acknowledged', true);
@@ -443,7 +461,7 @@ class AgentRunner {
           this.latestStatus = { currentState: polled.currentState };
           this.operationTerminal = true;
           this.interruptConfirmed = true;
-          this.writeSnapshot();
+          await this.captureSnapshot();
           return true;
         }
         await this.wait(Math.min(this.options.pollMs, deadline - Date.now()));
@@ -486,7 +504,7 @@ class AgentRunner {
   }
 
   async cleanup() {
-    this.writeSnapshot();
+    await this.captureSnapshot();
     if (this.operationId && !this.operationTerminal && !this.interruptAttempted) {
       await this.interruptAndWait();
     }

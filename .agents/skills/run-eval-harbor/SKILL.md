@@ -79,8 +79,9 @@ When the execution environment is Runta, additionally read the
 [Runta/FrontierHarness playbook](references/runta.md). It overlays the cloud
 server route; it is not a third server target.
 
-For a local Docker host or SSH worker running FrontierHarness against Cloud,
-read [the Docker host playbook](references/worker.md) after the cloud reference.
+For FrontierHarness on a local Docker host or SSH worker, use
+`scripts/frontierharness-local.py start` to launch Harbor/Pier queues and
+`collect` to prepare results and usage for reporting. See each subcommand's `--help`.
 
 CLI source is orthogonal to the server target and execution environment:
 `checkout` injects the built `apps/cli`; `npm` installs the release package. For

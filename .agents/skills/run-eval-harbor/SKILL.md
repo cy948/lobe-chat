@@ -97,6 +97,13 @@ operation polling, output collection, and device cleanup remain the same. Task
 mode records usage with `lh task usage`; agent mode keeps the existing usage
 evidence flow scoped to the operation.
 
+The runner exports persisted topic interactions to `agent/trajectory.json` with
+`lh topic export` during cleanup, including interrupted runs. This requires a
+CLI/server with ATIF export support. Export currently supports single-agent
+topics without threads or branches; failures are logged without changing the
+trial result. The trajectory includes recorded reasoning, tool calls/results,
+and message usage; it does not reconstruct runtime-only model context.
+
 ## Diagnose
 
 - PostgreSQL, Redis, RustFS, QStash, or Compose state: local eval infrastructure.

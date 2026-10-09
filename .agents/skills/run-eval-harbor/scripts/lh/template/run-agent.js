@@ -509,6 +509,25 @@ class AgentRunner {
       await this.interruptAndWait();
     }
 
+    if (this.topicId) {
+      try {
+        const result = await this.exec(this.options.cli, [
+          'topic',
+          'export',
+          this.topicId,
+          '--output',
+          path.join(this.options.logDir, 'trajectory.json'),
+        ]);
+        if (result.code !== 0) {
+          throw new RunnerError(
+            result.stderr.trim() || result.stdout.trim() || 'topic export failed',
+          );
+        }
+      } catch (error) {
+        this.log(`Trajectory export failed: ${error.message}`, true);
+      }
+    }
+
     try {
       const result = await this.exec('supervisorctl', [
         '-c',
